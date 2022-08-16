@@ -7,20 +7,19 @@
 # ---------------------------------------------------------------------------
 import csv
 from math import sqrt, isclose
+from tkinter import N
 import matplotlib.pyplot as plt
 import numpy as np
 from statistics import mean
-
-from requests import head
 from circle_fit_taubin import TaubinSVD
 # ---------------------------------------------------------------------------
 
 def load_data(dir):
     data = np.genfromtxt(dir, delimiter=',')
-    # fish1_data = data[:15000]
-    # fish2_data = data[15000:]
-    fish1_data = data[:10]
-    fish2_data = data[15000:15010]
+    fish1_data = data[:15000]
+    fish2_data = data[15000:]
+    # fish1_data = data[:10]
+    # fish2_data = data[15000:15010]
     return fish1_data, fish2_data
 
 
@@ -38,62 +37,65 @@ def get_rmse(distances_lst):
     return sqrt(np.sum(distances_lst))
 
 
-def get_circling_window_frames(fish1_data, fish2_data, num_window_frames):
-    # head_positions_for_x_wf = []
-    # # rmses = []
-    # # frame_numbers = [x for x in range(15000) if x % num_window_frames == 0]
-    # orientation_angles_for_x_wf = []   
-    # # reciprocal_radii = []
-    # circling_wf = []
-    # # angles = []
-    # # wf = []
-    head_pos_for_x_wf = np.empty((2, 2), int)
-    np.append(head_pos_for_x_wf, [3,2])
-    # for paired_data in zip(fish1_data, fish2_data):
-    #     initial_array = 
-    #     array = np.array([paired_data[0][3:5], paired_data[1][29:31]])
-        
-    #     if paired_data[0][1] % num_window_frames == 0:
-    #         print(array)
+def get_circling_window_frames(fish1_data, fish2_data, window_size):
+    # frame_numbers = [x for x in range(15000) if x % num_window_frames == 0]
+    head_count = 0
+    theta_count = 0 
+    circling_wf = np.array([])
+    theta_90 = np.array([])
+    head_pos_for_x_wf = np.empty((2 * window_size, 2), int)
+    theta_for_x_wf = np.empty((window_size, 2), float)
 
+    for paired_data in zip(fish1_data, fish2_data):
+        head_pos_for_x_wf[head_count] = paired_data[0][3:5]    # x,y pos fish1
+        head_count += 1
+        head_pos_for_x_wf[head_count] = paired_data[1][3:5]    # x,y pos fish2
+        head_count += 1
 
+        theta_for_x_wf[theta_count] = np.cos(
+            paired_data[0][5] - paired_data[1][5])
+        theta_count += 1
 
-#     for paired_data in paired_data_lst:
-#         # x,y positions of fish1 are at the 3rd and 4th indices 
-#         # x,y positions of fish2 are at the 29th and 30th indices
-#         head_positions_for_x_wf.append(list(map(int,map(float,paired_data[3:5]))))   
-#         head_positions_for_x_wf.append(list(map(int,map(float,paired_data[29:31])))) 
-
-#         # Orientation of fish1 is at the 5th index; 31st index is for fish2
-#         orientation_angles_for_x_wf.append(
-#             np.cos(float(paired_data[5]) - float(paired_data[31])))
-
-#         if int(paired_data[1]) % num_window_frames == 0:               
-#             taubin_output = TaubinSVD(head_positions_for_x_wf)  # output gives (x_c, y_c, r)
-#             reciprocal_radius = get_reciprocal_radius(taubin_output)
-#             # reciprocal_radii.append(reciprocal_radius) 
-#             orientation_angle = mean(orientation_angles_for_x_wf)
-
-#             # if -0.2 < orientation_angle < 0.2:
-#             #     angles.append(orientation_angle)
-#             #     wf.append(taubin_output[1])
-#                 # plt.plot(taubin_output[1], orientation_angle, 'ro')
+        if paired_data[0][1] % window_size == 0:
+            head_count = 0
+            theta_count = 0
+            taubin_output = TaubinSVD(head_pos_for_x_wf)  # output gives (x_c, y_c, r)
+            reciprocal_radius = get_reciprocal_radius(taubin_output)
+            theta_avg = np.mean(theta_for_x_wf)
             
-#             distances_for_x_wf = []
-#             for i in range(2 * num_window_frames):
-#                 distances_for_x_wf.append(
-#                     get_distances(head_positions_for_x_wf, taubin_output, i))   
+            distances_for_x_wf = np.empty(2 * window_size)
+            for i in range(2 * window_size):
+                distances_for_x_wf[i] = get_distances(head_pos_for_x_wf, 
+                taubin_output, i)  
             
-#             rmse = get_rmse(distances_for_x_wf)
-#             # rmses.append(rmse)
-        
-#             if (reciprocal_radius >= 0.005 and rmse < 25 and 
-#                 -1 <= orientation_angle <= -0.8):  
-#                 circling_wf.append(paired_data[1])
+            rmse = get_rmse(distances_for_x_wf)
 
-#             # Empty the list for the next x window frames 
-#             head_positions_for_x_wf = []     
-#             orientation_angles_for_x_wf = []   
+            if np.abs(theta_avg) < 0.1:
+                # theta_90 = np.append(theta_90, paired_data[0][1])
+                plt.plot(paired_data[0][1], 1, 'ro')
+                # plt.annotate(f"wf {paired_data[0][1]}", (paired_data[0][1], 1))
+
+        
+            if (reciprocal_radius >= 0.005 and rmse < 25 and 
+                np.abs(theta_avg) < 0.1):  
+                # circling_wf = np.append(circling_wf, paired_data[0][1])
+                plt.plot(paired_data[0][1], 2, 'o')
+
+            # Empty the array for the next x window frames 
+            head_pos_for_x_wf = np.empty((2 * window_size, 2), int)  
+            theta_for_x_wf = np.empty((window_size, 2), float)
+
+    # plt.figure()
+    # plt.plot(theta_90)
+    # plt.plot(circling_wf)
+    plt.show()
+
+
+
+
+    # return circling_wf
+            
+
 
 #     # plt.plot(wf, angles)
 #     # plt.figure()
@@ -114,7 +116,7 @@ def main():
     data = load_data("results_SocPref_3c_2wpf_k1_ALL.csv")
     fish1_data = data[0]
     fish2_data = data[1]
-   
+
     circling_wfs = get_circling_window_frames(fish1_data, fish2_data, 10)
     print(circling_wfs)
   
