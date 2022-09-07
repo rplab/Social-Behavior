@@ -32,7 +32,7 @@ def get_rmse(distances_lst):
     return sqrt(np.sum(distances_lst))
 
 
-def get_circling_window_frames(circling_data, angle_data, window_size):
+def get_circling_wf(circling_data, angle_data, window_size):
     fish1_data = circling_data[0]
     fish2_data = circling_data[1]
     idx_1, idx_2, wf = 0, window_size, window_size
@@ -61,7 +61,7 @@ def get_circling_window_frames(circling_data, angle_data, window_size):
 def get_angles(angle_data, idx_1, idx_2):
     fish1_data = angle_data[0][idx_1:idx_2]
     fish2_data = angle_data[1][idx_1:idx_2]
-    theta_avg = np.mean(np.subtract(fish1_data, fish2_data))
+    theta_avg = np.mean(np.cos(np.subtract(fish1_data, fish2_data)))
     return theta_avg
 
 
@@ -71,6 +71,9 @@ def get_angles(angle_data, idx_1, idx_2):
 def main():
     circling_data = load_data("results_SocPref_3c_2wpf_k1_ALL.csv", 3, 5)
     angle_data = load_data("results_SocPref_3c_2wpf_k1_ALL.csv", 5, 6)
+    circling_wfs = get_circling_wf(circling_data, angle_data, 10)
 
-    circling_wfs = get_circling_window_frames(circling_data, angle_data, 10)
-    print(circling_wfs)
+
+if __name__ == '__main__':
+    main()
+    
