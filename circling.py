@@ -6,17 +6,10 @@
 # version ='1.0'
 # ---------------------------------------------------------------------------
 from math import sqrt
-import matplotlib.pyplot as plt
+from toolkit import *
 import numpy as np
 from circle_fit_taubin import TaubinSVD
 # ---------------------------------------------------------------------------
-
-def load_data(dir, idx_1, idx_2):
-    data = np.genfromtxt(dir, delimiter=',')
-    fish1_data = data[:15000][:, np.r_[idx_1:idx_2]]
-    fish2_data = data[15000:][:, np.r_[idx_1:idx_2]]
-    return fish1_data, fish2_data
-
 
 def get_reciprocal_radius(taubin_output):
     return 1 / taubin_output[2]
@@ -32,9 +25,7 @@ def get_rmse(distances_lst):
     return sqrt(np.sum(distances_lst))
 
 
-def get_circling_wf(circling_data, angle_data, window_size):
-    fish1_data = circling_data[0]
-    fish2_data = circling_data[1]
+def get_circling_wf(fish1_data, fish2_data, angle_data, window_size):
     idx_1, idx_2, wf = 0, window_size, window_size
     circling_wf = np.array([])
     
@@ -51,27 +42,19 @@ def get_circling_wf(circling_data, angle_data, window_size):
         rmse = get_rmse(distances_temp)
 
         if (reciprocal_radius >= 0.005 and rmse < 25 and 
-        -1 <= get_angles(angle_data, idx_1, idx_2) < -0.9): 
+        -1 <= get_opposite_orientation_angle(angle_data, idx_1, idx_2) < -0.9): 
             circling_wf = np.append(circling_wf, wf)
     
         idx_1, idx_2, wf = idx_1+window_size, idx_2+window_size, wf+window_size
     return circling_wf
             
 
-def get_angles(angle_data, idx_1, idx_2):
-    fish1_data = angle_data[0][idx_1:idx_2]
-    fish2_data = angle_data[1][idx_1:idx_2]
-    theta_avg = np.mean(np.cos(np.subtract(fish1_data, fish2_data)))
-    return theta_avg
-
-
-#         if np.abs(theta_avg) < 0.1:
-#             theta_90 = np.append(theta_90, theta_avg)
-
 def main():
-    circling_data = load_data("results_SocPref_3c_2wpf_k1_ALL.csv", 3, 5)
+    pos_data = load_data("results_SocPref_3c_2wpf_k1_ALL.csv", 3, 5)
     angle_data = load_data("results_SocPref_3c_2wpf_k1_ALL.csv", 5, 6)
-    circling_wfs = get_circling_wf(circling_data, angle_data, 10)
+    circling_wfs = get_circling_wf(pos_data[0], pos_data[1], angle_data, 10)
+
+
 
 
 if __name__ == '__main__':
