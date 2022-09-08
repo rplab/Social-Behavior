@@ -6,7 +6,7 @@
 # version ='1.0'
 # ---------------------------------------------------------------------------
 import numpy as np
-from circling import load_data, get_angles
+from toolkit import *
 # ---------------------------------------------------------------------------
   
 def get_tail_rubbing_wf(fish1_x, fish2_x, fish1_y, fish2_y, 
@@ -20,7 +20,7 @@ angle_data, window_size):
         avg_dist_array = np.average(dist_temp, axis=0)
         
         if (np.min(avg_dist_array) < 65 and
-        -1 <= get_angles(angle_data, idx_1, idx_2) < -0.8): 
+        -1 <= get_opposite_orientation_angle(angle_data, idx_1, idx_2) < -0.8): 
             tail_rubbing_wf = np.append(tail_rubbing_wf, wf)
 
         idx_1, idx_2, wf = idx_1+window_size, idx_2+window_size, wf+window_size
@@ -38,6 +38,7 @@ def main():
     print(tail_rubbing_wf)
     
     
+
 
 if __name__ == '__main__':
     main()
