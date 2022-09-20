@@ -5,40 +5,65 @@
 # Created Date: 5/26/2022
 # version ='1.0'
 # ---------------------------------------------------------------------------
-import numpy as np
 from toolkit import *
-# ---------------------------------------------------------------------------
-  
-def get_tail_rubbing_wf(fish1_x, fish2_x, fish1_y, fish2_y, 
+# ------------------------------------------------------------------------------
+
+def get_contact_wf(body1_x, body2_x, body1_y, body2_y, window_size):
+    idx_1, idx_2, wf = 0, window_size, window_size
+    contact_wf = {"any": np.array([]), "head-body": np.array([])}
+
+    for i in range(15000):
+        # Head-body contact
+        if (np.min(np.sqrt((body1_x[idx_1][0] - body2_x[idx_1])**2 + 
+        (body1_y[idx_1][0] - body2_y[idx_1])**2)) < 20 or 
+        np.min(np.sqrt((body1_x[idx_1] - body2_x[idx_1][0])**2 + 
+        (body1_y[idx_1] - body2_y[idx_1][0])**2) < 20)):
+             contact_wf["head-body"] = np.append(contact_wf["head-body"], wf)
+             contact_wf["any"] = np.append(contact_wf["any"], wf)
+
+        # Any contact 
+        for j in range(1, 10):
+            if (np.min(np.sqrt((body1_x[idx_1][j] - body2_x[idx_1])**2 + 
+            (body1_y[idx_1][j] - body2_y[idx_1])**2)) < 20 or 
+            np.min(np.sqrt((body1_x[idx_1] - body2_x[idx_1][j])**2 + 
+            (body1_y[idx_1] - body2_y[idx_1][j])**2) < 20)) and (wf not in
+            contact_wf["any"]):
+                contact_wf["any"] = np.append(contact_wf["any"], wf)
+    
+        idx_1, idx_2, wf = idx_1+window_size, idx_2+window_size, wf+window_size
+    return contact_wf
+
+
+def get_tail_rubbing_wf(body1_x, body2_x, body1_y, body2_y, pos_data,
 angle_data, window_size): 
     idx_1, idx_2, wf = 0, window_size, window_size
     tail_rubbing_wf = np.array([])
-    dist_matrix = np.sqrt((fish1_x - fish2_x)**2 + (fish1_y - fish2_y)**2)
-  
-    for array in dist_matrix[::window_size]:
-        dist_temp = dist_matrix[idx_1:idx_2]
-        avg_dist_array = np.average(dist_temp, axis=0)
-        
-        if (np.min(avg_dist_array) < 65 and
-        -1 <= get_opposite_orientation_angle(angle_data, idx_1, idx_2) < -0.8): 
-            tail_rubbing_wf = np.append(tail_rubbing_wf, wf)
+
+    for i in range (15000 // window_size):
+        tail1_x = np.average(body1_x[:, -4:][idx_1:idx_2], axis=0)
+        tail2_x = np.average(body2_x[:, -4:][idx_1:idx_2], axis=0)
+        tail1_y = np.average(body1_y[:, -4:][idx_1:idx_2], axis=0)
+        tail2_y = np.average(body2_y[:, -4:][idx_1:idx_2], axis=0)
+      
+        for j in range(4):
+            min_dist = get_min_tail_distances(tail1_x, tail2_x, tail1_y,
+            tail2_y, idx_1, j)
+            if (min_dist[0] < 40 and min_dist[1] < 40 or 
+            min_dist[2] < 40 and min_dist[3] < 40 and
+            check_antiparallel_criterion(angle_data, idx_1, idx_2, -1, 
+            -0.8, pos_data[0], pos_data[1])):
+                if wf not in tail_rubbing_wf:
+                    tail_rubbing_wf = np.append(tail_rubbing_wf, wf)
 
         idx_1, idx_2, wf = idx_1+window_size, idx_2+window_size, wf+window_size
     return tail_rubbing_wf
 
 
-def main():
-    tail_rubbing_x = load_data("results_SocPref_3c_2wpf_nk1_ALL.csv", 6, 16)
-    tail_rubbing_y = load_data("results_SocPref_3c_2wpf_nk1_ALL.csv", 16, 26)
-    angle_data = load_data("results_SocPref_3c_2wpf_nk1_ALL.csv", 5, 6)
-
-    tail_rubbing_wf = get_tail_rubbing_wf(tail_rubbing_x[0], 
-    tail_rubbing_x[1], tail_rubbing_y[0], tail_rubbing_y[1],
-    angle_data, 4)
-    print(tail_rubbing_wf)
-    
-    
-
-
-if __name__ == '__main__':
-    main()
+def get_min_tail_distances(pos1_x, pos2_x, pos1_y, pos2_y, idx_1, j):
+    dist_matrix1 = np.sqrt((pos1_x[j] - pos2_x)**2 + 
+    (pos1_y[j] - pos2_y)**2)
+    dist_matrix2 = np.sqrt((pos1_x - pos2_x[j])**2 + 
+    (pos1_y - pos2_y[j])**2)
+    min1, min2 = np.partition(dist_matrix1, 1)[0:2]  # two smallest vals
+    min3, min4 = np.partition(dist_matrix2, 1)[0:2]
+    return min1, min2, min3, min4
