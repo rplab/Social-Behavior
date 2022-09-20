@@ -5,19 +5,17 @@
 # Created Date: 9/7/2022
 # version ='1.0'
 # ---------------------------------------------------------------------------
-import numpy as np
 from toolkit import *
 # ---------------------------------------------------------------------------
 
 def get_90_deg_wf(pos_data, angle_data, window_size):
     idx_1, idx_2, wf = 0, window_size, window_size
-    orientations = {
-        "bin1": [], "bin2": [], "bin3": [], "bin4": [],
-        "bin5": [], "bin6": [], "bin7": [], "bin8": [],
-    }
+    orientations = {"none": np.array([]), 
+                    "1": np.array([]), 
+                    "both": np.array([])}
 
     while idx_2 <= 15000:   # end of the array for both fish
-        theta_90 = np.abs(get_opposite_orientation_angle(angle_data, 
+        theta_90 = np.abs(get_antiparallel_angle(angle_data, 
         idx_1, idx_2))
         fish_vectors = get_fish_vectors(angle_data, idx_1, idx_2)
         fish1_vector, fish2_vector = fish_vectors[0], fish_vectors[1]
@@ -28,8 +26,10 @@ def get_90_deg_wf(pos_data, angle_data, window_size):
         orientation_type = get_orientation_type((fish1xfish2, fish1xconnect,
         fish2xconnect))
         
-        if theta_90 < 0.1 and orientation_type in orientations.keys():
-            orientations[orientation_type].append(wf)
+        if (theta_90 < 0.1 and orientation_type in orientations.keys() and
+        get_head_distance(pos_data[0], pos_data[1], idx_1, idx_2) < 300):
+            orientations[orientation_type] = np.append(
+            orientations[orientation_type], wf)
         
         idx_1, idx_2, wf = idx_1+window_size, idx_2+window_size, wf+window_size
     return orientations
@@ -56,26 +56,13 @@ def get_connecting_vector(pos_data, idx_1, idx_2):
 
 def get_orientation_type(sign_tuple):
     switcher = {
-        (1,1,1)   : "bin1",
-        (-1,-1,-1): "bin2",
-        (-1,1,1)  : "bin3",
-        (1,-1,1)  : "bin4",
-        (1,1,-1)  : "bin5",
-        (-1,-1,1) : "bin6",
-        (1,-1,-1) : "bin7",
-        (-1,1,-1) : "bin8"
+        (1,1,1)   : "none",
+        (-1,-1,-1): "none",
+        (-1,1,1)  : "none",
+        (1,-1,1)  : "both",
+        (1,1,-1)  : "1",
+        (-1,-1,1) : "1",
+        (1,-1,-1) : "both",
+        (-1,1,-1) : "1"
     }
     return switcher.get(sign_tuple)
-    
-    
-def main():
-    pos_data = load_data("results_SocPref_3c_2wpf_k1_ALL.csv", 3, 5)
-    angle_data = load_data("results_SocPref_3c_2wpf_k1_ALL.csv", 5, 6)
-    orientation_dict = get_90_deg_wf(pos_data, angle_data, 10)
-    print(orientation_dict)
-   
-
-
-
-if __name__ == '__main__':
-    main()
