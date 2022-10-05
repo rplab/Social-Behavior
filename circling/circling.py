@@ -24,11 +24,12 @@ def get_rmse(distances_lst):
     return sqrt(np.sum(distances_lst))
 
 
-def get_circling_wf(fish1_pos, fish2_pos, angle_data, window_size):
-    idx_1, idx_2, wf = 0, window_size, window_size
+def get_circling_wf(fish1_pos, fish2_pos, angle_data, end, window_size,
+rad_thresh, rmse_thresh, anti_low, anti_high):
+    idx_1, idx_2 = 0, window_size
     circling_wf = np.array([])
     
-    while idx_2 <= 15000:   # end of the array for both fish
+    while idx_2 <= end:   # end of the array for both fish
         head_temp = np.concatenate((fish1_pos[idx_1:idx_2], 
         fish2_pos[idx_1:idx_2]), axis=0)
         taubin_output = TaubinSVD(head_temp)  # output gives (x_c, y_c, r)
@@ -40,10 +41,11 @@ def get_circling_wf(fish1_pos, fish2_pos, angle_data, window_size):
 
         rmse = get_rmse(distances_temp)
 
-        if (reciprocal_radius >= 0.005 and rmse < 25 and 
-        (check_antiparallel_criterion(angle_data, idx_1, idx_2, -1, -0.9, 
-        fish1_pos, fish2_pos))): 
-            circling_wf = np.append(circling_wf, wf)
+        if (reciprocal_radius >= rad_thresh and rmse < rmse_thresh and 
+        (check_antiparallel_criterion(angle_data, idx_1, idx_2, anti_low, 
+        anti_high, fish1_pos, fish2_pos))): 
+            circling_wf = np.append(circling_wf, idx_2)
     
-        idx_1, idx_2, wf = idx_1+window_size, idx_2+window_size, wf+window_size
+        idx_1, idx_2 = idx_1+window_size, idx_2+window_size
     return circling_wf
+    
