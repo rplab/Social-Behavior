@@ -8,13 +8,14 @@
 from toolkit import *
 # ---------------------------------------------------------------------------
 
-def get_90_deg_wf(pos_data, angle_data, window_size):
-    idx_1, idx_2, wf = 0, window_size, window_size
+def get_90_deg_wf(pos_data, angle_data, end, window_size, theta_90_thresh,
+head_dist):
+    idx_1, idx_2 = 0, window_size
     orientations = {"none": np.array([]), 
                     "1": np.array([]), 
                     "both": np.array([])}
 
-    while idx_2 <= 15000:   # end of the array for both fish
+    while idx_2 <= end:   # end of the array for both fish
         theta_90 = np.abs(get_antiparallel_angle(angle_data, 
         idx_1, idx_2))
         fish_vectors = get_fish_vectors(angle_data, idx_1, idx_2)
@@ -26,12 +27,12 @@ def get_90_deg_wf(pos_data, angle_data, window_size):
         orientation_type = get_orientation_type((fish1xfish2, fish1xconnect,
         fish2xconnect))
         
-        if (theta_90 < 0.1 and orientation_type in orientations.keys() and
-        get_head_distance(pos_data[0], pos_data[1], idx_1, idx_2) < 300):
+        if (theta_90 < theta_90_thresh and orientation_type in orientations.keys() 
+        and get_head_distance(pos_data[0], pos_data[1], idx_1, idx_2) < head_dist):
             orientations[orientation_type] = np.append(
-            orientations[orientation_type], wf)
+            orientations[orientation_type], idx_2) 
         
-        idx_1, idx_2, wf = idx_1+window_size, idx_2+window_size, wf+window_size
+        idx_1, idx_2 = idx_1+window_size, idx_2+window_size
     return orientations
 
 
@@ -55,6 +56,8 @@ def get_connecting_vector(pos_data, idx_1, idx_2):
     
 
 def get_orientation_type(sign_tuple):
+    # Orientations grouped according to the sign
+    # of their respective cross products
     switcher = {
         (1,1,1)   : "none",
         (-1,-1,-1): "none",
