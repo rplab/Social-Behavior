@@ -2,6 +2,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 from toolkit import *
 
+'''
+NOTE:
+This module is still undergoing maintainence.
+A polished version will be uploaded once further
+details are acquired for speed tracking.
+'''
+
 def get_speed(pos_data, end, window_size):
     idx_1, idx_2 = 0, window_size
     wfs = np.arange(0, end-window_size, window_size)
