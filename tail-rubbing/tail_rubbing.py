@@ -14,7 +14,7 @@ contact_dist):
     idx_1, idx_2 = 0, window_size
     contact_wf = {"any": np.array([]), "head-body": np.array([])}
 
-    for i in range(end):
+    for i in range(end // window_size):
         # Head-body contact
         if (np.min(np.sqrt((body1_x[idx_1][0] - body2_x[idx_1])**2 + 
         (body1_y[idx_1][0] - body2_y[idx_1])**2)) < contact_dist or 
@@ -31,13 +31,16 @@ contact_dist):
             (body1_y[idx_1] - body2_y[idx_1][j])**2) < contact_dist)) and (idx_2 not in
             contact_wf["any"]):
                 contact_wf["any"] = np.append(contact_wf["any"], idx_2)
-    
+
+        # Update the index variables to track contact for the 
+        # next x window frames of size window_size
         idx_1, idx_2 = idx_1+window_size, idx_2+window_size
     return contact_wf
 
 
-def get_tail_rubbing_wf(body1_x, body2_x, body1_y, body2_y, pos_data,
-angle_data, end, window_size, tail_dist, tail_anti_low, tail_anti_high): 
+def get_tail_rubbing_wf(body1_x, body2_x, body1_y, body2_y, fish1_pos, fish2_pos,
+fish1_angle_data, fish2_angle_data, end, window_size, tail_dist, tail_anti_low, 
+tail_anti_high, head_dist): 
     idx_1, idx_2 = 0, window_size
     tail_rubbing_wf = np.array([])
 
@@ -52,11 +55,14 @@ angle_data, end, window_size, tail_dist, tail_anti_low, tail_anti_high):
             tail2_y, j)
             if (min_dist[0] < tail_dist and min_dist[1] < tail_dist or 
             min_dist[2] < tail_dist and min_dist[3] < tail_dist and
-            check_antiparallel_criterion(angle_data, idx_1, idx_2, tail_anti_low, 
-            tail_anti_high, pos_data[0], pos_data[1])):
+            check_antiparallel_criterion(fish1_angle_data, fish2_angle_data, 
+            idx_1, idx_2, tail_anti_low, tail_anti_high, fish1_pos, fish2_pos,
+            head_dist)):
                 if idx_2 not in tail_rubbing_wf:
                     tail_rubbing_wf = np.append(tail_rubbing_wf, idx_2)
 
+        # Update the index variables to track tail-rubs for the 
+        # next x window frames of size window_size
         idx_1, idx_2 = idx_1+window_size, idx_2+window_size
     return tail_rubbing_wf
 
