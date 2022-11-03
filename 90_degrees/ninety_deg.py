@@ -8,19 +8,19 @@
 from toolkit import *
 # ---------------------------------------------------------------------------
 
-def get_90_deg_wf(pos_data, angle_data, end, window_size, theta_90_thresh,
-head_dist):
+def get_90_deg_wf(fish1_pos, fish2_pos, fish1_angle_data, fish2_angle_data, 
+end, window_size, theta_90_thresh, head_dist):
     idx_1, idx_2 = 0, window_size
     orientations = {"none": np.array([]), 
                     "1": np.array([]), 
                     "both": np.array([])}
 
     while idx_2 <= end:   # end of the array for both fish
-        theta_90 = np.abs(get_antiparallel_angle(angle_data, 
+        theta_90 = np.abs(get_antiparallel_angle(fish1_angle_data, fish2_angle_data, 
         idx_1, idx_2))
-        fish_vectors = get_fish_vectors(angle_data, idx_1, idx_2)
+        fish_vectors = get_fish_vectors(fish1_angle_data, fish2_angle_data, idx_1, idx_2)
         fish1_vector, fish2_vector = fish_vectors[0], fish_vectors[1]
-        connecting_vector = get_connecting_vector(pos_data, idx_1, idx_2)
+        connecting_vector = get_connecting_vector(fish1_pos, fish2_pos, idx_1, idx_2)
         fish1xfish2 = np.sign(np.cross(fish1_vector, fish2_vector))
         fish1xconnect = np.sign(np.cross(fish1_vector, connecting_vector))
         fish2xconnect = np.sign(np.cross(fish2_vector, connecting_vector))
@@ -28,17 +28,19 @@ head_dist):
         fish2xconnect))
         
         if (theta_90 < theta_90_thresh and orientation_type in orientations.keys() 
-        and get_head_distance(pos_data[0], pos_data[1], idx_1, idx_2) < head_dist):
+        and get_head_distance(fish1_pos, fish2_pos, idx_1, idx_2) < head_dist):
             orientations[orientation_type] = np.append(
             orientations[orientation_type], idx_2) 
         
+        # Update the index variables to track 90-degree events 
+        # for the next x window frames of size window_size
         idx_1, idx_2 = idx_1+window_size, idx_2+window_size
     return orientations
 
 
-def get_fish_vectors(angle_data, idx_1, idx_2):
-    fish1_data = angle_data[0][idx_1:idx_2]
-    fish2_data = angle_data[1][idx_1:idx_2]
+def get_fish_vectors(fish1_angle_data, fish2_angle_data, idx_1, idx_2):
+    fish1_data = fish1_angle_data[idx_1:idx_2]
+    fish2_data = fish2_angle_data[idx_1:idx_2]
     fish1_vector = np.array((np.mean(np.cos(fish1_data)), 
     np.mean(np.sin(fish1_data))))
     fish2_vector = np.array((np.mean(np.cos(fish2_data)), 
@@ -46,9 +48,9 @@ def get_fish_vectors(angle_data, idx_1, idx_2):
     return np.array((fish1_vector, fish2_vector))
 
 
-def get_connecting_vector(pos_data, idx_1, idx_2):
-    fish1_data = pos_data[0][idx_1:idx_2]
-    fish2_data = pos_data[1][idx_1:idx_2]
+def get_connecting_vector(fish1_pos, fish2_pos, idx_1, idx_2):
+    fish1_data = fish1_pos[idx_1:idx_2]
+    fish2_data = fish2_pos[idx_1:idx_2]
     connecting_vector = np.array((np.mean(fish2_data[:, 0] - fish1_data[:, 0]), 
     np.mean(fish2_data[:, 1] - fish1_data[:, 1])))
     normalized_vector = connecting_vector / np.linalg.norm(connecting_vector)
