@@ -10,7 +10,7 @@ import numpy as np
 
 def load_data(dir, idx_1, idx_2):
     data = np.genfromtxt(dir, delimiter=',')
-    fish1_data = data[:15000][:, np.r_[idx_1:idx_2]]
+    fish1_data = data[:15000][:, np.r_[idx_1:idx_2]] 
     fish2_data = data[15000:][:, np.r_[idx_1:idx_2]]
     return fish1_data, fish2_data
 
@@ -39,6 +39,16 @@ def get_head_distance_traveled(fish_pos, idx_1, idx_2):
     return dist
 
 
+def get_fish_vectors(fish1_angle_data, fish2_angle_data, idx_1, idx_2):
+    fish1_data = fish1_angle_data[idx_1:idx_2]
+    fish2_data = fish2_angle_data[idx_1:idx_2]
+    fish1_vector = np.array((np.mean(np.cos(fish1_data)), 
+    np.mean(np.sin(fish1_data))))
+    fish2_vector = np.array((np.mean(np.cos(fish2_data)), 
+    np.mean(np.sin(fish2_data))))
+    return np.array((fish1_vector, fish2_vector))
+
+
 def check_antiparallel_criterion(fish1_angle_data, fish2_angle_data,
 idx_1, idx_2, lower_threshold, upper_threshold, fish1_pos, fish2_pos,
 head_dist_threshold):
@@ -51,3 +61,4 @@ head_dist_threshold):
     else:
         res = False
     return res
+
