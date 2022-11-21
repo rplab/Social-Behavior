@@ -11,6 +11,22 @@ from toolkit import *
 
 def get_contact_wf(body1_x, body2_x, body1_y, body2_y, end, window_size,
 contact_dist):
+    """
+    Returns a dictionary of window frames for different types of
+    contact between two fish.
+
+    Args:
+        body1_x (array): a 1D array of x positions along the 10 body markers of fish1.
+        body2_x (array): a 1D array of x positions along the 10 body markers of fish2.
+        body1_y (array): a 1D array of y positions along the 10 body markers of fish1.
+        body2_y (array): a 1D array of y positions along the 10 body markers of fish2.
+        end (int): end of the array for both fish (typically 15,000 window frames.) 
+        window_size (int): window size for which circling is averaged over.
+        contact_dist (int): the contact distance threshold.
+
+    Returns:
+        contact_wf (dictionary): a dictionary of arrays of different contact types.
+    """
     idx_1, idx_2 = 0, window_size
     contact_wf = {"any": np.array([]), "head-body": np.array([])}
 
@@ -41,6 +57,33 @@ contact_dist):
 def get_tail_rubbing_wf(body1_x, body2_x, body1_y, body2_y, fish1_pos, fish2_pos,
 fish1_angle_data, fish2_angle_data, end, window_size, tail_dist, tail_anti_low, 
 tail_anti_high, head_dist): 
+    """
+    Returns an array of tail-rubbing window frames.
+
+    Args:
+        body1_x (array): a 1D array of x positions along the 10 body markers of fish1.
+        body2_x (array): a 1D array of x positions along the 10 body markers of fish2.
+        body1_y (array): a 1D array of y positions along the 10 body markers of fish1.
+        body2_y (array): a 1D array of y positions along the 10 body markers of fish2.
+        fish1_pos (array): a 2D array of (x, y) positions for fish1. The
+                           array has form [[x1, y1], [x2, y2], [x3, y3],...].
+        fish2_pos (array): a 2D array of (x, y) positions for fish1. The
+                           array has form [[x1, y1], [x2, y2], [x3, y3],...].
+        fish1_angle_data (array): a 1D array of angles at each window frame
+                                  for fish1.
+        fish2_angle_data (array): a 1D array of angles at each window frame
+                                  for fish2.
+
+        end (int): end of the array for both fish (typically 15,000 window frames.) 
+        window_size (int): window size for which circling is averaged over.
+        tail_dist (int): tail distance threshold for the two fish. 
+        tail_anti_low (float): antiparallel orientation lower bound.
+        tail_anti_high (float): antiparallel orientation upper bound. 
+        head_dist_thresh (int): head distance threshold for the two fish. 
+
+    Returns:
+        tail_rubbing_wf (array): a 1D array of tail-rubbing window frames.
+    """
     idx_1, idx_2 = 0, window_size
     tail_rubbing_wf = np.array([])
 
@@ -68,6 +111,24 @@ tail_anti_high, head_dist):
 
 
 def get_min_tail_distances(pos1_x, pos2_x, pos1_y, pos2_y, j):
+    """
+    Returns the minimum tail distances between two fish for two 
+    different body markers.
+
+    Args:
+        pos1_x (array): a 1D array of tail x positions for fish1 averaged over some window size.
+        pos2_x (array): a 1D array of tail x positions for fish2 averaged over some window size.
+        pos1_y (array): a 1D array of tail y positions for fish1 averaged over some window size.
+        pos2_y (array): a 1D array of tail y positions for fish2 averaged over some window size.
+        j (int): current index.
+
+    Returns:
+        A tuple of minimum distances (min1, min2, min3, min4).
+            min1 (float): minimum x distance for the first body marker. 
+            min2 (float): minimum y distance for the first body marker.
+            min3 (float): minimum x distance for the second body marker.
+            min4 (float): minimum y distance for the second body marker.
+    """
     dist_matrix1 = np.sqrt((pos1_x[j] - pos2_x)**2 + 
     (pos1_y[j] - pos2_y)**2)
     dist_matrix2 = np.sqrt((pos1_x - pos2_x[j])**2 + 
