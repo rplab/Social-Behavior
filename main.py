@@ -32,6 +32,10 @@ params = {
 }
 
 def main(): 
+    """
+    Main function for finding and displaying window frames 
+    corresponding to all the different social behaviors.
+    """
     pos_data = load_data("results_SocPref_3c_2wpf_nk2_ALL.csv", 3, 5)
     angle_data = load_data("results_SocPref_3c_2wpf_nk2_ALL.csv", 5, 6)
     contact_x = load_data("results_SocPref_3c_2wpf_nk2_ALL.csv", 6, 16)
