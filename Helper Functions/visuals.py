@@ -12,6 +12,22 @@ import matplotlib.pyplot as plt
 
 def get_txt_file(dataset_name, circling, none, one, both, any, 
 head_body, tail_rub):
+    """
+    Displays an txt file of the relevant window frames for a
+    set of social behaviors.
+
+    Args:
+        circling (array) : an array of circling window frames.
+        none (array)     : an arary of 90-degree orientation (none) window frames.
+        one (array)      : an arary of 90-degree orientation (one) window frames.
+        both (array)     : an arary of 90-degree orientation (both) window frames.
+        any (array)      : an array of fish contact (any) window frames.
+        head_body (array): an array of fish contact (head-body) window frames.
+        tail_rub (array) : an array of tail-rubbing window frames.
+
+    Returns:
+        N/A
+    """
     with open(f"{dataset_name}.txt", "w") as results_file:
         results_file.write(f"Circling:\n {circling}\n\n")
         results_file.write(f"90-degrees:\n none: {none} \n\n one: {one} " +
@@ -22,6 +38,22 @@ head_body, tail_rub):
 
 def get_excel_file(dataset_name, circling, none, one, both, any, 
 head_body, tail_rub):
+    """
+    Displays an excel file of the relevant window frames for a
+    set of social behaviors.
+
+    Args:
+        circling (array): an array of circling window frames.
+        none (array)     : an arary of 90-degree orientation (none) window frames.
+        one (array)      : an arary of 90-degree orientation (one) window frames.
+        both (array)     : an arary of 90-degree orientation (both) window frames.
+        any (array)      : an array of fish contact (any) window frames.
+        head_body (array): an array of fish contact (head-body) window frames.
+        tail_rub (array) : an array of tail-rubbing window frames.
+
+    Returns:
+        N/A
+    """
     # Initialize notebook
     workbook = xlsxwriter.Workbook(f'{dataset_name}_excel_file.xlsx')  
     sheet1 = workbook.add_worksheet('Sheet 1')
@@ -60,12 +92,29 @@ head_body, tail_rub):
 
 def get_diagram(dataset_name, circling, none, one, both, any, 
 head_body, tail_rub):
+    """
+    Displays a sequencing plot for a set of social behaviors.
+
+    Args:
+        circling (array): an array of circling window frames.
+        none (array)     : an arary of 90-degree orientation (none) window frames.
+        one (array)      : an arary of 90-degree orientation (one) window frames.
+        both (array)     : an arary of 90-degree orientation (both) window frames.
+        any (array)      : an array of fish contact (any) window frames.
+        head_body (array): an array of fish contact (head-body) window frames.
+        tail_rub (array) : an array of tail-rubbing window frames.
+
+    Returns:
+        N/A
+    """
     fig = plt.figure()
     ax = fig.add_axes([0.1, 0.1, 0.8, 0.8]) # main axes
     plt.title(f"{dataset_name} Figure")
     plt.xlabel("Event Type")
     plt.scatter(np.ones(circling.size), circling, color='blue')
-    plt.scatter(np.onesth.size)*4, both, color='green')
+    plt.scatter(np.ones(none.size)*2, none, color='purple')
+    plt.scatter(np.ones(one.size)*3, one, color='orange')
+    plt.scatter(np.ones(both.size)*4, both, color='green')
     plt.scatter(np.ones(any.size)*5, any, color='red')
     plt.scatter(np.ones(head_body.size)*6, head_body, color='hotpink')
     plt.scatter(np.ones(tail_rub.size)*7, tail_rub, color='cyan')
@@ -73,4 +122,3 @@ head_body, tail_rub):
     ax.set_xticklabels(['circling', 'none', 'one', 'both', 
     'any','head-body', 'tail-rub'])
     plt.savefig(f"{dataset_name}_Fig.png")
-   
