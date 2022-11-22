@@ -67,7 +67,7 @@ end, window_size, rad_thresh, rmse_thresh, anti_low, anti_high, head_dist_thresh
     Args:
         fish1_pos (array): a 2D array of (x, y) positions for fish1. The
                            array has form [[x1, y1], [x2, y2], [x3, y3],...].
-        fish2_pos (array): a 2D array of (x, y) positions for fish1. The
+        fish2_pos (array): a 2D array of (x, y) positions for fish2. The
                            array has form [[x1, y1], [x2, y2], [x3, y3],...].
 
         fish1_angle_data (array): a 1D array of angles at each window frame
@@ -76,11 +76,12 @@ end, window_size, rad_thresh, rmse_thresh, anti_low, anti_high, head_dist_thresh
                                   for fish2.
 
         end (int): end of the array for both fish (typically 15,000 window frames.)
-        window_size (int): window size for which circling is averaged over.
-        rad_thresh (float): radius threshold for circling.
-        rmse_thresh (int): RMSE threshold for circling.
-        anti_low (float): antiparallel orientation lower bound.
-        anti_high (float): antiparallel orientation upper bound. 
+        
+        window_size (int)     : window size for which circling is averaged over.
+        rad_thresh (float)    : radius threshold for circling.
+        rmse_thresh (int)     : RMSE threshold for circling.
+        anti_low (float)      : antiparallel orientation lower bound.
+        anti_high (float)     : antiparallel orientation upper bound. 
         head_dist_thresh (int): head distance threshold for the two fish.
 
     Returns:
