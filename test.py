@@ -31,6 +31,26 @@ params = {
 }
 
 def tester(param_name, mean, std, N):
+    """
+    Returns an array of the number of events corresponding to
+    varying a single parameter for a specific social behavior.
+    The parameter is tested via a Gaussian distribution with a 
+    specified mean and standard deviation of .25 * mean.
+
+    Args:
+        param_name (str)   : the parameter to test.
+        mean (int or float): the mean of the Gaussian distribution.
+        std (int or float) : the standard deviation of the Gaussian 
+                             distribution.
+        N (int)            : sample size of the Gaussian distribution.
+
+    Returns:
+        A tuple containing the following two arrays:
+            params_arr (array): an array of values for a single parameter 
+                                drawn from a Gaussian distribution. 
+            num_events (array): an array of the number of events corresponding
+                                to each element in the params_arr. 
+    """
     pos_data = load_data("results_SocPref_3c_2wpf_nk1_ALL.csv", 3, 5)
     angle_data = load_data("results_SocPref_3c_2wpf_nk1_ALL.csv", 5, 6)
     contact_x = load_data("results_SocPref_3c_2wpf_nk1_ALL.csv", 6, 16)
@@ -91,6 +111,21 @@ def tester(param_name, mean, std, N):
     
 
 def get_circling_func(param_name, param_val, pos_data, angle_data, end_of_arr):
+    """
+    Call the appropriate circling-related function.
+
+    Args:
+        param_name (str)        : the parameter to test.
+        param_val (int or float): the value of the parameter to test drawn from 
+                                  a Gaussian distribution.
+        pos_data (array)        : a 2D array of (x,y) positions for fish1 and fish2.
+        angle_data(array)       : a 2D array of angles for fish1 and fish2.
+        end_of_arr (int)        : end of the array for both fish 
+                                  (typically 15,000 window frames.)
+
+    Returns:
+        An array of window frames for circling.
+    """
     if param_name == "circ_ws": 
         res = get_circling_wf(pos_data[0], pos_data[1], angle_data[0], 
         angle_data[1], end_of_arr, param_val, params["circ_rad"], 
@@ -120,6 +155,21 @@ def get_circling_func(param_name, param_val, pos_data, angle_data, end_of_arr):
 
 
 def get_90_deg_func(param_name, param_val, pos_data, angle_data, end_of_arr):
+    """
+    Call the appropriate 90 degree orientation-related function.
+
+    Args:
+        param_name (str)        : the parameter to test.
+        param_val (int or float): the value of the parameter to test drawn from 
+                                  a Gaussian distribution.
+        pos_data (array)        : a 2D array of (x,y) positions for fish1 and fish2.
+        angle_data(array)       : a 2D array of angles for fish1 and fish2.
+        end_of_arr (int)        : end of the array for both fish 
+                                  (typically 15,000 window frames.)
+
+    Returns:
+        An array of window frames for 90-degree orientation events.
+    """
     if param_name == "90_ws": 
         res = get_90_deg_wf(pos_data[0], pos_data[1], angle_data[0], angle_data[1],
         end_of_arr, param_val, params["theta_90_thresh"], params["90_head_dist"])
@@ -133,6 +183,23 @@ def get_90_deg_func(param_name, param_val, pos_data, angle_data, end_of_arr):
 
 
 def get_contact_func(param_name, param_val, contact_x, contact_y, end_of_arr):
+    """
+    Call the appropriate fish contact-related function.
+
+    Args:
+        param_name (str)        : the parameter to test.
+        param_val (int or float): the value of the parameter to test drawn from 
+                                  a Gaussian distribution.
+        contact_x (array)       : a 2D array of the 10 body markers in x along 
+                                  both fish.
+        contact_y (array)       : a 2D array of the 10 body markers in y along 
+                                  both fish.
+        end_of_arr (int)        : end of the array for both fish 
+                                  (typically 15,000 window frames.)
+
+    Returns:
+        An array of window frames for contact events.
+    """
     if param_name == "contact_ws": 
         res = get_contact_wf(contact_x[0], contact_x[1], contact_y[0], 
         contact_y[1], end_of_arr, param_val, params["contact_dist"])
@@ -144,6 +211,25 @@ def get_contact_func(param_name, param_val, contact_x, contact_y, end_of_arr):
 
 def get_tail_rub_func(param_name, param_val, pos_data, angle_data, contact_x, 
 contact_y, end_of_arr):
+    """
+    Call the appropriate tail-rubbing-related function.
+
+    Args:
+        param_name (str)        : the parameter to test.
+        param_val (int or float): the value of the parameter to test drawn from 
+                                  a Gaussian distribution.
+        pos_data (array)        : a 2D array of (x,y) positions for fish1 and fish2.
+        angle_data(array)       : a 2D array of angles for fish1 and fish2.
+        contact_x (array)       : a 2D array of the 10 body markers in x along 
+                                  both fish.
+        contact_y (array)       : a 2D array of the 10 body markers in y along 
+                                  both fish.
+        end_of_arr (int)        : end of the array for both fish 
+                                  (typically 15,000 window frames.)
+
+    Returns:
+        An array of window frames for tail-rubbing events.
+    """
     if param_name == "tail_rub_ws": 
         res = get_tail_rubbing_wf(contact_x[0], contact_x[1], contact_y[0], 
         contact_y[1], pos_data, angle_data, end_of_arr, param_val, 
@@ -168,6 +254,21 @@ contact_y, end_of_arr):
 
 
 def plot(param_name, params_arr, res_array):
+    """
+    Plot the varing values for a single parameter 
+    drawn from a Gaussian distribution vs. the 
+    number of events corresponding to each value.
+
+    Args: 
+        param_name (str)   : the parameter to test.
+        params_arr (array) : an array of values for a single parameter 
+                            drawn from a Gaussian distribution. 
+        res_array (array)  : an array of the number of events corresponding
+                            to each element in the params_arr. 
+
+    Returns:
+        N/A
+    """
     if re.match("circ", param_name) or re.match("tail", param_name):
         plt.figure()
         plt.title(f"{param_name} vs. Number of Events")
@@ -193,6 +294,7 @@ def plot(param_name, params_arr, res_array):
 
 
 def main():
+    '''Main function for executing parameter testing functions.'''
     res = tester("90_ws", 10, 2, 100)
     plot("90_ws", res[0], res[1])
 
