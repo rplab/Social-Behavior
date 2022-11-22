@@ -10,6 +10,36 @@ from toolkit import *
 
 def get_90_deg_wf(fish1_pos, fish2_pos, fish1_angle_data, fish2_angle_data, 
 end, window_size, theta_90_thresh, head_dist):
+    """
+    Returns an array of window frames for 90-degree orientation events.
+    Each window frame represents the ENDING window frame for 90-degree
+    orientation events within some range of window frames specified by 
+    the parameter window_size.
+
+    Args:
+        fish1_pos (array): a 2D array of (x, y) positions for fish1. The
+                           array has form [[x1, y1], [x2, y2], [x3, y3],...].
+        fish2_pos (array): a 2D array of (x, y) positions for fish2. The
+                           array has form [[x1, y1], [x2, y2], [x3, y3],...].
+        fish1_angle_data (array): a 1D array of angles at each window frame
+                                  for fish1.
+        fish2_angle_data (array): a 1D array of angles at each window frame
+                                  for fish2.
+
+        end (int): end of the array for both fish (typically 15,000 window frames.)
+        
+        window_size (int)      : window size for which circling is averaged over.
+        theta_90_thresh (float): the angle threshold for 90-degree orientation.
+        head_dist_thresh (int) : head distance threshold for the two fish.
+
+    Returns:
+        orientations (dict): a dictionary of arrays of window frames for different 
+                             90-degree orientation types:
+                      
+                      - "none": none of the fish see each other.
+                      - "1"   : one fish sees the other.
+                      - "both": both fish see each other.
+    """
     idx_1, idx_2 = 0, window_size
     orientations = {"none": np.array([]), 
                     "1": np.array([]), 
@@ -38,17 +68,21 @@ end, window_size, theta_90_thresh, head_dist):
     return orientations
 
 
-def get_fish_vectors(fish1_angle_data, fish2_angle_data, idx_1, idx_2):
-    fish1_data = fish1_angle_data[idx_1:idx_2]
-    fish2_data = fish2_angle_data[idx_1:idx_2]
-    fish1_vector = np.array((np.mean(np.cos(fish1_data)), 
-    np.mean(np.sin(fish1_data))))
-    fish2_vector = np.array((np.mean(np.cos(fish2_data)), 
-    np.mean(np.sin(fish2_data))))
-    return np.array((fish1_vector, fish2_vector))
-
-
 def get_connecting_vector(fish1_pos, fish2_pos, idx_1, idx_2):
+    """
+    Returns the "c" vector between two fish.
+
+    Args:
+        fish1_pos (array): a 2D array of (x, y) positions for fish1. The
+                           array has form [[x1, y1], [x2, y2], [x3, y3],...].
+        fish2_pos (array): a 2D array of (x, y) positions for fish2. The
+                           array has form [[x1, y1], [x2, y2], [x3, y3],...].
+        idx_1 (int)      : the beginning index.
+        idx_2 (int)      : the ending index.
+
+    Returns:
+        normalized_vector (array): the normalized "c" vector between two fish.
+    """
     fish1_data = fish1_pos[idx_1:idx_2]
     fish2_data = fish2_pos[idx_1:idx_2]
     connecting_vector = np.array((np.mean(fish2_data[:, 0] - fish1_data[:, 0]), 
@@ -58,6 +92,18 @@ def get_connecting_vector(fish1_pos, fish2_pos, idx_1, idx_2):
     
 
 def get_orientation_type(sign_tuple):
+    """
+    Returns the orientation type of two fish
+    given the sign of their respective 
+    (a, b, c) vectors.
+
+    Args:
+        orientation_tuple (tuple): a tuple of signs between two fish.
+    
+    Returns:
+        (str): "none", "one", or "both.
+
+    """
     # Orientations grouped according to the sign
     # of their respective cross products
     switcher = {
