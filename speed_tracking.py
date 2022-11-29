@@ -5,10 +5,10 @@
 # Created Date: 11/2/2022
 # version ='1.0'
 # ---------------------------------------------------------------------------
-import matplotlib.pyplot as plt
-import numpy as np
 import re
-from lmfit import minimize, Parameters, fit_report
+import matplotlib.pyplot as plt
+import pandas as pd
+import numpy as np
 from scipy import optimize
 from toolkit import *
 import statsmodels.api as sm
@@ -87,36 +87,103 @@ def get_velocity_mag(fish1_speeds, fish2_speeds, fish1_angle_data, fish2_angle_d
 
 
 def obj_func(params, c, t):
-    # c0 = params['c0']
-    # t_decay = params['decay']
-    model = params[0]*np.exp(-t/params[1])
-    likelihood = (c - model)**2
-    res = -1 * np.sum(likelihood)       # minimize negative of function
+    # params = [c, decay]
+    model = params[0]*np.exp((-1)*t / params[1])
+    squared_error = (c - model)**2
+    res = np.sum(squared_error)       # minimize function
     return res 
 
-
-def minimizer(fish1_velocity, fish2_velocity, dataset_name, block_size):
-    # TO-DO: Check if I implemented this function correctly with Raghu
-    # params = Parameters()
-    # params.add('c0', value=0.04)
-    # params.add('decay', value=0.007)
-    params_guess = np.array((0.06, 0.001))
-
+def minimizer(fish1_velocity, fish2_velocity, dataset_name, block_size, reg=0):
     fish1_norm = (fish1_velocity - np.mean(fish1_velocity)) / np.mean(fish1_velocity)
     fish2_norm = (fish2_velocity - np.mean(fish2_velocity)) / np.mean(fish2_velocity)
+
     # All velocity arrays are of the same size
     lag_arr = np.arange(0, np.size(fish1_norm))
+    
+    # Cross correlation graph with fit function
+    # superimposed on top
+    if reg == 1:
+        cross_corr = sm.tsa.stattools.ccf(fish1_norm, fish2_norm, adjusted=False)
+        params_guess = np.array((np.max(cross_corr), block_size))
+        estimated_params = optimize.minimize(obj_func, params_guess, 
+        args=(cross_corr, lag_arr), bounds = ((0, None), (0, None)))
+        c = estimated_params['x'][0]
+        decay = estimated_params['x'][1]
 
-    idx_1, idx_2 = 0, block_size
-    for i in range(0, np.size(fish1_norm)+1, block_size):
-        # Calculate the velocity cross correlation
-        cross_corr = sm.tsa.stattools.ccf(fish1_norm[idx_1:idx_2], 
-        fish2_norm[idx_1:idx_2], adjusted=False)
-        true_params = optimize.minimize(obj_func, params_guess, 
-        args=(cross_corr, lag_arr[idx_1:idx_2]))
-        print(true_params['x'])
+        plt.figure()
+        plt.title(f"{dataset_name}")
+        plt.plot(lag_arr, cross_corr, color='orange', label=f"cross correlation")
+        plt.plot(lag_arr, c * np.exp(-lag_arr / decay), color='blue', 
+        label=f'fit c={c:.4f}')
+        plt.legend()
 
-        idx_1, idx_2 = idx_1+block_size, idx_2+block_size
+    # Plot of coarse time vs. cross correlation 
+    # coefficient for a given block size 
+    else:
+        idx_1, idx_2 = 0, block_size
+        c_arr = np.array([])
+        decay_arr = np.array([])
+        final_c_arr = np.array([])
+        residuals = np.array([])
+
+        plt.figure()
+        for i in range(0, np.size(fish1_norm)+1, block_size):
+            # Calculate the velocity cross correlation
+            cross_corr = sm.tsa.stattools.ccf(fish1_norm[idx_1:idx_2], 
+            fish2_norm[idx_1:idx_2], adjusted=False)
+            curr_lag_arr = lag_arr[idx_1:idx_2]
+
+            params_guess = np.array((np.max(cross_corr), block_size))
+            estimated_params = optimize.minimize(obj_func, params_guess, 
+            args=(cross_corr, curr_lag_arr), bounds = ((0, None), (0, None)))
+
+            c = estimated_params['x'][0]
+            decay =  estimated_params['x'][1]
+
+            c_arr = np.append(c_arr, c)
+            decay_arr = np.append(decay_arr, decay)
+
+            curr_fit = c * np.exp((-1) * curr_lag_arr / decay)
+            residuals = np.append(residuals, cross_corr - curr_fit)
+            final_c_arr = np.append(final_c_arr, np.max(curr_fit))
+
+            plt.plot(curr_lag_arr, cross_corr, color='peachpuff')
+            plt.plot(curr_lag_arr, curr_fit)
+            idx_1, idx_2 = idx_1+block_size, idx_2+block_size
+        
+        plt.title(f"{dataset_name}: Correlation fit; block_size = {block_size}")
+
+        # The uncertainty of each point is given by 
+        # the standard deviation of the residuals of 
+        # the points 
+        uncertainty = np.std(residuals)
+        
+        plt.figure()
+        plt.scatter(np.arange(np.size(c_arr)), final_c_arr, label='c', color='blue')
+        plt.scatter(np.arange(np.size(c_arr)), final_c_arr + uncertainty, 
+        label=f'c + {uncertainty:.4f}', marker='x', color='purple')
+        plt.scatter(np.arange(np.size(c_arr)), final_c_arr - uncertainty, 
+        label=f'c - {uncertainty:.4f}', marker='*', color='red')
+        plt.title(f"{dataset_name}: Coarse Time vs. Correlation Coefficient")
+        plt.xlabel(f"Coarse Time; block_size={block_size}")
+        plt.ylabel("Correlation Coefficient")
+        plt.legend()
+        
+    plt.show()
+
+    #     plt.figure()
+    #     plt.scatter(np.arange(np.size(decay_arr)), decay_arr, color='purple')
+    #     plt.title(f"{dataset_name}: Coarse Time vs. Tau")
+    #     plt.xlabel(f"Coarse Time; block_size={block_size}")
+    #     plt.ylabel("Tau")
+
+    #     plt.figure()
+    #     df = pd.DataFrame(np.column_stack((final_c_arr, decay_arr)), 
+    #     columns=['c', 'decay'])
+    #     plt.table(cellText=df.values, colLabels=df.columns, loc='center')
+    #     plt.axis('off')
+
+    # plt.show()
     
 
 def velocity_frames_plots(fish1_velocity, fish2_velocity, dataset_name, block_size):
@@ -245,7 +312,7 @@ def correlation_plots(fish1_speed, fish2_speed, fish1_angles, fish2_angles,
 
    
 def main():
-    dataset = "results_SocPref_3c_2wpf_nk3_ALL.csv"
+    dataset = "results_SocPref_3c_2wpf_k2_ALL.csv"
     pos_data = load_data(dataset, 3, 5)
     angle_data = load_data(dataset, 5, 6)
     window_size = 1
@@ -267,16 +334,16 @@ def main():
     fish1_velocities = fish_velocities_tuple[0]
     fish2_velocities = fish_velocities_tuple[1]
 
-    # minimizer(fish1_velocities, fish2_velocities, dataset_name, 200)
+    minimizer(fish1_velocities, fish2_velocities, dataset_name, 1500)
 
     # velocity_frames_plots(fish1_velocities, fish2_velocities, dataset_name, 3000)
 
-    correlation_plots(fish1_velocities, fish2_velocities, fish1_angles, 
-    fish2_angles, dataset_name, end_of_arr, window_size)
+    # correlation_plots(fish1_velocities, fish2_velocities, fish1_angles, 
+    # fish2_angles, dataset_name, end_of_arr, window_size)
     # correlation_plots(fish1_speed, fish2_speed, fish1_angles, 
     # fish2_angles, dataset_name, end_of_arr, window_size)
 
-    plt.show()
+    # plt.show()
 
 
 if __name__ == "__main__":
