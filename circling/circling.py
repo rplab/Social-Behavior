@@ -91,8 +91,13 @@ end, window_size, rad_thresh, rmse_thresh, anti_low, anti_high, head_dist_thresh
     circling_wf = np.array([])
     
     while idx_2 <= end:   # end of the array for both fish
-        head_temp = np.concatenate((fish1_pos[idx_1:idx_2], 
-        fish2_pos[idx_1:idx_2]), axis=0)
+        # Get position and angle data for x window frames 
+        fish1_positions = fish1_pos[idx_1:idx_2]
+        fish2_positions = fish2_pos[idx_1:idx_2]
+        fish1_angles = fish1_angle_data[idx_1:idx_2]
+        fish2_angles = fish2_angle_data[idx_1:idx_2]
+
+        head_temp = np.concatenate((fish1_positions, fish2_positions), axis=0)
         taubin_output = TaubinSVD(head_temp)  # output gives (x_c, y_c, r)
         reciprocal_radius = get_reciprocal_radius(taubin_output[2])
 
@@ -106,8 +111,8 @@ end, window_size, rad_thresh, rmse_thresh, anti_low, anti_high, head_dist_thresh
         rmse = get_rmse(distances_temp)
 
         if (reciprocal_radius >= rad_thresh and rmse < rmse_thresh and 
-        (check_antiparallel_criterion(fish1_angle_data, fish2_angle_data,
-        idx_1, idx_2, anti_low, anti_high, fish1_pos, fish2_pos, head_dist_thresh))): 
+        (check_antiparallel_criterion(fish1_positions, fish2_positions, 
+        fish1_angles, fish2_angles, anti_low, anti_high, head_dist_thresh))): 
             circling_wf = np.append(circling_wf, idx_2)
     
         # Update the index variables to track circling for the 
