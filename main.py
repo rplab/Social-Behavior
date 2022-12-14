@@ -8,6 +8,7 @@
 import re
 from circling import *
 from ninety_deg import *
+from contact import *
 from tail_rubbing import *
 from visuals import *
 # ---------------------------------------------------------------------------
@@ -55,6 +56,7 @@ def main():
     dataset_name = re.search('\d[a-z]_\d[a-z]{3}_[a-z]{1,2}\d', 
     'results_SocPref_3c_2wpf_nk1_ALL.csv').group()
 
+    # Circling 
     circling_wfs = get_circling_wf(fish1_pos, fish2_pos, fish1_angle_data, 
     fish2_angle_data, end_of_arr, params["circ_ws"], params["circ_rad"], 
     params["circ_rmse"], params["circ_anti_low"], params["circ_anti_high"],
@@ -67,7 +69,7 @@ def main():
     none = orientation_dict["none"]
     one = orientation_dict["1"]
     both = orientation_dict["both"]
-    
+ 
     # Any contact
     contact_wf = get_contact_wf(fish1_contact_x, fish2_contact_x, 
     fish1_contact_y, fish2_contact_y, end_of_arr, params["contact_ws"], 
