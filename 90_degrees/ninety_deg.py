@@ -67,7 +67,7 @@ end, window_size, theta_90_thresh, head_dist):
         fish2xconnect))
         
         if (theta_90 < theta_90_thresh and orientation_type in orientations.keys() 
-        and get_head_distance(fish1_pos, fish2_pos, idx_1, idx_2) < head_dist):
+        and get_head_distance(fish1_positions, fish2_positions) < head_dist):
             orientations[orientation_type] = np.append(
             orientations[orientation_type], idx_2) 
         
