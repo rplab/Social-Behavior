@@ -46,11 +46,20 @@ end, window_size, theta_90_thresh, head_dist):
                     "both": np.array([])}
 
     while idx_2 <= end:   # end of the array for both fish
-        theta_90 = np.abs(get_antiparallel_angle(fish1_angle_data, fish2_angle_data, 
-        idx_1, idx_2))
-        fish_vectors = get_fish_vectors(fish1_angle_data, fish2_angle_data, idx_1, idx_2)
+        # Get position and angle data for x window frames 
+        fish1_positions = fish1_pos[idx_1:idx_2]
+        fish2_positions = fish2_pos[idx_1:idx_2]
+        fish1_angles = fish1_angle_data[idx_1:idx_2]
+        fish2_angles = fish2_angle_data[idx_1:idx_2]
+       
+        theta_90 = np.abs(get_antiparallel_angle(fish1_angles, fish2_angles))
+
+        fish_vectors = get_fish_vectors(fish1_angles, fish2_angles)
         fish1_vector, fish2_vector = fish_vectors[0], fish_vectors[1]
-        connecting_vector = get_connecting_vector(fish1_pos, fish2_pos, idx_1, idx_2)
+        connecting_vector = get_connecting_vector(fish1_positions, fish2_positions)
+
+        # Calculate signs of cross product of fish vectors 
+        # to determine orientation type 
         fish1xfish2 = np.sign(np.cross(fish1_vector, fish2_vector))
         fish1xconnect = np.sign(np.cross(fish1_vector, connecting_vector))
         fish2xconnect = np.sign(np.cross(fish2_vector, connecting_vector))
@@ -68,25 +77,24 @@ end, window_size, theta_90_thresh, head_dist):
     return orientations
 
 
-def get_connecting_vector(fish1_pos, fish2_pos, idx_1, idx_2):
+def get_connecting_vector(fish1_positions, fish2_positions):
     """
     Returns the "c" vector between two fish.
 
     Args:
-        fish1_pos (array): a 2D array of (x, y) positions for fish1. The
-                           array has form [[x1, y1], [x2, y2], [x3, y3],...].
-        fish2_pos (array): a 2D array of (x, y) positions for fish2. The
-                           array has form [[x1, y1], [x2, y2], [x3, y3],...].
-        idx_1 (int)      : the beginning index.
-        idx_2 (int)      : the ending index.
+        fish1_positions (array): a 2D array of (x, y) positions for fish1 over
+                                 some number of window frames. The array has 
+                                 form [[x1, y1], [x2, y2], [x3, y3],...].
 
+        fish2_positions (array): a 2D array of (x, y) positions for fish2 over
+                                 some number of window frames. The array has 
+                                 form [[x1, y1], [x2, y2], [x3, y3],...].
+       
     Returns:
         normalized_vector (array): the normalized "c" vector between two fish.
     """
-    fish1_data = fish1_pos[idx_1:idx_2]
-    fish2_data = fish2_pos[idx_1:idx_2]
-    connecting_vector = np.array((np.mean(fish2_data[:, 0] - fish1_data[:, 0]), 
-    np.mean(fish2_data[:, 1] - fish1_data[:, 1])))
+    connecting_vector = np.array((np.mean(fish2_positions[:, 0] - fish1_positions[:, 0]), 
+    np.mean(fish2_positions[:, 1] - fish1_positions[:, 1])))
     normalized_vector = connecting_vector / np.linalg.norm(connecting_vector)
     return normalized_vector
     
