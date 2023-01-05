@@ -1,16 +1,18 @@
 # !/usr/bin/env python3  
 # -*- coding: utf-8 -*- 
-#----------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 # Created By  : Estelle Trieu 
 # Created Date: 11/2/2022
 # version ='1.0'
-# ---------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 import numpy as np
 from toolkit import get_head_distance_traveled, get_fish_vectors
 import statsmodels.api as sm
 import matplotlib.pyplot as plt
 from scipy.interpolate import make_interp_spline
-# ---------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
+# ------------------------- MODULE IN PROGRESS!!! ------------------------------
 def get_speed(fish1_pos, fish2_pos, end, window_size):
     idx_1, idx_2 = 0, window_size
     array_idx = 0 
