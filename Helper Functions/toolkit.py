@@ -7,7 +7,6 @@
 # ---------------------------------------------------------------------------
 import numpy as np
 # ---------------------------------------------------------------------------
-
 def load_data(dir, idx_1, idx_2):
     """
     Returns the correct data array for fish1 and fish2 
@@ -152,3 +151,19 @@ fish2_angles, lower_threshold, upper_threshold, head_dist_threshold):
     else:
         res = False
     return res
+
+
+def normalize_by_mean(motion):
+    """
+    Returns an array of values normalized by its mean.
+    *Most often used in correlations.py*
+
+    Args:
+        motion (array): a 1D array of fish motion of speed,
+                        velocity, or angle. 
+
+    Returns:
+        normalized (array) : the 1D fish motion array normalized by its speed.
+    """
+    normalized = (motion - np.mean(motion)) / np.mean(motion)
+    return normalized
