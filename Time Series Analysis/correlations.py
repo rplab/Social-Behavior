@@ -43,7 +43,7 @@ def acf_plots(fish1_motion, fish2_motion, motion, dataset_name, N, est_only=True
     else: 
         type = 'Angle'
 
-    # Normalize both speed fish data sets by their mean
+    # Normalize both fish data sets by their mean
     fish1_norm = normalize_by_mean(fish1_motion)
     fish2_norm = normalize_by_mean(fish2_motion)
 
@@ -96,6 +96,12 @@ def acf_plots(fish1_motion, fish2_motion, motion, dataset_name, N, est_only=True
     plt.legend()
 
 
+def calc_ccf(fish1_norm, fish2_norm, N):
+    # Unfiltered 
+    ccf = np.correlate(fish1_norm, fish2_norm, mode='full')/np.std(fish1_norm)/np.std(fish2_norm)/N
+    return ccf
+
+
 def ccf_plots(fish1_motion, fish2_motion, motion, dataset_name, N):
     # Note: Either fish speed OR velocity can be passed as the first 
     # two parameters 
@@ -106,14 +112,15 @@ def ccf_plots(fish1_motion, fish2_motion, motion, dataset_name, N):
     else: 
         type = 'Angle'
 
-    # Normalize both speed fish data sets by their mean
+    # Normalize both fish data sets by their mean
     fish1_norm = normalize_by_mean(fish1_motion)
     fish2_norm = normalize_by_mean(fish2_motion)
 
-    # Unfiltered cross-correlation
     N = len(fish1_norm)
-    ccf = np.correlate(fish1_norm, fish2_norm, mode='full')/np.std(fish1_norm)/np.std(fish2_norm)/N
 
+    # Unfiltered cross-correlation
+    ccf = calc_ccf(fish1_norm, fish2_norm, N)
+    
     # Filter x1, x2 by subtracting the AR(1) model
     alpha_est_tuple = acf_plots(fish1_motion, fish2_motion, motion, dataset_name, 
     N, est_only=True)
@@ -148,50 +155,121 @@ def ccf_plots(fish1_motion, fish2_motion, motion, dataset_name, N):
     plt.title(f"{dataset_name} {type}")
     plt.legend()
     
-    # Find correlation coefficient at k=0
-    orignal = np.interp(0, k_array, ccf[k_array_ind])
-    filtered = np.interp(0, k_array, ccf_filtered[k_array_ind])
-    smooth = np.interp(0, k_array, np.convolve(ccf_filtered[k_array_ind], smooth_kernel, mode='same'))
+    # # Find correlation coefficient at k=0
+    # orignal = np.interp(0, k_array, ccf[k_array_ind])
+    # filtered = np.interp(0, k_array, ccf_filtered[k_array_ind])
+    # smooth = np.interp(0, k_array, np.convolve(ccf_filtered[k_array_ind], smooth_kernel, mode='same'))
 
-    print(f"original: {orignal}")
-    print(f"filtered: {filtered}")
-    print(f"smooth: {smooth}")
-    print(f"bottom: {(-2*ccf_zero_sigma*np.ones_like(k_array_ind))[0]}")
+    # print(f"original: {orignal}")
+    # print(f"filtered: {filtered}")
+    # print(f"smooth: {smooth}")
+    # print(f"bottom: {(-2*ccf_zero_sigma*np.ones_like(k_array_ind))[0]}")
 
+
+def correlation_plots_main(fish1_motion, fish2_motion, motion, dataset_name, N, 
+corr=0, auto=1, shuff=0):
+    '''Main correlation plot function for cross-correlations, autocorrelations,
+    and shuffled cross-correlations.'''
+    # Note: Either fish speed OR velocity can be passed as the first 
+    # two parameters 
+    if motion == 's':
+        type = 'Speed'
+    elif motion == 'v':
+        type = 'Velocity'
+    else: 
+        type = 'Angle'
+
+    # Motion Cross-Correlation Plot
+    if corr == 1:
+        ccf_plots(fish1_motion, fish2_motion, motion, dataset_name, N)
+
+    # Motion Autocorrelation Plot
+    if auto == 1:
+        acf_plots(fish1_motion, fish2_motion, motion, dataset_name, N, False)
+
+    # Speed Shuffled Cross-Correlation Plot
+    if shuff == 1:
+        # Calculate the cross correlation of fish1
+        # with a permutation of fish2 -- resulting 
+        # plot should be centered at 0              
+        fish2_shuffled = np.random.permutation(fish2_motion)
+        ccf_plots(fish1_motion, fish2_shuffled, motion, dataset_name, N)
+
+
+def correlation_blocks(fish1_motion, fish2_motion, motion, dataset_name, block_size):
+    # Note: Either fish speed OR velocity can be passed as the first 
+    # two parameters 
+    if motion == 's':
+        type = 'Speed'
+    else:
+        type = 'Velocity'
+
+    # Normalize both fish data sets by their mean
+    fish1_norm = normalize_by_mean(fish1_motion)
+    fish2_norm = normalize_by_mean(fish2_motion)
+
+    # All motion arrays are of the same size
+    lag_arr = np.arange(0, np.size(fish1_norm))
+
+    plt.figure()
+    plt.title(f"{dataset_name} {motion}; block_size = {block_size}")
+    idx_1, idx_2 = 0, block_size
+
+    for i in range(0, np.size(fish1_norm)+1, block_size):
+        fish1_norm_block = fish1_norm[idx_1:idx_2]
+        fish2_norm_block = fish2_norm[idx_1:idx_2]
+
+        N = len(fish1_norm_block)
+
+        # Unfiltered cross-correlation
+        ccf = calc_ccf(fish1_norm_block, fish2_norm_block, N)[:block_size]
+
+        lag_block = lag_arr[idx_1:idx_2]
+
+        # Reshape size of both arrays to be equal
+        # for plotting
+        if np.size(lag_block) > np.size(ccf):
+            lag_block = lag_block[:np.shape(ccf)[0]]
+        else:
+            ccf = ccf[:np.shape(lag_block)[0]]
     
+        plt.plot(lag_block, ccf)
+        
+        idx_1, idx_2 = idx_1+block_size, idx_2+block_size
 
 
 def main():
-    dataset = "results_SocPref_3c_2wpf_nk3_ALL.csv"
+    dataset = "results_SocPref_3c_2wpf_k2_ALL.csv"
     pos_data = load_data(dataset, 3, 5)
     angle_data = load_data(dataset, 5, 6)
-    window_size = 10
+    window_size = 1
     dataset_name = re.search('\d[a-z]_\d[a-z]{3}_[a-z]{1,2}\d', dataset).group()
     end_of_arr = np.shape(pos_data)[1] 
 
-    # fish_speeds_tuple = get_speed(pos_data[0], pos_data[1], end_of_arr,
-    # window_size)
-    # fish1_speed = fish_speeds_tuple[0]
-    # fish2_speed = fish_speeds_tuple[1]
-
-    fish_angles_tuple = get_angle(angle_data[0], angle_data[1], end_of_arr, 
+    fish_speeds_tuple = get_speed(pos_data[0], pos_data[1], end_of_arr,
     window_size)
-    fish1_angles = fish_angles_tuple[0]
-    fish2_angles = fish_angles_tuple[1]
+    fish1_speed = fish_speeds_tuple[0]
+    fish2_speed = fish_speeds_tuple[1]
+
+    # fish_angles_tuple = get_angle(angle_data[0], angle_data[1], end_of_arr, 
+    # window_size)
+    # fish1_angles = fish_angles_tuple[0]
+    # fish2_angles = fish_angles_tuple[1]
     
     # fish_velocities_tuple = get_velocity(fish1_speed, fish2_speed, angle_data[0],
     # angle_data[1], end_of_arr, window_size)
     # fish1_velocities = fish_velocities_tuple[0]
     # fish2_velocities = fish_velocities_tuple[1]
 
-    # acf_plots(fish1_speed, fish2_speed, 's', dataset_name, end_of_arr, False)
+    # correlation_plots_main(fish1_speed, fish2_speed, 's', dataset_name, 
+    # end_of_arr, corr=1, auto=0, shuff=1)
 
-    ccf_plots(fish1_angles, fish2_angles, 'a', dataset_name, end_of_arr)
+    correlation_blocks(fish1_speed, fish2_speed, 's', dataset_name, 3000)
 
     plt.show()
+   
+  
 
     
-
-
 if __name__ == "__main__":
     main()
