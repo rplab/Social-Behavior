@@ -8,7 +8,6 @@
 import re
 import matplotlib.pyplot as plt
 import pandas as pd
-import itertools
 import numpy as np
 from toolkit import *
 import statsmodels.api as sm
@@ -16,8 +15,7 @@ from scipy.ndimage import uniform_filter1d # for 1D boxcar smoothing
 from scipy.optimize import curve_fit  # for curve fitting
 from scipy.interpolate import make_interp_spline
 # ---------------------------------------------------------------------------
-marker = itertools.cycle((',', '+', '.', 'o', '*', '1', 'P', 'd')) 
-# ---------------------------------------------------------------------------
+
 def get_speed(fish1_pos, fish2_pos, end, window_size):
     idx_1, idx_2 = 0, window_size
     array_idx = 0 
@@ -35,22 +33,6 @@ def get_speed(fish1_pos, fish2_pos, end, window_size):
         array_idx += 1
         idx_1, idx_2 = idx_1+window_size, idx_2+window_size
     return (fish1_speeds, fish2_speeds)
-
-
-def get_angle(fish1_angle, fish2_angle, end, window_size):
-    idx_1, idx_2 = 0, window_size
-    array_idx = 0 
-    arr_size = (15000 // window_size) - 1
-    fish1_angles = np.empty(arr_size)
-    fish2_angles = np.empty(arr_size)
-  
-    while idx_2 < end:   # end of the array for both fish
-        fish1_angles[array_idx] = np.cos(np.mean(fish1_angle[idx_1:idx_2])) 
-        fish2_angles[array_idx] = np.cos(np.mean(fish2_angle[idx_1:idx_2])) 
-
-        array_idx += 1
-        idx_1, idx_2 = idx_1+window_size, idx_2+window_size
-    return (fish1_angles, fish2_angles)
 
 
 def get_velocity(fish1_speeds, fish2_speeds, fish1_angle_data, fish2_angle_data, 
@@ -93,6 +75,22 @@ def get_velocity(fish1_speeds, fish2_speeds, fish1_angle_data, fish2_angle_data,
     return (fish1_velocities_mag, fish2_velocities_mag)
 
 
+def get_angle(fish1_angle, fish2_angle, end, window_size):
+    idx_1, idx_2 = 0, window_size
+    array_idx = 0 
+    arr_size = (15000 // window_size) - 1
+    fish1_angles = np.empty(arr_size)
+    fish2_angles = np.empty(arr_size)
+  
+    while idx_2 < end:   # end of the array for both fish
+        fish1_angles[array_idx] = np.cos(np.mean(fish1_angle[idx_1:idx_2])) 
+        fish2_angles[array_idx] = np.cos(np.mean(fish2_angle[idx_1:idx_2])) 
+
+        array_idx += 1
+        idx_1, idx_2 = idx_1+window_size, idx_2+window_size
+    return (fish1_angles, fish2_angles)
+
+
 def decay_exp_model(t, C0, tau):
     # inputs:
     #    t : independent variable, probably time array
@@ -100,10 +98,6 @@ def decay_exp_model(t, C0, tau):
     #    tau : decay time
     c = C0*np.exp(-t/tau)
     return c
-
-
-def normalize_data(fish_data):
-    return (fish_data - np.mean(fish_data)) / np.mean(fish_data)
 
 
 def get_param_guess(cross_corr, lag_arr):
@@ -263,7 +257,7 @@ def motion_frames_plots(fish1_motion, fish2_motion, dataset_name, block_size):
 
 
 def correlation_plots(fish1_motion, fish2_motion, fish1_angles, fish2_angles,
-    motion, dataset_name, end, window_size, reg=0, corr=0, auto=0, shuff=0, angle=1):
+    motion, dataset_name, end, window_size, reg=0, corr=0, auto=1, shuff=0, angle=0):
     # Note: Either fish speed OR velocity can be passed as the first 
     # two parameters 
     if motion == 's':
