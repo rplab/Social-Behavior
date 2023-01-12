@@ -102,7 +102,8 @@ def calc_ccf(fish1_norm, fish2_norm, N):
     return ccf
 
 
-def ccf_plots(fish1_motion, fish2_motion, motion, dataset_name, N):
+def ccf_plots(fish1_motion, fish2_motion, motion, dataset_name, N, reg=0,
+block_size=100):
     # Note: Either fish speed OR velocity can be passed as the first 
     # two parameters 
     if motion == 's':
@@ -140,30 +141,65 @@ def ccf_plots(fish1_motion, fish2_motion, motion, dataset_name, N):
     # 3 px, simple average 1D smoothing kernel
     smooth_kernel = np.array([0.25, 0.5, 0.25])
 
-    plt.figure()
-    plt.plot(k_array, ccf[k_array_ind], label='original x1, x2')
-    plt.plot(k_array, ccf_filtered[k_array_ind], label='filtered x1p, x2p')
-    plt.plot(k_array, np.convolve(ccf_filtered[k_array_ind], 
-                                smooth_kernel, mode='same'), 
-            label='filtered x1p, x2p; Smoothed', color=[0.7, 0.2, 0.1])
-    plt.plot(k_array, 2*ccf_zero_sigma*np.ones_like(k_array_ind), 
-            color=[0.4, 0.4, 0.4], label='95% conf. of 0')
-    plt.plot(k_array, -2*ccf_zero_sigma*np.ones_like(k_array_ind), 
-            color=[0.4, 0.4, 0.4])
-    plt.xlabel('lag, k')
-    plt.ylabel('Cross-correlation')
-    plt.title(f"{dataset_name} {type}")
-    plt.legend()
-    
-    # # Find correlation coefficient at k=0
-    # orignal = np.interp(0, k_array, ccf[k_array_ind])
-    # filtered = np.interp(0, k_array, ccf_filtered[k_array_ind])
-    # smooth = np.interp(0, k_array, np.convolve(ccf_filtered[k_array_ind], smooth_kernel, mode='same'))
+    # Normal cross-correlation plot
+    if reg == 1:
+        plt.figure()
+        plt.plot(k_array, ccf[k_array_ind], label='original x1, x2')
+        plt.plot(k_array, ccf_filtered[k_array_ind], label='filtered x1p, x2p')
+        plt.plot(k_array, np.convolve(ccf_filtered[k_array_ind], 
+                                    smooth_kernel, mode='same'), 
+                label='filtered x1p, x2p; Smoothed', color=[0.7, 0.2, 0.1])
+        plt.plot(k_array, 2*ccf_zero_sigma*np.ones_like(k_array_ind), 
+                color=[0.4, 0.4, 0.4], label='95% conf. of 0')
+        plt.plot(k_array, -2*ccf_zero_sigma*np.ones_like(k_array_ind), 
+                color=[0.4, 0.4, 0.4])
+        plt.xlabel('lag, k')
+        plt.ylabel('Cross-correlation')
+        plt.title(f"{dataset_name} {type}")
+        plt.legend()
 
-    # print(f"original: {orignal}")
-    # print(f"filtered: {filtered}")
-    # print(f"smooth: {smooth}")
-    # print(f"bottom: {(-2*ccf_zero_sigma*np.ones_like(k_array_ind))[0]}")
+    else:
+        # Plot of ccf at k=0 in specified blocks 
+        idx_1, idx_2 = 0, block_size
+        array_idx = 0 
+        arr_size = (15000 // block_size) - 1
+        end = 15000 - block_size
+        x_axis = np.arange(block_size, end + block_size, block_size)
+        ccfs = np.empty(arr_size)
+
+        for i in range(0, end, block_size):
+            fish1_norm_block = fish1_norm[idx_1:idx_2]
+            fish2_norm_block = fish2_norm[idx_1:idx_2]
+
+            N = len(fish1_norm_block)
+
+            # Unfiltered cross-correlation
+            # Size of ccf array is 2 * block_size (ccf is like a slider)
+            ccf = calc_ccf(fish1_norm_block, fish2_norm_block, N)
+
+            lag_max = int(np.round(N/5)) # Just plot ccf to +/- this point
+            k_array = np.arange(-lag_max, lag_max + 1)
+            k_array_ind = k_array + N - 1
+
+            ccfs[array_idx] = np.interp(0, k_array, ccf[k_array_ind])
+          
+            array_idx += 1
+            idx_1, idx_2 = idx_1+block_size, idx_2+block_size
+
+        plt.figure()
+        plt.title(f"{dataset_name} {type}; block_size = {block_size}")
+        plt.plot(x_axis, ccfs)
+        plt.ylabel("cross-correlation at k=0")
+    
+        # # Find correlation coefficient at k=0
+        # orignal = np.interp(0, k_array, ccf[k_array_ind])
+        # filtered = np.interp(0, k_array, ccf_filtered[k_array_ind])
+        # smooth = np.interp(0, k_array, np.convolve(ccf_filtered[k_array_ind], smooth_kernel, mode='same'))
+
+        # print(f"original: {orignal}")
+        # print(f"filtered: {filtered}")
+        # print(f"smooth: {smooth}")
+        # print(f"bottom: {(-2*ccf_zero_sigma*np.ones_like(k_array_ind))[0]}")
 
 
 def correlation_plots_main(fish1_motion, fish2_motion, motion, dataset_name, N, 
@@ -181,7 +217,7 @@ corr=0, auto=1, shuff=0):
 
     # Motion Cross-Correlation Plot
     if corr == 1:
-        ccf_plots(fish1_motion, fish2_motion, motion, dataset_name, N)
+        ccf_plots(fish1_motion, fish2_motion, motion, dataset_name, N, 0)
 
     # Motion Autocorrelation Plot
     if auto == 1:
@@ -196,50 +232,8 @@ corr=0, auto=1, shuff=0):
         ccf_plots(fish1_motion, fish2_shuffled, motion, dataset_name, N)
 
 
-def correlation_blocks(fish1_motion, fish2_motion, motion, dataset_name, block_size):
-    # Note: Either fish speed OR velocity can be passed as the first 
-    # two parameters 
-    if motion == 's':
-        type = 'Speed'
-    else:
-        type = 'Velocity'
-
-    # Normalize both fish data sets by their mean
-    fish1_norm = normalize_by_mean(fish1_motion)
-    fish2_norm = normalize_by_mean(fish2_motion)
-
-    # All motion arrays are of the same size
-    lag_arr = np.arange(0, np.size(fish1_norm))
-
-    plt.figure()
-    plt.title(f"{dataset_name} {motion}; block_size = {block_size}")
-    idx_1, idx_2 = 0, block_size
-
-    for i in range(0, np.size(fish1_norm)+1, block_size):
-        fish1_norm_block = fish1_norm[idx_1:idx_2]
-        fish2_norm_block = fish2_norm[idx_1:idx_2]
-
-        N = len(fish1_norm_block)
-
-        # Unfiltered cross-correlation
-        ccf = calc_ccf(fish1_norm_block, fish2_norm_block, N)[:block_size]
-
-        lag_block = lag_arr[idx_1:idx_2]
-
-        # Reshape size of both arrays to be equal
-        # for plotting
-        if np.size(lag_block) > np.size(ccf):
-            lag_block = lag_block[:np.shape(ccf)[0]]
-        else:
-            ccf = ccf[:np.shape(lag_block)[0]]
-    
-        plt.plot(lag_block, ccf)
-        
-        idx_1, idx_2 = idx_1+block_size, idx_2+block_size
-
-
 def main():
-    dataset = "results_SocPref_3c_2wpf_k2_ALL.csv"
+    dataset = "results_SocPref_3c_2wpf_nk3_ALL.csv"
     pos_data = load_data(dataset, 3, 5)
     angle_data = load_data(dataset, 5, 6)
     window_size = 1
@@ -261,10 +255,10 @@ def main():
     # fish1_velocities = fish_velocities_tuple[0]
     # fish2_velocities = fish_velocities_tuple[1]
 
+    ccf_plots(fish1_speed, fish2_speed, 's', dataset_name, end_of_arr, reg=0,
+    block_size=100)
     # correlation_plots_main(fish1_speed, fish2_speed, 's', dataset_name, 
     # end_of_arr, corr=1, auto=0, shuff=1)
-
-    correlation_blocks(fish1_speed, fish2_speed, 's', dataset_name, 3000)
 
     plt.show()
    
