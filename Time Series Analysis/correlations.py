@@ -102,7 +102,7 @@ def calc_ccf(fish1_norm, fish2_norm, N):
     return ccf
 
 
-def ccf_plots(fish1_motion, fish2_motion, motion, dataset_name, N, reg=0,
+def ccf_plots(fish1_motion, fish2_motion, motion, dataset_name, N, reg=1, block=1,
 block_size=100):
     # Note: Either fish speed OR velocity can be passed as the first 
     # two parameters 
@@ -158,7 +158,17 @@ block_size=100):
         plt.title(f"{dataset_name} {type}")
         plt.legend()
 
-    else:
+        # Find correlation coefficient at k=0
+        orignal = np.interp(0, k_array, ccf[k_array_ind])
+        filtered = np.interp(0, k_array, ccf_filtered[k_array_ind])
+        smooth = np.interp(0, k_array, np.convolve(ccf_filtered[k_array_ind], smooth_kernel, mode='same'))
+
+        print(f"original: {orignal}")
+        print(f"filtered: {filtered}")
+        print(f"smooth: {smooth}")
+        print(f"bottom: {(-2*ccf_zero_sigma*np.ones_like(k_array_ind))[0]}")
+
+    if block == 1:
         # Plot of ccf at k=0 in specified blocks 
         idx_1, idx_2 = 0, block_size
         array_idx = 0 
@@ -186,24 +196,16 @@ block_size=100):
             array_idx += 1
             idx_1, idx_2 = idx_1+block_size, idx_2+block_size
 
+        normalized_ccfs = np.divide(ccfs, np.linalg.norm(ccfs))
+
         plt.figure()
         plt.title(f"{dataset_name} {type}; block_size = {block_size}")
-        plt.plot(x_axis, ccfs)
+        plt.plot(x_axis, normalized_ccfs)
         plt.ylabel("cross-correlation at k=0")
     
-        # # Find correlation coefficient at k=0
-        # orignal = np.interp(0, k_array, ccf[k_array_ind])
-        # filtered = np.interp(0, k_array, ccf_filtered[k_array_ind])
-        # smooth = np.interp(0, k_array, np.convolve(ccf_filtered[k_array_ind], smooth_kernel, mode='same'))
-
-        # print(f"original: {orignal}")
-        # print(f"filtered: {filtered}")
-        # print(f"smooth: {smooth}")
-        # print(f"bottom: {(-2*ccf_zero_sigma*np.ones_like(k_array_ind))[0]}")
-
 
 def correlation_plots_main(fish1_motion, fish2_motion, motion, dataset_name, N, 
-corr=0, auto=1, shuff=0):
+corr=1, auto=1, shuff=0):
     '''Main correlation plot function for cross-correlations, autocorrelations,
     and shuffled cross-correlations.'''
     # Note: Either fish speed OR velocity can be passed as the first 
@@ -217,7 +219,7 @@ corr=0, auto=1, shuff=0):
 
     # Motion Cross-Correlation Plot
     if corr == 1:
-        ccf_plots(fish1_motion, fish2_motion, motion, dataset_name, N, 0)
+        ccf_plots(fish1_motion, fish2_motion, 's', dataset_name, N, reg=1, block=0, block_size=100)
 
     # Motion Autocorrelation Plot
     if auto == 1:
@@ -237,8 +239,9 @@ def main():
     pos_data = load_data(dataset, 3, 5)
     angle_data = load_data(dataset, 5, 6)
     window_size = 1
-    dataset_name = re.search('\d[a-z]_\d[a-z]{3}_[a-z]{1,2}\d', dataset).group()
-    end_of_arr = np.shape(pos_data)[1] 
+    # dataset_name = "results_SocPref_1a_kf_8.csv"
+    # dataset_name = re.search('\d[a-z]_\d[a-z]{3}_[a-z]{1,2}\d', dataset).group()
+    end_of_arr = np.shape(pos_data)[1]
 
     fish_speeds_tuple = get_speed(pos_data[0], pos_data[1], end_of_arr,
     window_size)
@@ -255,10 +258,10 @@ def main():
     # fish1_velocities = fish_velocities_tuple[0]
     # fish2_velocities = fish_velocities_tuple[1]
 
-    ccf_plots(fish1_speed, fish2_speed, 's', dataset_name, end_of_arr, reg=0,
+    ccf_plots(fish1_speed, fish2_speed, 's', dataset, end_of_arr, reg=0, block=1,
     block_size=100)
     # correlation_plots_main(fish1_speed, fish2_speed, 's', dataset_name, 
-    # end_of_arr, corr=1, auto=0, shuff=1)
+    # end_of_arr, corr=1, auto=1, shuff=0)
 
     plt.show()
    
