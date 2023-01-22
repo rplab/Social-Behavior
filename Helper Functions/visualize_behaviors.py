@@ -29,11 +29,12 @@ head_body, tail_rub):
         N/A
     """
     with open(f"{dataset_name}.txt", "w") as results_file:
-        results_file.write(f"Circling:\n {circling}\n\n")
-        results_file.write(f"90-degrees:\n none: {none} \n\n one: {one} " +
-        f"\n\n both: {both} \n\n")
-        results_file.write(f"Any Contact:\n {any} \n\nHead-Body Contact:\n " +
-        f"{head_body} \n\nTail-rubbing:\n {tail_rub}")
+        results_file.write(f"Circling: {len(circling)}\n {circling}\n\n")
+        results_file.write(f"90-degrees: {len(none)}, {len(one)}, {len(both)} " +
+        f"\n none: {none} \n\n one: {one}\n\n both: {both} \n\n")
+        results_file.write(f"Any Contact: {len(any)}\n {any} \n\n" +
+        f"Head-Body Contact: {len(head_body)}\n " +
+        f"{head_body} \n\nTail-rubbing: {len(tail_rub)}\n {tail_rub}")
 
 
 def get_excel_file(dataset_name, circling, none, one, both, any, 
@@ -43,7 +44,7 @@ head_body, tail_rub):
     set of social behaviors.
 
     Args:
-        circling (array): an array of circling window frames.
+        circling (array) : an array of circling window frames.
         none (array)     : an arary of 90-degree orientation (none) window frames.
         one (array)      : an arary of 90-degree orientation (one) window frames.
         both (array)     : an arary of 90-degree orientation (both) window frames.
@@ -96,7 +97,7 @@ head_body, tail_rub):
     Displays a sequencing plot for a set of social behaviors.
 
     Args:
-        circling (array): an array of circling window frames.
+        circling (array) : an array of circling window frames.
         none (array)     : an arary of 90-degree orientation (none) window frames.
         one (array)      : an arary of 90-degree orientation (one) window frames.
         both (array)     : an arary of 90-degree orientation (both) window frames.
@@ -122,3 +123,4 @@ head_body, tail_rub):
     ax.set_xticklabels(['circling', 'none', 'one', 'both', 
     'any','head-body', 'tail-rub'])
     plt.savefig(f"{dataset_name}_Fig.png")
+    
