@@ -167,3 +167,104 @@ def normalize_by_mean(motion):
     """
     normalized = (motion - np.mean(motion)) / np.mean(motion)
     return normalized
+
+
+def combine_events(event_arr):
+    """
+    Combine adjacent window frames into a single event with 
+    an associated duration.
+
+    Args:
+        event_arr (array): an array of social behavior window frames
+                           (e.g. circling, tail-rubbing, 90-degree events).
+
+    Returns:
+        combined (array) : a modified array of social behavior window frames
+                           where adjacent window frames are classified as a 
+                           single event. 
+    
+    """
+    combined = []
+
+    for k, g in groupby(enumerate(event_arr), lambda x:x[0]-x[1]):
+        group = (map(itemgetter(1), g))     # Adjacent frames have a diff of 1
+        group = list(map(int, group))
+
+        # Adjacent window frames have format (start, finish, duration)
+        # if len(group) > 1:
+        #     combined.append((group[0], group[-1], group[-1] - group[0]))
+        # else:
+        #     combined.append(group[0])
+        combined.append(group[0])
+
+    return np.array(combined)
+
+def get_mean_body_size(body1_x, body2_x, body1_y, body2_y, end):
+    fish1_lens, fish2_lens = [], []
+    fish1_coords = np.stack((body1_x, body1_y), axis=-1)
+    fish2_coords = np.stack((body2_x, body2_y), axis=-1)
+
+    for idx, (fish1_arr, fish2_arr) in enumerate(zip(fish1_coords, fish2_coords)):
+        fish1_sum, fish2_sum = 0, 0
+
+        # Don't calculate body length for frames with bad tracking
+        if np.all(fish1_arr[1:] == 0) or np.all(fish2_arr[1:] == 0):
+            continue
+        else:
+            for idx_ in range(9): # Every fish has 10 body markers
+                fish1_sum += np.linalg.norm(fish1_arr[idx_] - fish1_arr[idx_ + 1])
+                fish2_sum += np.linalg.norm(fish2_arr[idx_] - fish2_arr[idx_ + 1])
+            fish1_lens.append(fish1_sum)
+            fish2_lens.append(fish2_sum)
+        
+    fish1_lens, fish2_lens = np.array(fish1_lens), np.array(fish2_lens)
+    
+    fish1_mean, fish2_mean = np.mean(fish1_lens), np.mean(fish2_lens)
+    fish1_std, fish2_std = np.std(fish1_lens), np.std(fish2_lens)
+    return (fish1_mean, fish2_mean, fish1_std, fish2_std)
+        
+
+def rand_jitter(arr):
+    '''
+    Adds a small random number to each element in a given
+    array. Source: https://stackoverflow.com/questions/8671808/
+    matplotlib-avoiding-overlapping-datapoints-in-a-scatter-dot
+    -beeswarm-plot.
+
+    Args:
+        arr (array) : the array to be modified.
+
+    Returns         : an array whose values are each shifted by 
+                      a small random number. 
+    
+    '''
+    return arr + (np.random.uniform(-1, 1, np.size(arr)) * 0.50)
+
+
+def jitter(x, y, s=40, c='b', marker='o', cmap=None, norm=None, vmin=None, 
+           vmax=None, alpha=None, linewidths=None, verts=None, hold=None, **kwargs):
+    '''
+    Plots points on a scatter plot with a small "jitter"
+    to x-coordinates to avoid overlapping points. Source: 
+    https://stackoverflow.com/questions/8671808/matplotlib
+    -avoiding-overlapping-datapoints-in-a-scatter-dot-
+    beeswarm-plot
+
+    Args:
+        x (array): x coordinates.
+        y (array): y coordinates.
+        c        : color of points.
+        marker   : point shape.
+                ...
+
+        (See matplotlib documentation for 
+        docs of remaining optional parameters)
+
+    Returns:
+        N/A
+    '''
+    return plt.scatter(rand_jitter(x), y, 
+                      s=s, c=c, marker=marker, cmap=cmap, norm=norm, 
+                      vmin=vmin, vmax=vmax, alpha=alpha, linewidths=linewidths, 
+                      **kwargs)
+
