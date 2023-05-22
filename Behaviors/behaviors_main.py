@@ -10,7 +10,7 @@ from circling import *
 from ninety_deg import *
 from contact import *
 from tail_rubbing import *
-from visuals import *
+from visualize_behaviors import *
 # ---------------------------------------------------------------------------
     
 params = {
