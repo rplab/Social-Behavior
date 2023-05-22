@@ -15,7 +15,6 @@ from visuals import *
     
 params = {
     "circ_ws" : 10,
-    "circ_rad" : 0.005,
     "circ_rmse" : 25,
     "circ_head_dist": 150,
     "circ_anti_low" : -1,
@@ -58,7 +57,7 @@ def main():
 
     # Circling 
     circling_wfs = get_circling_wf(fish1_pos, fish2_pos, fish1_angle_data, 
-    fish2_angle_data, end_of_arr, params["circ_ws"], params["circ_rad"], 
+    fish2_angle_data, end_of_arr, params["circ_ws"], 
     params["circ_rmse"], params["circ_anti_low"], params["circ_anti_high"],
     params["circ_head_dist"])
     
