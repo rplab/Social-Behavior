@@ -1,3 +1,4 @@
+
 # !/usr/bin/env python3  
 # -*- coding: utf-8 -*- 
 #----------------------------------------------------------------------------
@@ -39,9 +40,9 @@ tail_anti_high, head_dist_thresh):
         tail_rubbing_wf (array): a 1D array of tail-rubbing window frames.
     """
     idx_1, idx_2 = 0, window_size
-    tail_rubbing_wf = np.array([])
+    tail_rubbing_wf = []
 
-    for i in range (end // window_size):
+    while idx_2 <= end:   # end of the array for both fish
         # Get 4 posterior body markers for x window frames 
         tail1_x = np.average(body1_x[:, -4:][idx_1:idx_2], axis=0)
         tail2_x = np.average(body2_x[:, -4:][idx_1:idx_2], axis=0)
@@ -62,12 +63,13 @@ tail_anti_high, head_dist_thresh):
             check_antiparallel_criterion(fish1_positions, fish2_positions, fish1_angles, 
             fish2_angles, tail_anti_low, tail_anti_high, head_dist_thresh)):
                 if idx_2 not in tail_rubbing_wf:
-                    tail_rubbing_wf = np.append(tail_rubbing_wf, idx_2)
+                    tail_rubbing_wf.append(idx_2+1)
 
         # Update the index variables to track tail-rubs for the 
         # next x window frames of size window_size
-        idx_1, idx_2 = idx_1+window_size, idx_2+window_size
-    return tail_rubbing_wf
+        idx_1 += 1
+        idx_2 += 1
+    return combine_events(np.array(tail_rubbing_wf))
 
 
 def get_min_tail_distances(pos1_x, pos2_x, pos1_y, pos2_y, j):
