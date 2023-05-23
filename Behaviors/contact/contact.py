@@ -1,10 +1,11 @@
+
 # !/usr/bin/env python3  
 # -*- coding: utf-8 -*- 
-#----------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 # Created By  : Estelle Trieu 
 # Created Date: 5/26/2022
 # version ='1.0'
-# ---------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 from toolkit import *
 # ------------------------------------------------------------------------------
 
@@ -27,16 +28,16 @@ contact_dist):
         contact_wf (dictionary): a dictionary of arrays of different contact types.
     """
     idx_1, idx_2 = 0, window_size
-    contact_wf = {"any": np.array([]), "head-body": np.array([])}
+    contact_wf = {"any_contact": [], "head-body": []}
 
-    for i in range(end // window_size):
+    while idx_2 <= end:   # end of the array for both fish
         # Head-body contact
         if (np.min(np.sqrt((body1_x[idx_1][0] - body2_x[idx_1])**2 + 
         (body1_y[idx_1][0] - body2_y[idx_1])**2)) < contact_dist or 
         np.min(np.sqrt((body1_x[idx_1] - body2_x[idx_1][0])**2 + 
         (body1_y[idx_1] - body2_y[idx_1][0])**2) < contact_dist)):
-             contact_wf["head-body"] = np.append(contact_wf["head-body"], idx_2)
-             contact_wf["any"] = np.append(contact_wf["any"], idx_2)
+             contact_wf["head-body"].append(idx_2)
+             contact_wf["any_contact"].append(idx_2+1)
 
         # Any contact 
         for j in range(1, 10):  # there are ten markers on the fish bodies
@@ -44,10 +45,15 @@ contact_dist):
             (body1_y[idx_1][j] - body2_y[idx_1])**2)) < contact_dist or 
             np.min(np.sqrt((body1_x[idx_1] - body2_x[idx_1][j])**2 + 
             (body1_y[idx_1] - body2_y[idx_1][j])**2) < contact_dist)) and (idx_2 not in
-            contact_wf["any"]):
-                contact_wf["any"] = np.append(contact_wf["any"], idx_2)
+            contact_wf["any_contact"]):
+                contact_wf["any_contact"].append(idx_2+1)
 
         # Update the index variables to track contact for the 
         # next x window frames of size window_size
-        idx_1, idx_2 = idx_1+window_size, idx_2+window_size
+        idx_1 += 1
+        idx_2 += 1
+
+    contact_wf["any_contact"] = combine_events(np.array(contact_wf["any_contact"]))
+    contact_wf["head-body"] = combine_events(np.array(contact_wf["head-body"]))
+
     return contact_wf
