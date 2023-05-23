@@ -41,9 +41,9 @@ end, window_size, theta_90_thresh, head_dist):
                       - "both": both fish see each other.
     """
     idx_1, idx_2 = 0, window_size
-    orientations = {"none": np.array([]), 
-                    "1": np.array([]), 
-                    "both": np.array([])}
+    orientations = {"none": [], 
+                    "1": [], 
+                    "both": []}
 
     while idx_2 <= end:   # end of the array for both fish
         # Get position and angle data for x window frames 
@@ -52,7 +52,7 @@ end, window_size, theta_90_thresh, head_dist):
         fish1_angles = fish1_angle_data[idx_1:idx_2]
         fish2_angles = fish2_angle_data[idx_1:idx_2]
        
-        theta_90 = np.abs(get_antiparallel_angle(fish1_angles, fish2_angles))
+        theta_90 = np.abs(get_cos_angle(fish1_angles, fish2_angles))
 
         fish_vectors = get_fish_vectors(fish1_angles, fish2_angles)
         fish1_vector, fish2_vector = fish_vectors[0], fish_vectors[1]
@@ -68,12 +68,16 @@ end, window_size, theta_90_thresh, head_dist):
         
         if (theta_90 < theta_90_thresh and orientation_type in orientations.keys() 
         and get_head_distance(fish1_positions, fish2_positions) < head_dist):
-            orientations[orientation_type] = np.append(
-            orientations[orientation_type], idx_2) 
+            orientations[orientation_type].append(idx_2+1) 
         
         # Update the index variables to track 90-degree events 
         # for the next x window frames of size window_size
-        idx_1, idx_2 = idx_1+window_size, idx_2+window_size
+        idx_1 += 1
+        idx_2 += 1
+
+    orientations["none"] = combine_events(np.array(orientations["none"]))
+    orientations["1"] = combine_events(np.array(orientations["1"]))
+    orientations["both"] = combine_events(np.array(orientations["both"]))
     return orientations
 
 
