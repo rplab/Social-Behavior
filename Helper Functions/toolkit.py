@@ -40,8 +40,7 @@ def load_data(dir, idx_1, idx_2):
     fish2_data = data[15000:][:, np.r_[idx_1:idx_2]]
     return fish1_data, fish2_data
 
-
-def get_antiparallel_angle(fish1_angles, fish2_angles):
+def get_cos_angle(fish1_angles, fish2_angles):
     """
     Returns the angle for two fish to be in a antiparallel 
     orientation averaged over some window size. 
@@ -57,8 +56,8 @@ def get_antiparallel_angle(fish1_angles, fish2_angles):
                            antiparallel orientation averaged over 
                            some window size.
     """
-    theta_avg = np.mean(np.cos(np.subtract(fish1_angles, fish2_angles)))
-    return theta_avg
+    cos_angle_avg = np.mean(np.cos(np.subtract(fish1_angles, fish2_angles)))
+    return cos_angle_avg
 
 
 def get_head_distance(fish1_positions, fish2_positions):
@@ -150,7 +149,7 @@ fish2_angles, lower_threshold, upper_threshold, head_dist_threshold):
     Returns:
         True if the fish are antiparallel; False otherwise.
     """
-    angle = get_antiparallel_angle(fish1_angles, fish2_angles)
+    angle = get_cos_angle(fish1_angles, fish2_angles)
     head_distance = get_head_distance(fish1_positions, fish2_positions)
 
     if (lower_threshold <= angle < upper_threshold and 
@@ -206,6 +205,7 @@ def combine_events(event_arr):
         combined.append(group[0])
 
     return np.array(combined)
+
 
 def get_mean_body_size(body1_x, body2_x, body1_y, body2_y, end):
     fish1_lens, fish2_lens = [], []
@@ -275,4 +275,5 @@ def jitter(x, y, s=40, c='b', marker='o', cmap=None, norm=None, vmin=None,
                       s=s, c=c, marker=marker, cmap=cmap, norm=norm, 
                       vmin=vmin, vmax=vmax, alpha=alpha, linewidths=linewidths, 
                       **kwargs)
+
 
