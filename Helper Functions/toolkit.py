@@ -4,8 +4,7 @@
 # Created By  : Estelle Trieu 
 # Created Date: 9/7/2022
 # version ='1.0'
-# ---------------------------------------------------------------------------
-import numpy as np
+# ------------------------------------------------------------------------------
 import os
 import re
 from random import uniform
@@ -14,32 +13,99 @@ import matplotlib.pyplot as plt
 from operator import itemgetter
 from itertools import groupby
 import numpy as np
-# ---------------------------------------------------------------------------
-def load_data(dir, idx_1, idx_2):
+# ------------------------------------------------------------------------------
+two_week_light_centers = {
+    '3b_k2': (982.889, 1123.366), '3b_k3': (989.147, 1105.233),
+    '3b_k4': (1027.275, 1116.705), '3b_k5': (961.83, 1116.671),
+    '3b_k6': (1003.415, 1098.898), '3b_k7': (994.207, 1123.541),
+    '3b_k8': (1018.048, 1123.059), '3b_k9': (991.903, 1132.162),
+    '3b_k10': (1012.457, 1119.279),'3b_k11': (959.601, 1135.131),
+    '3b_k12': (1018.355, 1096.428),'3b_nk1': (995.128, 1131.831),
+    '3b_nk2': (968.158, 1120.104), '3b_nk3': (994.503, 1113.68),
+    '3b_nk4': (1002.748, 1113.869), '3b_nk5': (988.359, 1134.509),
+    '3b_nk6': (993.954, 1107.492), '3b_nk7': (986.441, 1116.652),
+    '3b_nk8': (979.737, 1122.867), '3b_nk9': (1009.418, 1108.563),
+    '3b_nk10': (1023.671, 1101.803), '3b_nk11': (986.681, 1108.271),
+    '3c_2wpf_k1': (1005.402, 1027.511), '3c_2wpf_k2': (986.591, 1019.49),
+    '3c_2wpf_k3': (1013.251, 1022.029), '3c_2wpf_k4': (1000.811, 1027.525),
+    '3c_2wpf_k5': (993.104, 1009.799), '3c_2wpf_k6': (998.651, 1007.324),
+    '3c_2wpf_k7': (974.895, 1030.236), '3c_2wpf_k8': (1001.056, 1036.838),
+    '3c_2wpf_k9': (1013.074, 1039.872), '3c_2wpf_k10': (1027.721, 1025.174),
+    '3c_2wpf_k11': (989.75, 977.209), '3c_2wpf_nk1': (998.203, 1034.07),
+    '3c_2wpf_nk2': (1030.515, 1042.13), '3c_2wpf_nk3': (1012.823, 1029.737),
+    '3c_2wpf_nk4': (981.186, 1024.613), '3c_2wpf_nk5': (1006.868, 1015.557),
+    '3c_2wpf_nk6': (1004.324, 1025.355), '3c_2wpf_nk7': (1006.978, 1013.005),
+    '3c_2wpf_nk8': (1004.194, 1024.702), '3c_2wpf_nk9': (1012.747, 1021.973),
+    '3c_2wpf_nk10': (1042.187, 1037.164) 
+}
+
+two_week_dark_centers = {
+    '5a_k1' : (469.674, 492.335), '5a_k2' : (462.286, 463.342), 
+    '5a_k3' : (466.653, 489.392), '5a_k5' : (479.459, 465.974), 
+    '5a_k6' : (489.104, 477.871), '5a_k7' : (468.044, 461.357), 
+    '5a_k8' : (470.267, 473.77), '5a_k9' : (471.121, 468.212), 
+    '5a_k10' : (484.749, 478.691), '5a_nk1' : (473.103, 472.041), 
+    '5a_nk2' : (481.051, 460.597), '5a_nk3' : (477.29, 468.048), 
+    '5a_nk4' : (470.988, 468.913), '5a_nk5' : (473.09, 463.224), 
+    '5a_nk6' : (478.253, 462.838), '5a_nk7' : (470.131, 490.965), 
+    '5a_nk8' : (480.611, 479.219), '5a_nk9' : (473.563, 464.297), 
+    '5a_nk10' : (477.911, 500.252), 
+}
+
+def load_data(dir, file_path, dataset_type, dist_thresh):
     """
-    Returns the correct data array for fish1 and fish2 
-    from a specified dataset. The data array may contain
-    values for position, angle, body marker information, 
-    etc. depending on the range specified by the two
-    input indices. 
+    Loads files from a directory into arrays,
+    removes all window frames where at least one 
+    of the two fish is close to the edge of the 
+    petri dish, and stores the resulting arrays
+    into .npz compressed files.
 
     Args:
-        dir (str)  : the dataset's name.
-        idx_1 (int): the beginning index from
-                     which data should be loaded.
-        idx_2 (int): the ending index from
-                     which data should be loaded.
+        dir (str)          : the folder directory that 
+                             contains the files.
+        file_path (str)    : the folder directory to which
+                             the data arrays are stored. 
+        dataset_type (str) : e.g. 2 week light or 6 week. 
+        dist_thresh        : the distance cutoff from the 
+                             center of the petri dish.
 
     Returns:
-        A tuple containing the following arrays:
-            fish1_data: data array for fish1.
-            fish2_data: data arary for fish2.
+        N/A
     """
-    data = np.genfromtxt(dir, delimiter=',')
-    fish1_data = data[:15000][:, np.r_[idx_1:idx_2]] 
-    fish2_data = data[15000:][:, np.r_[idx_1:idx_2]]
-    return fish1_data, fish2_data
+    if dataset_type == '2 week light':
+        centers = two_week_light_centers
+    else:
+        centers = two_week_dark_centers
 
+    # Recurse through all folders 
+    for (root, dirs, files) in os.walk(dir, topdown=True):
+        # Recurse through each file in every folder
+        for name in files:
+            dataset = os.path.join(root, name)
+            dataset_name = re.search('(\d[a-z]+_)?\d[a-z]+_[a-z]+\d', dataset).group()    # Fix Regex; see Raghu's email
+            data = np.loadtxt(dataset, delimiter=",")
+            fish1_data = data[:15000]
+            fish2_data = data[15000:]
+
+            # Calculate distance from center for each fish;
+            # If calculated distance greater than threshold, remove
+            # window frame from both arrays
+            if dataset_name in centers.keys():
+                center = list(centers[dataset_name])
+                wfs_to_remove = []
+                
+                for idx in range(15000):   # Each 2D array is originally of size 15000
+                    if (np.linalg.norm(fish1_data[idx][3:5] - center) > dist_thresh
+                    or (np.linalg.norm(fish2_data[idx][3:5] - center) > dist_thresh)):
+                        wfs_to_remove.append(idx)
+                
+                wfs_to_remove = np.array(wfs_to_remove)
+                fish1_data = np.delete(fish1_data, wfs_to_remove, axis=0)
+                fish2_data = np.delete(fish2_data, wfs_to_remove, axis=0)
+                    
+                np.savez_compressed(f"{file_path}\{dataset_name}", fish1_data, fish2_data)
+
+                
 def get_cos_angle(fish1_angles, fish2_angles):
     """
     Returns the angle for two fish to be in a antiparallel 
