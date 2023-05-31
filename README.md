@@ -9,26 +9,37 @@ The Social-Behavior GitHub repository contains various analysis functions that a
 
 The matlab files found in Zebrafish_Movies are produced by a tracking software called ZebraZoom, which in the case of our analysis, tracks two young kin or non-kin zebrafish. Like the matlab files, the CSV converted files contain one row per fish per movie frame. The columns are 
 
-1 AnimalNumber (Always either 0 or 1 in the two-fish examples; I’ll follow the Python convention of number starting at zero.)
-2 Frame Number (e.g. 1 to 15000 in the example above)
-3 TailAngle_Raw: single value for each animal for each frame
-4 HeadX: single value for each animal for each frame
-5 HeadY: single value for each animal for each frame
-6 Heading: single value for each animal for each frame
-7-16 TailX_VideoReferential: ten columns for each animal for each frame
-17-26 TailY_VideoReferential: ten columns for each animal for each frame
+
+- 1 AnimalNumber (Always either 0 or 1 in the two-fish examples; I’ll follow the Python convention of number starting at zero.)
+
+- 2 Frame Number (e.g. 1 to 15000 in the example above)
+
+- 3 TailAngle_Raw: single value for each animal for each frame
+
+- 4 HeadX: single value for each animal for each frame
+
+- 5 HeadY: single value for each animal for each frame
+
+- 6 Heading: single value for each animal for each frame
+
+- 7-16 TailX_VideoReferential: ten columns for each animal for each frame
+
+- 17-26 TailY_VideoReferential: ten columns for each animal for each frame
+
 
 So, for example,
 
 Line 181,
-Screenshot_1.png
+
+![Screenshot_1](https://github.com/rplab/Social-Behavior/assets/8672353/6acea16e-8557-4b23-ad1e-43f1e9a769d2)
+
 This means that in frame 181, Fish 0 had Tail Angle -0.09472, and the x and y positions of its head were 403 and 744, respectively. The x positions of 10 markers along its body were 403, 405.3, 414.43, ... etc.
 
 25 frames or 25 lines like that of line 181 above constitute to 1 second in real time. 
 
 ## Further Notes
 
-The majority of the Social-Behavior analysis mainly requires running functions on the CSV data files. However, it may be useful at times to compare numerical output of the analysis with the behaviors exhibited in the movies found in the Zebrafish_Movies folder. The movies in the folder are in .avi format, which can be easily be imported into ImageJ; follow this YouTube tutorial to learn how: ImageJ Tutorial: How to Import Video and Convert to AVI.
+The majority of the Social-Behavior analysis mainly requires running functions on the CSV data files. However, it may be useful at times to compare numerical output of the analysis with the behaviors exhibited in the movies found in the [Zebrafish_Movies](https://uoregon-my.sharepoint.com/personal/ldesban_uoregon_edu/_layouts/15/onedrive.aspx?ct=1657672326833&or=OWA%2DNT&cid=423ec170%2D2e9a%2D7d6d%2D0ad9%2D13f713270cc0&ga=1&id=%2Fpersonal%2Fldesban%5Fuoregon%5Fedu%2FDocuments%2FBehavior%2FSocial%20behavior%20analysis) folder. The movies in the folder are in .avi format, which can be easily be imported into ImageJ; follow this YouTube tutorial to learn how: [ImageJ Tutorial: How to Import Video and Convert to AVI](https://www.youtube.com/watch?v=X29zKkvKwEk).
 
 ## Modules:
 - Behaviors: contains functions for finding specific social behaviors (e.g. circling, tail-rubbing, etc.)
