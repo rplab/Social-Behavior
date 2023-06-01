@@ -10,8 +10,8 @@ from toolkit import *
 # ------------------------------------------------------------------------------
 
 def get_tail_rubbing_wf(body1_x, body2_x, body1_y, body2_y, fish1_pos, fish2_pos,
-fish1_angle_data, fish2_angle_data, end, window_size, tail_dist, tail_anti_low, 
-tail_anti_high, head_dist_thresh): 
+fish1_angle_data, fish2_angle_data, end, window_size, tail_dist, tail_anti_angle, 
+head_dist_thresh): 
     """
     Returns an array of tail-rubbing window frames.
 
@@ -32,8 +32,7 @@ tail_anti_high, head_dist_thresh):
         end (int): end of the array for both fish (typically 15,000 window frames.) 
         window_size (int): window size for which circling is averaged over.
         tail_dist (int): tail distance threshold for the two fish. 
-        tail_anti_low (float): antiparallel orientation lower bound.
-        tail_anti_high (float): antiparallel orientation upper bound. 
+        tail_anti_angle (float): antiparallel orientation angle threshold. 
         head_dist_thresh (int): head distance threshold for the two fish. 
 
     Returns:
@@ -61,7 +60,7 @@ tail_anti_high, head_dist_thresh):
             if (min_dist[0] < tail_dist and min_dist[1] < tail_dist or 
             min_dist[2] < tail_dist and min_dist[3] < tail_dist and
             check_antiparallel_criterion(fish1_positions, fish2_positions, fish1_angles, 
-            fish2_angles, tail_anti_low, tail_anti_high, head_dist_thresh)):
+            fish2_angles, tail_anti_angle, head_dist_thresh)):
                 if idx_2 not in tail_rubbing_wf:
                     tail_rubbing_wf.append(idx_2+1)
 
