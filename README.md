@@ -6,6 +6,7 @@ A collection of Python programs used to analyze social behaviors in zebrafish.
 - Helper Functions: contains functions used commonly throughout numerous modules or those that help test/visualize behaviors.
 - Raghu's Starter Code: starter code from Raghu pertaining to time series analysis.
 - Time Series Analysis: contains functions to find autocorrelations, cross-correlations, conditional probabilities, etc.
+- To-do: contains partially implemented new social behaviors/analysis functions that need to be updated or refined. 
 - convert matlab to csv: matlab to CSV file converter for datasets.
 
 ## Background Information
