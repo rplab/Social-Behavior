@@ -5,7 +5,6 @@
 # Created Date: 1/3/2023
 # version ='1.0'
 # ------------------------------------------------------------------------------
-import re
 import matplotlib.pyplot as plt
 import numpy as np
 from motion_tracking import *
@@ -13,9 +12,41 @@ from toolkit import load_data
 from toolkit import normalize_by_mean
 # ------------------------------------------------------------------------------
 
-# ------------------------- MODULE IN PROGRESS!!! ------------------------------
+def get_cond_prob(event1_arr, event2_arr, block_size):
+    """
+    Finds the probability that event 1 occurred given
+    event 2 occurred (i.e P(E1|E2)) within a specified
+    window frame duration. 
+
+    Note: P(E1|E2) = P(E1 and E2)
+                    -------------
+                        P(E2)
+
+    Args:
+        event1_arr (arr): the array of window frames for 
+                          event 1.
+        event2_arr (arr): the array of window frames for 
+                          event 2.
+        block_size (int): window frame duration between 
+                          events.
+                    
+    Returns:
+        P(E1|E2) (float).
+    """
+    if (np.size(event1_arr) == 0) or (np.size(event2_arr) == 0):
+        return 0
+    
+    num_events_e1_and_e2 = 0
+    for window_frame in event2_arr: 
+        locations = np.where(np.logical_and(event1_arr >= window_frame, 
+                                      event1_arr <= window_frame + block_size))
+        num_events_e1_and_e2 += np.size(locations)
+    
+    return num_events_e1_and_e2 / np.size(event2_arr)
+
+
 def calc_acf(y):
-    # Calculate the autocorrelation function of y.
+    '''Calculate the autocorrelation function of y.'''
     # Use numpy correlate, which will return + and - lag
     # ACF is symmetric, so just take the second half
     # Normalize by var(y)*N
@@ -26,7 +57,7 @@ def calc_acf(y):
 
 
 def calc_AR1_residual(x, alpha):
-    # subtracting the AR(1) model with parameter alpha from series x
+    '''Subtracting the AR(1) model with parameter alpha from series x.'''
     x = x - np.mean(x)
     for j in np.arange(1, len(x)):
         x[j] = x[j] - alpha*(x[j-1])
@@ -103,7 +134,7 @@ def calc_ccf(fish1_norm, fish2_norm, N):
 
 
 def ccf_plots(fish1_motion, fish2_motion, motion, dataset_name, N, reg=1, block=1,
-block_size=100):
+plot=0, above_thresh=1, block_size=100):
     # Note: Either fish speed OR velocity can be passed as the first 
     # two parameters 
     if motion == 's':
@@ -188,6 +219,7 @@ block_size=100):
             ccf = calc_ccf(fish1_norm_block, fish2_norm_block, N)
 
             lag_max = int(np.round(N/5)) # Just plot ccf to +/- this point
+            t_lag = np.arange(lag_max)
             k_array = np.arange(-lag_max, lag_max + 1)
             k_array_ind = k_array + N - 1
 
@@ -197,12 +229,23 @@ block_size=100):
             idx_1, idx_2 = idx_1+block_size, idx_2+block_size
 
         normalized_ccfs = np.divide(ccfs, np.linalg.norm(ccfs))
-
-        plt.figure()
-        plt.title(f"{dataset_name} {type}; block_size = {block_size}")
-        plt.plot(x_axis, normalized_ccfs)
-        plt.ylabel("cross-correlation at k=0")
-    
+        
+        if plot == 1:
+            plt.figure()
+            plt.title(f"{dataset_name} {type}; block_size = {block_size}")
+            plt.plot(x_axis, normalized_ccfs)
+            plt.plot(x_axis, (-1/lag_max + 2/np.sqrt(lag_max))*np.ones_like(x_axis), 
+            color='red', label='95% conf. of 0')
+            plt.ylabel("cross-correlation at k=0")
+        
+        else:
+            if above_thresh == 1:
+                confidence_thresh = (-1/lag_max + 2/np.sqrt(lag_max))*np.ones_like(x_axis)
+                res = x_axis[np.where(normalized_ccfs > confidence_thresh)]
+                return res
+            else:
+                return normalized_ccfs
+        
 
 def correlation_plots_main(fish1_motion, fish2_motion, motion, dataset_name, N, 
 corr=1, auto=1, shuff=0):
@@ -232,41 +275,3 @@ corr=1, auto=1, shuff=0):
         # plot should be centered at 0              
         fish2_shuffled = np.random.permutation(fish2_motion)
         ccf_plots(fish1_motion, fish2_shuffled, motion, dataset_name, N)
-
-
-def main():
-    dataset = "results_SocPref_3c_2wpf_nk3_ALL.csv"
-    pos_data = load_data(dataset, 3, 5)
-    angle_data = load_data(dataset, 5, 6)
-    window_size = 1
-    # dataset_name = "results_SocPref_1a_kf_8.csv"
-    # dataset_name = re.search('\d[a-z]_\d[a-z]{3}_[a-z]{1,2}\d', dataset).group()
-    end_of_arr = np.shape(pos_data)[1]
-
-    fish_speeds_tuple = get_speed(pos_data[0], pos_data[1], end_of_arr,
-    window_size)
-    fish1_speed = fish_speeds_tuple[0]
-    fish2_speed = fish_speeds_tuple[1]
-
-    # fish_angles_tuple = get_angle(angle_data[0], angle_data[1], end_of_arr, 
-    # window_size)
-    # fish1_angles = fish_angles_tuple[0]
-    # fish2_angles = fish_angles_tuple[1]
-    
-    # fish_velocities_tuple = get_velocity(fish1_speed, fish2_speed, angle_data[0],
-    # angle_data[1], end_of_arr, window_size)
-    # fish1_velocities = fish_velocities_tuple[0]
-    # fish2_velocities = fish_velocities_tuple[1]
-
-    ccf_plots(fish1_speed, fish2_speed, 's', dataset, end_of_arr, reg=0, block=1,
-    block_size=100)
-    # correlation_plots_main(fish1_speed, fish2_speed, 's', dataset_name, 
-    # end_of_arr, corr=1, auto=1, shuff=0)
-
-    plt.show()
-   
-  
-
-    
-if __name__ == "__main__":
-    main()
