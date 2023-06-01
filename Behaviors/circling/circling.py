@@ -10,7 +10,7 @@ from toolkit import *
 from circle_fit_taubin import TaubinSVD
 # ---------------------------------------------------------------------------
 
-def get_distances(data_for_x_wf, taubin_output, idx):
+def get_distances_squared(data_for_x_wf, taubin_output, idx):
     """
     Returns an array of fish distances for some window size.
     
@@ -18,7 +18,7 @@ def get_distances(data_for_x_wf, taubin_output, idx):
         data_for_x_wf (array): a 2D array of (x, y) positions
                                for two fish of size  2*window size.
         taubin_output (tuple): (x_center, y_center, radius).
-        idx (int): the current window frame index.
+        idx (int)            : the current window frame index.
     
     Returns:
         An array of interfish distances.
@@ -33,7 +33,7 @@ def get_rmse(distances_lst):
     Returns the RMSE of an array of distances.
 
     Args:
-        distances_lst: an array of distances.
+        distances_lst (array): an array of distances.
 
     Returns:
         The RMSE (float).
@@ -42,13 +42,9 @@ def get_rmse(distances_lst):
 
 
 def get_circling_wf(fish1_pos, fish2_pos, fish1_angle_data, fish2_angle_data,
-end, window_size, rmse_thresh, anti_low, anti_high, head_dist_thresh):
+end, window_size, rmse_thresh, anti_angle, head_dist_thresh):
     """
-    Returns an array of window frames for circling behavior. Each window
-    frame represents the ENDING window frame for circling within some range 
-    of window frames specified by the parameter window_size. E.g, if 
-    window_size = 10 and a circling window frame is 210, then circling
-    occured from frames 200-210.
+    Returns an array of window frames for circling behavior. 
     
     Args:
         fish1_pos (array): a 2D array of (x, y) positions for fish1. The
@@ -65,8 +61,7 @@ end, window_size, rmse_thresh, anti_low, anti_high, head_dist_thresh):
         
         window_size (int)     : window size for which circling is averaged over.
         rmse_thresh (int)     : RMSE threshold for circling.
-        anti_low (float)      : antiparallel orientation lower bound.
-        anti_high (float)     : antiparallel orientation upper bound. 
+        anti_angle (float)    : antiparallel orientation angle threshold. 
         head_dist_thresh (int): head distance threshold for the two fish.
 
     Returns:
@@ -89,18 +84,18 @@ end, window_size, rmse_thresh, anti_low, anti_high, head_dist_thresh):
         # for every x window frames of size window_size
         distances_temp = np.zeros((2 * window_size))
         for i in range((2 * window_size) - 1):
-            distances_temp[i] = get_distances(head_temp, 
+            distances_temp[i] = get_distances_squared(head_temp, 
             taubin_output, i)  
 
         rmse = get_rmse(distances_temp)
 
-        if (rmse < rmse_thresh and 
-        (check_antiparallel_criterion(fish1_positions, fish2_positions, 
-        fish1_angles, fish2_angles, anti_low, anti_high, head_dist_thresh))): 
-            circling_wf.append(idx_2+1)
+        if (rmse < rmse_thresh and (check_antiparallel_criterion(fish1_positions, fish2_positions, 
+        fish1_angles, fish2_angles, anti_angle, head_dist_thresh))): 
+            circling_wf.append(idx_1+1)
     
         # Update the index variables to track circling for the 
         # next x window frames of size window_size
         idx_1 += 1
         idx_2 += 1
+        
     return combine_events(np.array(circling_wf))
