@@ -9,6 +9,31 @@ from toolkit import *
 # ------------------------------------------------------------------------------
 
 def get_tracking_error_wf(body1_x, body2_x, body1_y, body2_y, end, contact_dist):
+    """ 
+    Returns a dictionary of bad tracking frames. The two 'types' of bad tracking
+    provided by the dictionary are 
+
+        1) 'bad-tracking': any window frame where the ZebraZoom software is
+                           unable to detect at least one of the two zebrafish.
+        2) 'too-close'   : the previous window frame is a 'bad-tracking' frame
+                           and the fish are close enough, so the two fish 
+                           probably engaged in a contact event. 
+
+    
+    Args:
+        body1_x (array): a 1D array of x positions along the 10 body markers of fish1.
+        body2_x (array): a 1D array of x positions along the 10 body markers of fish2.
+        body1_y (array): a 1D array of y positions along the 10 body markers of fish1.
+        body2_y (array): a 1D array of y positions along the 10 body markers of fish2.
+
+        end (int)         : end of the array for both fish (typically 15,000 
+                            window frames.) 
+        contact_dist (int): contact distance threshold. 
+
+    Returns:
+        errors (dict): a dictionary of arrays of bad tracking frames. 
+
+    """
     idx = 0
     errors = {"bad-tracking": [], "too-close": []}
 
