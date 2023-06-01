@@ -1,6 +1,14 @@
 # Social-Behavior Analysis
 A collection of Python programs used to analyze social behaviors in zebrafish. 
 
+## Modules:
+- Behaviors: contains functions for finding specific social behaviors (e.g. circling, tail-rubbing, etc.)
+- Helper Functions: contains functions used commonly throughout numerous modules or those that help test/visualize behaviors
+- Old Code [Unused]: code that is no longer used in the current program/analysis; saved in its own module in case future reference is needed
+- Raghu's Starter Code: starter code from Raghu pertaining to time series analysis
+- Time Series Analysis: contains functions to find autocorrelations, cross-correlations, conditional probabilities, etc.
+- convert matlab to csv: matlab to CSV file converter for datasets.
+
 ## Background Information
 
 The Social-Behavior GitHub repository contains various analysis functions that are categorized into different folders for ease of use. Data used to run the analyses were provided from Laura Desban from the Guilleman/Eisen Lab in the form of matlab files, which can be found here: [Zebrafish_Movies](https://uoregon-my.sharepoint.com/personal/ldesban_uoregon_edu/_layouts/15/onedrive.aspx?ct=1657672326833&or=OWA%2DNT&cid=423ec170%2D2e9a%2D7d6d%2D0ad9%2D13f713270cc0&ga=1&id=%2Fpersonal%2Fldesban%5Fuoregon%5Fedu%2FDocuments%2FBehavior%2FSocial%20behavior%20analysis). All the matlab files from this folder are first converted to CSV files since the Social-Behavior analysis is done in Python and are stored in the RP Lab's dropbox, which can be found here: [Zebrafish_CSV](https://www.dropbox.com/home/Data%20(Other)/Fish%20Tracking%20and%20Behavior).
@@ -37,14 +45,9 @@ This means that in frame 181, Fish 0 had Tail Angle -0.09472, and the x and y po
 
 25 frames or 25 lines like that of line 181 above constitute to 1 second in real time. 
 
-## Further Notes
+## Important Conventions 
+- Every window frame for a social behavior represents the BEGINNING window frame. For example, if a circling event has occurred at window frame 200 and the specified window-size = 10, then circling occurred from frames 200-210.
+
+## Other Helpful Resources 
 
 The majority of the Social-Behavior analysis mainly requires running functions on the CSV data files. However, it may be useful at times to compare numerical output of the analysis with the behaviors exhibited in the movies found in the [Zebrafish_Movies](https://uoregon-my.sharepoint.com/personal/ldesban_uoregon_edu/_layouts/15/onedrive.aspx?ct=1657672326833&or=OWA%2DNT&cid=423ec170%2D2e9a%2D7d6d%2D0ad9%2D13f713270cc0&ga=1&id=%2Fpersonal%2Fldesban%5Fuoregon%5Fedu%2FDocuments%2FBehavior%2FSocial%20behavior%20analysis) folder. The movies in the folder are in .avi format, which can be easily be imported into ImageJ; follow this YouTube tutorial to learn how: [ImageJ Tutorial: How to Import Video and Convert to AVI](https://www.youtube.com/watch?v=X29zKkvKwEk).
-
-## Modules:
-- Behaviors: contains functions for finding specific social behaviors (e.g. circling, tail-rubbing, etc.)
-- Helper Functions: contains functions used commonly throughout numerous modules or those that help test/visualize behaviors
-- Old Code [Unused]: code that is no longer used in the current program/analysis; saved in its own module in case future reference is needed
-- Raghu's Starter Code: starter code from Raghu pertaining to time series analysis
-- Time Series Analysis: contains functions to find autocorrelations, cross-correlations, conditional probabilities, etc.
-- convert matlab to csv: matlab to CSV file converter for datasets.
