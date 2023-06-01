@@ -68,7 +68,7 @@ end, window_size, theta_90_thresh, head_dist):
         
         if (theta_90 < theta_90_thresh and orientation_type in orientations.keys() 
         and get_head_distance(fish1_positions, fish2_positions) < head_dist):
-            orientations[orientation_type].append(idx_2+1) 
+            orientations[orientation_type].append(idx_1+1) 
         
         # Update the index variables to track 90-degree events 
         # for the next x window frames of size window_size
