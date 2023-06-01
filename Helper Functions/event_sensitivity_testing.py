@@ -8,26 +8,24 @@
 import re
 from circling import *
 from ninety_deg import *
+from contact import *
 from tail_rubbing import *
 from visuals import *
 # ---------------------------------------------------------------------------
 params = {
-    "circ_ws" : 10,     
-    "circ_rad" : 0.005, 
-    "circ_rmse" : 25,  
-    "circ_anti_low" : -1,   
-    "circ_anti_high" : -0.9,
+    "circ_ws" : 10,
+    "circ_rmse" : 25,
     "circ_head_dist": 150,
-    "90_ws" : 10,   
-    "theta_90_thresh" : 0.1,  
-    "90_head_dist" : 300,     
-    "contact_ws" : 1, 
-    "contact_dist" : 20, 
-    "tail_rub_ws" : 4,  
-    "tail_dist" : 40,   
-    "tail_head_dist" : 150,
-    "tail_anti_low" : -1,   
-    "tail_anti_high": -0.8,
+    "circ_anti_angle" : -0.9,
+    "90_ws" : 10,
+    "theta_90_thresh" : 0.1,
+    "90_head_dist" : 300,
+    "contact_ws" : 1,
+    "contact_dist" : 20,
+    "tail_rub_ws" : 4,
+    "tail_dist" : 40,
+    "tail_rub_head_dist": 150,
+    "tail_anti_angle": -0.8,
 }
 
 def tester(param_name, mean, std, N):
@@ -51,10 +49,12 @@ def tester(param_name, mean, std, N):
             num_events (array): an array of the number of events corresponding
                                 to each element in the params_arr. 
     """
-    pos_data = load_data("results_SocPref_3c_2wpf_nk1_ALL.csv", 3, 5)
-    angle_data = load_data("results_SocPref_3c_2wpf_nk1_ALL.csv", 5, 6)
-    contact_x = load_data("results_SocPref_3c_2wpf_nk1_ALL.csv", 6, 16)
-    contact_y = load_data("results_SocPref_3c_2wpf_nk1_ALL.csv", 16, 26)
+    dataset = "results_SocPref_3b_6wpf_k1_ALL.csv"
+    # dataset = "results_SocPref_3c_2wpf_k1_ALL.csv"
+    pos_data = load_data(dataset, 3, 5)
+    angle_data = load_data(dataset, 5, 6)
+    contact_x = load_data(dataset, 6, 16)
+    contact_y = load_data(dataset, 16, 26)
 
     # End of array should be the same for all loaded data
     end_of_arr = np.shape(pos_data)[1]  
@@ -295,8 +295,8 @@ def plot(param_name, params_arr, res_array):
 
 def main():
     '''Main function for executing parameter testing functions.'''
-    res = tester("90_ws", 10, 2, 100)
-    plot("90_ws", res[0], res[1])
+    res = tester("circ_rad", 0.005, 0.00125, 100)
+    plot("circ_rad", res[0], res[1])
 
 
 
