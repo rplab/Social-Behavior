@@ -1,4 +1,3 @@
-
 # !/usr/bin/env python3  
 # -*- coding: utf-8 -*- 
 #----------------------------------------------------------------------------
@@ -61,8 +60,8 @@ head_dist_thresh):
             min_dist[2] < tail_dist and min_dist[3] < tail_dist and
             check_antiparallel_criterion(fish1_positions, fish2_positions, fish1_angles, 
             fish2_angles, tail_anti_angle, head_dist_thresh)):
-                if idx_2 not in tail_rubbing_wf:
-                    tail_rubbing_wf.append(idx_2+1)
+                if idx_1 not in tail_rubbing_wf:
+                    tail_rubbing_wf.append(idx_1+1)
 
         # Update the index variables to track tail-rubs for the 
         # next x window frames of size window_size
