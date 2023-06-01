@@ -13,15 +13,21 @@ def get_contact_wf(body1_x, body2_x, body1_y, body2_y, end, window_size,
 contact_dist):
     """
     Returns a dictionary of window frames for different types of
-    contact between two fish.
+    contact. The two types of contact provided by the dictionary are
 
+        1) any_contact: any type of contact between the two zebrafish.
+        2) head-body  : when the head of one fish hits the body of the
+                        the other fish; is a subset of the 'any_contact'
+                        category. 
+
+        
     Args:
-        body1_x (array): a 1D array of x positions along the 10 body markers of fish1.
-        body2_x (array): a 1D array of x positions along the 10 body markers of fish2.
-        body1_y (array): a 1D array of y positions along the 10 body markers of fish1.
-        body2_y (array): a 1D array of y positions along the 10 body markers of fish2.
-        end (int): end of the array for both fish (typically 15,000 window frames.) 
-        window_size (int): window size for which circling is averaged over.
+        body1_x (array)   : a 1D array of x positions along the 10 body markers of fish1.
+        body2_x (array)   : a 1D array of x positions along the 10 body markers of fish2.
+        body1_y (array)   : a 1D array of y positions along the 10 body markers of fish1.
+        body2_y (array)   : a 1D array of y positions along the 10 body markers of fish2.
+        end (int)         : end of the array for both fish (typically 15,000 window frames.) 
+        window_size (int) : window size for which circling is averaged over.
         contact_dist (int): the contact distance threshold.
 
     Returns:
@@ -36,8 +42,8 @@ contact_dist):
         (body1_y[idx_1][0] - body2_y[idx_1])**2)) < contact_dist or 
         np.min(np.sqrt((body1_x[idx_1] - body2_x[idx_1][0])**2 + 
         (body1_y[idx_1] - body2_y[idx_1][0])**2) < contact_dist)):
-             contact_wf["head-body"].append(idx_2)
-             contact_wf["any_contact"].append(idx_2+1)
+             contact_wf["head-body"].append(idx_1)
+             contact_wf["any_contact"].append(idx_1+1)
 
         # Any contact 
         for j in range(1, 10):  # there are ten markers on the fish bodies
