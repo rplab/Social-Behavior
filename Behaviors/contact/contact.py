@@ -5,6 +5,7 @@
 # Created By  : Estelle Trieu 
 # Created Date: 5/26/2022
 # version ='1.0'
+# Last modified May 28, 2023 -- Raghu Parthasarathy
 # ------------------------------------------------------------------------------
 from toolkit import *
 # ------------------------------------------------------------------------------
@@ -38,14 +39,17 @@ contact_dist):
         (body1_y[idx_1] - body2_y[idx_1][0])**2) < contact_dist)):
              contact_wf["head-body"].append(idx_2)
              contact_wf["any_contact"].append(idx_2+1)
-
-        # Any contact 
-        for j in range(1, 10):  # there are ten markers on the fish bodies
-            if (np.min(np.sqrt((body1_x[idx_1][j] - body2_x[idx_1])**2 + 
-            (body1_y[idx_1][j] - body2_y[idx_1])**2)) < contact_dist or 
-            np.min(np.sqrt((body1_x[idx_1] - body2_x[idx_1][j])**2 + 
-            (body1_y[idx_1] - body2_y[idx_1][j])**2) < contact_dist)) and (idx_2 not in
-            contact_wf["any_contact"]):
+        else:
+            # Look for any contact 
+            any_contact_boolean = False
+            for j in range(1, 10):  # there are ten markers on the fish bodies
+                if (np.min(np.sqrt((body1_x[idx_1][j] - body2_x[idx_1])**2 + 
+                   (body1_y[idx_1][j] - body2_y[idx_1])**2)) < contact_dist or 
+                   np.min(np.sqrt((body1_x[idx_1] - body2_x[idx_1][j])**2 + 
+                   (body1_y[idx_1] - body2_y[idx_1][j])**2) < contact_dist)) and (idx_2 not in
+                   contact_wf["any_contact"]):
+                       any_contact_boolean = True
+            if any_contact_boolean:
                 contact_wf["any_contact"].append(idx_2+1)
 
         # Update the index variables to track contact for the 

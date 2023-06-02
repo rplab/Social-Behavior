@@ -4,22 +4,24 @@
 #----------------------------------------------------------------------------
 # Created By  : Estelle Trieu 
 # Created Date: 5/26/2022
-# version ='1.0'
+# version ='2.0'
+# Major changes: May 24, 2023, Raghu Parthasarathy
+# Last modified May 28, 2023, Raghu Parthasarathy
 # ---------------------------------------------------------------------------
 from toolkit import *
 # ------------------------------------------------------------------------------
 
 def get_tail_rubbing_wf(body1_x, body2_x, body1_y, body2_y, fish1_pos, fish2_pos,
-fish1_angle_data, fish2_angle_data, end, window_size, tail_dist, tail_anti_low, 
+fish1_angle_data, fish2_angle_data, end, window_size, tail_dist, 
 tail_anti_high, head_dist_thresh): 
     """
     Returns an array of tail-rubbing window frames.
 
     Args:
-        body1_x (array): a 1D array of x positions along the 10 body markers of fish1.
-        body2_x (array): a 1D array of x positions along the 10 body markers of fish2.
-        body1_y (array): a 1D array of y positions along the 10 body markers of fish1.
-        body2_y (array): a 1D array of y positions along the 10 body markers of fish2.
+        body1_x (array): a 2D array of x positions along the 10 body markers of fish1, at each frame
+        body2_x (array): a 2D array of x positions along the 10 body markers of fish2, at each frame
+        body1_y (array): a 2D array of y positions along the 10 body markers of fish1, at each frame
+        body2_y (array): a 2D array of y positions along the 10 body markers of fish2, at each frame
         fish1_pos (array): a 2D array of (x, y) positions for fish1. The
                            array has form [[x1, y1], [x2, y2], [x3, y3],...].
         fish2_pos (array): a 2D array of (x, y) positions for fish1. The
@@ -30,71 +32,74 @@ tail_anti_high, head_dist_thresh):
                                   for fish2.
 
         end (int): end of the array for both fish (typically 15,000 window frames.) 
+           NOTE: This is unused and should be deleted
         window_size (int): window size for which circling is averaged over.
-        tail_dist (int): tail distance threshold for the two fish. 
-        tail_anti_low (float): antiparallel orientation lower bound.
+        tail_dist (int): tail distance threshold for the two fish. .
         tail_anti_high (float): antiparallel orientation upper bound. 
         head_dist_thresh (int): head distance threshold for the two fish. 
 
     Returns:
-        tail_rubbing_wf (array): a 1D array of tail-rubbing window frames.
+        tail_rubbing_wf_combined: a 2D array of tail-rubbing window frames
+                                  (row 1) and event durations (row 2)
+                                  "combined" to merge adjacent frames
     """
-    idx_1, idx_2 = 0, window_size
-    tail_rubbing_wf = []
+    
+    N_postPoints = 4 # number of posterior-most body markers 
+                          # to consider. (This should be a function input...)
+    Nframes = len(fish1_angle_data)  # better than having "end" as an input
+    
+    # In each frame, see if tails are close
+    # Examine all frames in the dataset, not just the window
+    close_tails = np.zeros((Nframes,1), dtype=bool) # initialize
+    showDiagnosticList = False
+    for idx in range(Nframes):  # all frames
+        # Get N_postPoints posterior body markers for this frame
+        tail1 = np.array([body1_x[:, -N_postPoints:][idx],
+                          body1_y[:, -N_postPoints:][idx]])
+        tail2 = np.array([body2_x[:, -N_postPoints:][idx],
+                          body2_y[:, -N_postPoints:][idx]])
+        d0 = np.subtract.outer(tail1[0,:], tail2[0,:]) # all pairs of subtracted x positions (NposxNpos matrix)
+        d1 = np.subtract.outer(tail1[1,:], tail2[1,:]) # all pairs of subtracted y positions (NposxNpos matrix)
+        dtail = np.sqrt(d0**2 + d1**2) # Euclidean distance matrix, all points
+        smallest_two_d = np.partition(dtail.flatten(), 1)[0:2]
+        close_tails[idx] = np.max(smallest_two_d) < tail_dist
+        # close_tails[idx] is true if the closest two tail positions in frame [idx] are < tail_dist apart
+        if showDiagnosticList:
+            print(smallest_two_d)
+            print(close_tails[idx])
+            x = input('asd')
+        
+    close_tails = close_tails.flatten()
+        
+    # cos(angle between headings) for each frame
+    # Should be antiparallel, so cos(theta) < threshold 
+    #   (ideally cos(theta)==-1)
+    cos_theta = np.cos(fish1_angle_data - fish2_angle_data)
+    angle_criterion = (cos_theta < tail_anti_high).flatten()
 
-    while idx_2 <= end:   # end of the array for both fish
-        # Get 4 posterior body markers for x window frames 
-        tail1_x = np.average(body1_x[:, -4:][idx_1:idx_2], axis=0)
-        tail2_x = np.average(body2_x[:, -4:][idx_1:idx_2], axis=0)
-        tail1_y = np.average(body1_y[:, -4:][idx_1:idx_2], axis=0)
-        tail2_y = np.average(body2_y[:, -4:][idx_1:idx_2], axis=0)
+    # Head separation, for each frame
+    dh = fish1_pos - fish2_pos
+    head_separation = np.sqrt(np.sum(dh**2, axis=1))
+    head_separation_criterion = (head_separation < head_dist_thresh)
 
-        # Get position and angle data for x window frames 
-        fish1_positions = fish1_pos[idx_1:idx_2]
-        fish2_positions = fish2_pos[idx_1:idx_2]
-        fish1_angles = fish1_angle_data[idx_1:idx_2]
-        fish2_angles = fish2_angle_data[idx_1:idx_2]
-      
-        for j in range(4):   # get at least four body points in contact
-            min_dist = get_min_tail_distances(tail1_x, tail2_x, tail1_y,
-            tail2_y, j)
-            if (min_dist[0] < tail_dist and min_dist[1] < tail_dist or 
-            min_dist[2] < tail_dist and min_dist[3] < tail_dist and
-            check_antiparallel_criterion(fish1_positions, fish2_positions, fish1_angles, 
-            fish2_angles, tail_anti_low, tail_anti_high, head_dist_thresh)):
-                if idx_2 not in tail_rubbing_wf:
-                    tail_rubbing_wf.append(idx_2+1)
+    #temp = np.logical_or(close_tails, angle_criterion, head_separation_criterion)
+    #print(np.sum(angle_criterion))
+    #print(np.sum(head_separation_criterion))
+    #print(np.sum(close_tails))
+    #print(np.sum(temp))
+    #print('Hello 2)')
+    
+    # All criteria (and), in each frame
+    all_criteria_frame = np.logical_and(close_tails, angle_criterion, head_separation_criterion)
+    all_criteria_window = np.zeros(all_criteria_frame.shape, dtype=bool) # initialize to true
+    # Check that criteria are met through the frame window. 
+    # Will loop rather than doing some clever Boolean product of offset arrays
+    for j in range(all_criteria_frame.shape[0]-window_size+1):
+        all_criteria_window[j] =  all_criteria_frame[j:j+window_size].all()
 
-        # Update the index variables to track tail-rubs for the 
-        # next x window frames of size window_size
-        idx_1 += 1
-        idx_2 += 1
-    return combine_events(np.array(tail_rubbing_wf))
+    tail_rubbing_wf = np.array(np.where(all_criteria_window==True))[0,:].flatten() + 1
+    # Not sure why the [0,:] is needed, but otherwise returns additional zeros.
+    tail_rubbing_wf_combined = combine_events(np.array(tail_rubbing_wf).flatten())
+    
+    return tail_rubbing_wf_combined
 
-
-def get_min_tail_distances(pos1_x, pos2_x, pos1_y, pos2_y, j):
-    """
-    Returns the minimum tail distances between two fish for two 
-    different body markers.
-
-    Args:
-        pos1_x (array): a 1D array of tail x positions for fish1 averaged over some window size.
-        pos2_x (array): a 1D array of tail x positions for fish2 averaged over some window size.
-        pos1_y (array): a 1D array of tail y positions for fish1 averaged over some window size.
-        pos2_y (array): a 1D array of tail y positions for fish2 averaged over some window size.
-        j (int): current index.
-
-    Returns:
-        A tuple of minimum distances (min1, min2, min3, min4).
-            min1 (float): minimum x distance for the first body marker. 
-            min2 (float): minimum y distance for the first body marker.
-            min3 (float): minimum x distance for the second body marker.
-            min4 (float): minimum y distance for the second body marker.
-    """
-    dist_matrix1 = np.sqrt((pos1_x[j] - pos2_x)**2 + 
-    (pos1_y[j] - pos2_y)**2)
-    dist_matrix2 = np.sqrt((pos1_x - pos2_x[j])**2 + 
-    (pos1_y - pos2_y[j])**2)
-    min1, min2 = np.partition(dist_matrix1, 1)[0:2]  # two smallest vals
-    min3, min4 = np.partition(dist_matrix2, 1)[0:2]
-    return min1, min2, min3, min4

@@ -4,17 +4,43 @@
 # Created By  : Estelle Trieu 
 # Created Date: 9/7/2022
 # version ='1.0'
+# last modified: Raghuveer Parthasarathy, May 29, 2023
 # ---------------------------------------------------------------------------
 import numpy as np
 import os
 import re
-from random import uniform
-from itertools import tee
 import matplotlib.pyplot as plt
-from operator import itemgetter
-from itertools import groupby
 import numpy as np
 # ---------------------------------------------------------------------------
+
+def get_CSV_folder_and_filenames():
+    """
+    Gets the folder path containing CSV files, and a list of all CSV files
+    whose names start with “results""
+    """
+    
+    folder_path = input("Enter the folder path for CSV files, or leave empty for cwd: ")
+    
+    if folder_path=='':
+        folder_path = os.getcwd() # Current working directory
+        
+    # Validate the folder path
+    while not os.path.isdir(folder_path):
+        print("Invalid folder path. Please try again.")
+        folder_path = input("Enter the folder path: ")
+
+    print("Selected folder path: ", folder_path)
+    
+    # Make a list of all CSV files in the folder
+    allCSVfileNames = []
+    print("Noting CSV Files with names starting with 'results': ")
+    for filename in os.listdir(folder_path):
+        if (filename.endswith('.csv') and filename.startswith('results')):
+            allCSVfileNames.append(filename)
+
+    return folder_path, allCSVfileNames
+
+
 def load_data(dir, idx_1, idx_2):
     """
     Returns the correct data array for fish1 and fish2 
@@ -36,9 +62,14 @@ def load_data(dir, idx_1, idx_2):
             fish2_data: data arary for fish2.
     """
     data = np.genfromtxt(dir, delimiter=',')
-    fish1_data = data[:15000][:, np.r_[idx_1:idx_2]] 
-    fish2_data = data[15000:][:, np.r_[idx_1:idx_2]]
+    Nrows = data.shape[0] # number of rows
+    if np.mod(Nrows,2) == 1:
+        print('Error! number of rows is odd. load_data in toolkit.py')
+    half_size = int(Nrows/2)
+    fish1_data = data[:half_size][:, np.r_[idx_1:idx_2]] 
+    fish2_data = data[half_size:][:, np.r_[idx_1:idx_2]]
     return fish1_data, fish2_data
+
 
 def get_cos_angle(fish1_angles, fish2_angles):
     """
@@ -60,9 +91,10 @@ def get_cos_angle(fish1_angles, fish2_angles):
     return cos_angle_avg
 
 
+
 def get_head_distance(fish1_positions, fish2_positions):
     """
-    Returns the head distance between two fish averaged 
+    Returns the mean head distance between two fish averaged 
     over some window size.
 
     Args:
@@ -149,10 +181,10 @@ fish2_angles, lower_threshold, upper_threshold, head_dist_threshold):
     Returns:
         True if the fish are antiparallel; False otherwise.
     """
-    angle = get_cos_angle(fish1_angles, fish2_angles)
+    cos_angle = get_cos_angle(fish1_angles, fish2_angles)
     head_distance = get_head_distance(fish1_positions, fish2_positions)
 
-    if (lower_threshold <= angle < upper_threshold and 
+    if (lower_threshold <= cos_angle < upper_threshold and 
     head_distance < head_dist_threshold):
         res = True
     else:
@@ -176,35 +208,45 @@ def normalize_by_mean(motion):
     return normalized
 
 
-def combine_events(event_arr):
+def combine_events(events):
     """
-    Combine adjacent window frames into a single event with 
-    an associated duration.
+    Given an array of frame numbers, return an arrays of frame numbers 
+    with adjacent frames combined and duration numbers 
+    corresponding to the duration of adjacent frames.
+    For example, frames…
+    	1, 5, 12, 13, 14, 17, 22, 23, 34, 40
+    Would be returned as frame numbers
+        5, 12, 17, 22, 34, 40
+    And durations
+        1, 3, 1, 2, 1, 1
+    See Raghu's notes May 28, 2023, and example_get_runs_and_durations.py 
+        for a description of the method
 
     Args:
-        event_arr (array): an array of social behavior window frames
-                           (e.g. circling, tail-rubbing, 90-degree events).
+        events (array): an array of frame numbers corresponding to events
+                           (e.g. frames of detected circling, 
+                            tail-rubbing, 90-degree events).
 
     Returns:
-        combined (array) : a modified array of social behavior window frames
-                           where adjacent window frames are classified as a 
-                           single event. 
-    
+        combined_events_and_durations (array) : a 2 x N array; Row 1
+            are uninque, non-adjacent frame numbers, and Row 2 are the 
+            corresponding durations.
+            and duration numbers corresponding to the duration of adjacent frames.
     """
-    combined = []
+    d_events = np.diff(events)
+    idx1 = np.array(np.where(d_events==1)).flatten() + 1  # index + 1 of flat regions
+    idx_keep = np.setdiff1d(np.arange(len(events)), idx1) # indexes of x to keep
+    unique_events = events[idx_keep]
+    durations = np.ones_like(unique_events)
+    for j in range(len(idx1)-1,-1, -1):
+        # find the closest idx_keep under idx1[j]
+        close_idx = max(idx_keep[idx1[j] > idx_keep])
+        duration_idx = np.array(np.where(idx_keep == close_idx)).flatten()
+        durations[duration_idx] += 1
+    
+    combined_events_and_durations = np.stack((events[idx_keep], durations))
+    return combined_events_and_durations
 
-    for k, g in groupby(enumerate(event_arr), lambda x:x[0]-x[1]):
-        group = (map(itemgetter(1), g))     # Adjacent frames have a diff of 1
-        group = list(map(int, group))
-
-        # Adjacent window frames have format (start, finish, duration)
-        # if len(group) > 1:
-        #     combined.append((group[0], group[-1], group[-1] - group[0]))
-        # else:
-        #     combined.append(group[0])
-        combined.append(group[0])
-
-    return np.array(combined)
 
 
 def get_mean_body_size(body1_x, body2_x, body1_y, body2_y, end):
@@ -275,5 +317,4 @@ def jitter(x, y, s=40, c='b', marker='o', cmap=None, norm=None, vmin=None,
                       s=s, c=c, marker=marker, cmap=cmap, norm=norm, 
                       vmin=vmin, vmax=vmax, alpha=alpha, linewidths=linewidths, 
                       **kwargs)
-
 
