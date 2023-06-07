@@ -7,8 +7,7 @@
 # ------------------------------------------------------------------------------
 import os
 import re
-from random import uniform
-from itertools import tee
+import pandas as pd
 import matplotlib.pyplot as plt
 from operator import itemgetter
 from itertools import groupby
@@ -52,6 +51,7 @@ two_week_dark_centers = {
     '5a_nk10' : (477.911, 500.252), 
 }
 
+
 def load_data(dir, file_path, dataset_type, dist_thresh):
     """
     Loads files from a directory into arrays,
@@ -83,9 +83,11 @@ def load_data(dir, file_path, dataset_type, dist_thresh):
         for name in files:
             dataset = os.path.join(root, name)
             dataset_name = re.search('(\d[a-z]+_)?\d[a-z]+_[a-z]+\d', dataset).group()    # Fix Regex; see Raghu's email
-            data = np.loadtxt(dataset, delimiter=",")
-            fish1_data = data[:15000]
-            fish2_data = data[15000:]
+            data = pd.read_csv(dataset)
+            data.to_pickle(f'./{dataset_name}.pkl')
+            data_ = pd.read_pickle(f'./{dataset_name}.pkl')
+            fish1_data = data_[:15000]
+            fish2_data = data_[15000:]
 
             # Calculate distance from center for each fish;
             # If calculated distance greater than threshold, remove
@@ -105,7 +107,8 @@ def load_data(dir, file_path, dataset_type, dist_thresh):
                     
                 np.savez_compressed(f"{file_path}\{dataset_name}", fish1_data, fish2_data)
 
-                
+            
+
 def get_cos_angle(fish1_angles, fish2_angles):
     """
     Returns the angle for two fish to be in a antiparallel 
@@ -194,7 +197,7 @@ def get_fish_vectors(fish1_angles, fish2_angles):
 
 
 def check_antiparallel_criterion(fish1_positions, fish2_positions, fish1_angles, 
-fish2_angles, lower_threshold, upper_threshold, head_dist_threshold):
+fish2_angles, angle_threshold, head_dist_threshold):
     """
     Returns True if two fish are antiparallel to each other;
     False otherwise.
@@ -208,8 +211,7 @@ fish2_angles, lower_threshold, upper_threshold, head_dist_threshold):
                                  [[x1, y1], [x2, y2], [x3, y3],...].
         fish1_angles (array): a 1D array of angles for x window frames for fish1.
         fish2_angles (array): a 1D array of angles for x window frames for fish2.
-        lower_threshold (float)  : lower bound for antiparallel angle.
-        upper_threshold (float)  : upper bound for antiparallel angle.
+        angle_threshold (float)  : threshold for antiparallel angle.
         head_dist_threshold (int): head distance threshold for the two fish.
 
     Returns:
@@ -218,8 +220,7 @@ fish2_angles, lower_threshold, upper_threshold, head_dist_threshold):
     angle = get_cos_angle(fish1_angles, fish2_angles)
     head_distance = get_head_distance(fish1_positions, fish2_positions)
 
-    if (lower_threshold <= angle < upper_threshold and 
-    head_distance < head_dist_threshold):
+    if (angle < angle_threshold and head_distance < head_dist_threshold):
         res = True
     else:
         res = False
@@ -341,5 +342,3 @@ def jitter(x, y, s=40, c='b', marker='o', cmap=None, norm=None, vmin=None,
                       s=s, c=c, marker=marker, cmap=cmap, norm=norm, 
                       vmin=vmin, vmax=vmax, alpha=alpha, linewidths=linewidths, 
                       **kwargs)
-
-
