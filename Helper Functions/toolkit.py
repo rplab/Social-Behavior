@@ -7,7 +7,7 @@
 # ------------------------------------------------------------------------------
 import os
 import re
-import pandas as pd
+from scipy.io import loadmat
 import matplotlib.pyplot as plt
 from operator import itemgetter
 from itertools import groupby
@@ -52,62 +52,96 @@ two_week_dark_centers = {
 }
 
 
-def load_data(dir, file_path, dataset_type, dist_thresh):
+# def load_data(dir, file_path, dataset_type, dist_thresh):
+#     """
+#     Loads files from a directory into arrays,
+#     removes all window frames where at least one 
+#     of the two fish is close to the edge of the 
+#     petri dish, and stores the resulting arrays
+#     into .npz compressed files.
+
+#     Args:
+#         dir (str)          : the folder directory that 
+#                              contains the files.
+#         file_path (str)    : the folder directory to which
+#                              the data arrays are stored. 
+#         dataset_type (str) : e.g. 2 week light or 6 week. 
+#         dist_thresh        : the distance cutoff from the 
+#                              center of the petri dish.
+
+#     Returns:
+#         N/A
+#     """
+#     if dataset_type == '2 week light':
+#         centers = two_week_light_centers
+#     else:
+#         centers = two_week_dark_centers
+
+#     # Recurse through all folders 
+#     for (root, dirs, files) in os.walk(dir, topdown=True):
+#         # Recurse through each file in every folder
+#         for name in files:
+#             dataset = os.path.join(root, name)
+#             dataset_name = re.search('(\d[a-z]+_)?\d[a-z]+_[a-z]+\d', dataset).group()    # Fix Regex; see Raghu's email
+#             data = pd.read_csv(dataset)
+#             data.to_pickle(f'./{dataset_name}.pkl')
+#             data_ = pd.read_pickle(f'./{dataset_name}.pkl')
+#             fish1_data = data_[:15000]
+#             fish2_data = data_[15000:]
+
+#             # Calculate distance from center for each fish;
+#             # If calculated distance greater than threshold, remove
+#             # window frame from both arrays
+#             if dataset_name in centers.keys():
+#                 center = list(centers[dataset_name])
+#                 wfs_to_remove = []
+                
+#                 for idx in range(15000):   # Each 2D array is originally of size 15000
+#                     if (np.linalg.norm(fish1_data[idx][3:5] - center) > dist_thresh
+#                     or (np.linalg.norm(fish2_data[idx][3:5] - center) > dist_thresh)):
+#                         wfs_to_remove.append(idx)
+                
+#                 wfs_to_remove = np.array(wfs_to_remove)
+#                 fish1_data = np.delete(fish1_data, wfs_to_remove, axis=0)
+#                 fish2_data = np.delete(fish2_data, wfs_to_remove, axis=0)
+                    
+#                 np.savez_compressed(f"{file_path}\{dataset_name}", fish1_data, fish2_data)
+
+
+def mat_to_arr(mat_file):
     """
-    Loads files from a directory into arrays,
-    removes all window frames where at least one 
-    of the two fish is close to the edge of the 
-    petri dish, and stores the resulting arrays
-    into .npz compressed files.
+    Loads .mat tracking data and extracts necessary data arrays used for 
+    the analysis.
 
     Args:
-        dir (str)          : the folder directory that 
-                             contains the files.
-        file_path (str)    : the folder directory to which
-                             the data arrays are stored. 
-        dataset_type (str) : e.g. 2 week light or 6 week. 
-        dist_thresh        : the distance cutoff from the 
-                             center of the petri dish.
+        mat_file: the .mat file to be loaded.
 
     Returns:
-        N/A
+        data (dict): a dictionary of head positions, tail angles, and 
+                     ten body markers for the two fish.
+    
     """
-    if dataset_type == '2 week light':
-        centers = two_week_light_centers
-    else:
-        centers = two_week_dark_centers
+    loaded = loadmat(mat_file)['videoDataResults'][0, 0]['wellPoissMouv'].flatten()
+    fish1_d = np.array(loaded[0][0][0].tolist(), dtype=object)
+    fish2_d = np.array(loaded[1][0][0].tolist(), dtype=object)
 
-    # Recurse through all folders 
-    for (root, dirs, files) in os.walk(dir, topdown=True):
-        # Recurse through each file in every folder
-        for name in files:
-            dataset = os.path.join(root, name)
-            dataset_name = re.search('(\d[a-z]+_)?\d[a-z]+_[a-z]+\d', dataset).group()    # Fix Regex; see Raghu's email
-            data = pd.read_csv(dataset)
-            data.to_pickle(f'./{dataset_name}.pkl')
-            data_ = pd.read_pickle(f'./{dataset_name}.pkl')
-            fish1_data = data_[:15000]
-            fish2_data = data_[15000:]
+    fish1_headpos = np.vstack((fish1_d[4], fish1_d[5])).T
+    fish1_angles = fish1_d[6]
+    fish1_bodyx = fish1_d[7]
+    fish1_bodyy = fish1_d[8]
 
-            # Calculate distance from center for each fish;
-            # If calculated distance greater than threshold, remove
-            # window frame from both arrays
-            if dataset_name in centers.keys():
-                center = list(centers[dataset_name])
-                wfs_to_remove = []
-                
-                for idx in range(15000):   # Each 2D array is originally of size 15000
-                    if (np.linalg.norm(fish1_data[idx][3:5] - center) > dist_thresh
-                    or (np.linalg.norm(fish2_data[idx][3:5] - center) > dist_thresh)):
-                        wfs_to_remove.append(idx)
-                
-                wfs_to_remove = np.array(wfs_to_remove)
-                fish1_data = np.delete(fish1_data, wfs_to_remove, axis=0)
-                fish2_data = np.delete(fish2_data, wfs_to_remove, axis=0)
-                    
-                np.savez_compressed(f"{file_path}\{dataset_name}", fish1_data, fish2_data)
+    fish2_headpos = np.vstack((fish2_d[4], fish2_d[5])).T
+    fish2_angles = fish2_d[6]
+    fish2_bodyx = fish2_d[7]
+    fish2_bodyy = fish2_d[8]
 
-            
+    data = {"headpos" : (fish1_headpos, fish2_headpos),
+            "angles"  : (fish1_angles, fish2_angles),
+            "body_posx": (fish1_bodyx, fish2_bodyx),
+            "body_posy": (fish1_bodyy, fish2_bodyy)
+    }
+    return data
+
 
 def get_cos_angle(fish1_angles, fish2_angles):
     """
