@@ -3,54 +3,16 @@
 #----------------------------------------------------------------------------
 # Created By  : Estelle Trieu 
 # Created Date: 9/19/2022
-# version ='1.0'
-# last modified May 28, 2023 by Raghu Parthasarathy
+# version ='2.0' Raghuveer Parthasarathy
+# last modified June 23, 2023 by Raghu Parthasarathy
 # ---------------------------------------------------------------------------
 import numpy as np
 import xlsxwriter
 import matplotlib.pyplot as plt
 # ---------------------------------------------------------------------------
 
-def get_txt_file(dataset_name, circling, none, one, both, any, 
-head_body, tail_rub):
-    """
-    Creates a txt file of the relevant window frames and event durations
-    for a set of social behaviors.
 
-    Args:
-        circling (array) : an array of circling window frames.
-        none (array)     : an arary of 90-degree orientation (none) window frames.
-        one (array)      : an arary of 90-degree orientation (one) window frames.
-        both (array)     : an arary of 90-degree orientation (both) window frames.
-        any (array)      : an array of fish contact (any) window frames.
-        head_body (array): an array of fish contact (head-body) window frames.
-        tail_rub (array) : an array of tail-rubbing window frames.
-
-    Returns:
-        N/A
-    """
-    with open(f"{dataset_name}.txt", "w") as results_file:
-        results_file.write(f"Circling: {circling.shape[1]}\n" + 
-                           f"Circling Frames: {circling[0,:]}\n" +
-                           f"Circling Durations: {circling[1,:]}\n\n")
-        results_file.write(f"90-degrees: {none.shape[1]}, {one.shape[1]}, {both.shape[1]}\n" +
-            f"none Frames: {none[0,:]}\n" + 
-            f"none Durations: {none[1,:]}\n" + 
-            f"one Frames: {none[0,:]}\n" + 
-            f"one Durations: {none[1,:]}\n" + 
-            f"both Frames: {none[0,:]}\n" + 
-            f"both Durations: {none[1,:]}\n\n" )
-        results_file.write(f"Any Contact: {any.shape[1]}\n" + 
-            f"Any contact Frames: {any[0,:]}\n" + 
-            f"Any contact Durations: {any[1,:]}\n")
-        results_file.write(f"Head-Body Contact: {head_body.shape[1]}\n" + 
-            f"Head-Body contact Frames: {head_body[0,:]}\n" + 
-            f"Head-Body contact Durations: {head_body[1,:]}\n")
-        results_file.write(f"Tail-rubbing: {tail_rub.shape[1]}\n" + 
-                           f"Tail-rubbing Frames: {tail_rub[0,:]}\n" +
-                           f"Tail-rubbing Durations: {tail_rub[1,:]}\n\n")
-
-
+    
 def get_excel_file(dataset_name, circling, none, one, both, any_contact, 
 head_body, tail_rub):
     """

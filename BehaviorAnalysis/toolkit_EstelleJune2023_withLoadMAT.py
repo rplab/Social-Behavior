@@ -4,71 +4,143 @@
 # Created By  : Estelle Trieu 
 # Created Date: 9/7/2022
 # version ='1.0'
-# last modified: Raghuveer Parthasarathy, May 29, 2023
-# ---------------------------------------------------------------------------
-import numpy as np
+# ------------------------------------------------------------------------------
 import os
 import re
+from scipy.io import loadmat
 import matplotlib.pyplot as plt
+from operator import itemgetter
+from itertools import groupby
 import numpy as np
-# ---------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+two_week_light_centers = {
+    '3b_k2': (982.889, 1123.366), '3b_k3': (989.147, 1105.233),
+    '3b_k4': (1027.275, 1116.705), '3b_k5': (961.83, 1116.671),
+    '3b_k6': (1003.415, 1098.898), '3b_k7': (994.207, 1123.541),
+    '3b_k8': (1018.048, 1123.059), '3b_k9': (991.903, 1132.162),
+    '3b_k10': (1012.457, 1119.279),'3b_k11': (959.601, 1135.131),
+    '3b_k12': (1018.355, 1096.428),'3b_nk1': (995.128, 1131.831),
+    '3b_nk2': (968.158, 1120.104), '3b_nk3': (994.503, 1113.68),
+    '3b_nk4': (1002.748, 1113.869), '3b_nk5': (988.359, 1134.509),
+    '3b_nk6': (993.954, 1107.492), '3b_nk7': (986.441, 1116.652),
+    '3b_nk8': (979.737, 1122.867), '3b_nk9': (1009.418, 1108.563),
+    '3b_nk10': (1023.671, 1101.803), '3b_nk11': (986.681, 1108.271),
+    '3c_2wpf_k1': (1005.402, 1027.511), '3c_2wpf_k2': (986.591, 1019.49),
+    '3c_2wpf_k3': (1013.251, 1022.029), '3c_2wpf_k4': (1000.811, 1027.525),
+    '3c_2wpf_k5': (993.104, 1009.799), '3c_2wpf_k6': (998.651, 1007.324),
+    '3c_2wpf_k7': (974.895, 1030.236), '3c_2wpf_k8': (1001.056, 1036.838),
+    '3c_2wpf_k9': (1013.074, 1039.872), '3c_2wpf_k10': (1027.721, 1025.174),
+    '3c_2wpf_k11': (989.75, 977.209), '3c_2wpf_nk1': (998.203, 1034.07),
+    '3c_2wpf_nk2': (1030.515, 1042.13), '3c_2wpf_nk3': (1012.823, 1029.737),
+    '3c_2wpf_nk4': (981.186, 1024.613), '3c_2wpf_nk5': (1006.868, 1015.557),
+    '3c_2wpf_nk6': (1004.324, 1025.355), '3c_2wpf_nk7': (1006.978, 1013.005),
+    '3c_2wpf_nk8': (1004.194, 1024.702), '3c_2wpf_nk9': (1012.747, 1021.973),
+    '3c_2wpf_nk10': (1042.187, 1037.164) 
+}
 
-def get_CSV_folder_and_filenames():
+two_week_dark_centers = {
+    '5a_k1' : (469.674, 492.335), '5a_k2' : (462.286, 463.342), 
+    '5a_k3' : (466.653, 489.392), '5a_k5' : (479.459, 465.974), 
+    '5a_k6' : (489.104, 477.871), '5a_k7' : (468.044, 461.357), 
+    '5a_k8' : (470.267, 473.77), '5a_k9' : (471.121, 468.212), 
+    '5a_k10' : (484.749, 478.691), '5a_nk1' : (473.103, 472.041), 
+    '5a_nk2' : (481.051, 460.597), '5a_nk3' : (477.29, 468.048), 
+    '5a_nk4' : (470.988, 468.913), '5a_nk5' : (473.09, 463.224), 
+    '5a_nk6' : (478.253, 462.838), '5a_nk7' : (470.131, 490.965), 
+    '5a_nk8' : (480.611, 479.219), '5a_nk9' : (473.563, 464.297), 
+    '5a_nk10' : (477.911, 500.252), 
+}
+
+
+# def load_data(dir, file_path, dataset_type, dist_thresh):
+#     """
+#     Loads files from a directory into arrays,
+#     removes all window frames where at least one 
+#     of the two fish is close to the edge of the 
+#     petri dish, and stores the resulting arrays
+#     into .npz compressed files.
+
+#     Args:
+#         dir (str)          : the folder directory that 
+#                              contains the files.
+#         file_path (str)    : the folder directory to which
+#                              the data arrays are stored. 
+#         dataset_type (str) : e.g. 2 week light or 6 week. 
+#         dist_thresh        : the distance cutoff from the 
+#                              center of the petri dish.
+
+#     Returns:
+#         N/A
+#     """
+#     if dataset_type == '2 week light':
+#         centers = two_week_light_centers
+#     else:
+#         centers = two_week_dark_centers
+
+#     # Recurse through all folders 
+#     for (root, dirs, files) in os.walk(dir, topdown=True):
+#         # Recurse through each file in every folder
+#         for name in files:
+#             dataset = os.path.join(root, name)
+#             dataset_name = re.search('(\d[a-z]+_)?\d[a-z]+_[a-z]+\d', dataset).group()    # Fix Regex; see Raghu's email
+#             data = pd.read_csv(dataset)
+#             data.to_pickle(f'./{dataset_name}.pkl')
+#             data_ = pd.read_pickle(f'./{dataset_name}.pkl')
+#             fish1_data = data_[:15000]
+#             fish2_data = data_[15000:]
+
+#             # Calculate distance from center for each fish;
+#             # If calculated distance greater than threshold, remove
+#             # window frame from both arrays
+#             if dataset_name in centers.keys():
+#                 center = list(centers[dataset_name])
+#                 wfs_to_remove = []
+                
+#                 for idx in range(15000):   # Each 2D array is originally of size 15000
+#                     if (np.linalg.norm(fish1_data[idx][3:5] - center) > dist_thresh
+#                     or (np.linalg.norm(fish2_data[idx][3:5] - center) > dist_thresh)):
+#                         wfs_to_remove.append(idx)
+                
+#                 wfs_to_remove = np.array(wfs_to_remove)
+#                 fish1_data = np.delete(fish1_data, wfs_to_remove, axis=0)
+#                 fish2_data = np.delete(fish2_data, wfs_to_remove, axis=0)
+                    
+#                 np.savez_compressed(f"{file_path}\{dataset_name}", fish1_data, fish2_data)
+
+
+def mat_to_arr(mat_file):
     """
-    Gets the folder path containing CSV files, and a list of all CSV files
-    whose names start with “results""
-    """
-    
-    folder_path = input("Enter the folder path for CSV files, or leave empty for cwd: ")
-    
-    if folder_path=='':
-        folder_path = os.getcwd() # Current working directory
-        
-    # Validate the folder path
-    while not os.path.isdir(folder_path):
-        print("Invalid folder path. Please try again.")
-        folder_path = input("Enter the folder path: ")
-
-    print("Selected folder path: ", folder_path)
-    
-    # Make a list of all CSV files in the folder
-    allCSVfileNames = []
-    print("Noting CSV Files with names starting with 'results': ")
-    for filename in os.listdir(folder_path):
-        if (filename.endswith('.csv') and filename.startswith('results')):
-            allCSVfileNames.append(filename)
-
-    return folder_path, allCSVfileNames
-
-
-def load_data(dir, idx_1, idx_2):
-    """
-    Returns the correct data array for fish1 and fish2 
-    from a specified dataset. The data array may contain
-    values for position, angle, body marker information, 
-    etc. depending on the range specified by the two
-    input indices. 
+    Loads .mat tracking data and extracts necessary data arrays used for 
+    the analysis.
 
     Args:
-        dir (str)  : the dataset's name.
-        idx_1 (int): the beginning index from
-                     which data should be loaded.
-        idx_2 (int): the ending index from
-                     which data should be loaded.
+        mat_file: the .mat file to be loaded.
 
     Returns:
-        A tuple containing the following arrays:
-            fish1_data: data array for fish1.
-            fish2_data: data arary for fish2.
+        data (dict): a dictionary of head positions, tail angles, and 
+                     ten body markers for the two fish.
+    
     """
-    data = np.genfromtxt(dir, delimiter=',')
-    Nrows = data.shape[0] # number of rows
-    if np.mod(Nrows,2) == 1:
-        print('Error! number of rows is odd. load_data in toolkit.py')
-    half_size = int(Nrows/2)
-    fish1_data = data[:half_size][:, np.r_[idx_1:idx_2]] 
-    fish2_data = data[half_size:][:, np.r_[idx_1:idx_2]]
-    return fish1_data, fish2_data
+    loaded = loadmat(mat_file)['videoDataResults'][0, 0]['wellPoissMouv'].flatten()
+    fish1_d = np.array(loaded[0][0][0].tolist(), dtype=object)
+    fish2_d = np.array(loaded[1][0][0].tolist(), dtype=object)
+
+    fish1_headpos = np.vstack((fish1_d[4], fish1_d[5])).T
+    fish1_angles = fish1_d[6]
+    fish1_bodyx = fish1_d[7]
+    fish1_bodyy = fish1_d[8]
+
+    fish2_headpos = np.vstack((fish2_d[4], fish2_d[5])).T
+    fish2_angles = fish2_d[6]
+    fish2_bodyx = fish2_d[7]
+    fish2_bodyy = fish2_d[8]
+
+    data = {"headpos" : (fish1_headpos, fish2_headpos),
+            "angles"  : (fish1_angles, fish2_angles),
+            "body_posx": (fish1_bodyx, fish2_bodyx),
+            "body_posy": (fish1_bodyy, fish2_bodyy)
+    }
+    return data
 
 
 def get_cos_angle(fish1_angles, fish2_angles):
@@ -91,10 +163,9 @@ def get_cos_angle(fish1_angles, fish2_angles):
     return cos_angle_avg
 
 
-
 def get_head_distance(fish1_positions, fish2_positions):
     """
-    Returns the mean head distance between two fish averaged 
+    Returns the head distance between two fish averaged 
     over some window size.
 
     Args:
@@ -160,7 +231,7 @@ def get_fish_vectors(fish1_angles, fish2_angles):
 
 
 def check_antiparallel_criterion(fish1_positions, fish2_positions, fish1_angles, 
-fish2_angles, lower_threshold, upper_threshold, head_dist_threshold):
+fish2_angles, angle_threshold, head_dist_threshold):
     """
     Returns True if two fish are antiparallel to each other;
     False otherwise.
@@ -174,18 +245,16 @@ fish2_angles, lower_threshold, upper_threshold, head_dist_threshold):
                                  [[x1, y1], [x2, y2], [x3, y3],...].
         fish1_angles (array): a 1D array of angles for x window frames for fish1.
         fish2_angles (array): a 1D array of angles for x window frames for fish2.
-        lower_threshold (float)  : lower bound for antiparallel angle.
-        upper_threshold (float)  : upper bound for antiparallel angle.
+        angle_threshold (float)  : threshold for antiparallel angle.
         head_dist_threshold (int): head distance threshold for the two fish.
 
     Returns:
         True if the fish are antiparallel; False otherwise.
     """
-    cos_angle = get_cos_angle(fish1_angles, fish2_angles)
+    angle = get_cos_angle(fish1_angles, fish2_angles)
     head_distance = get_head_distance(fish1_positions, fish2_positions)
 
-    if (lower_threshold <= cos_angle < upper_threshold and 
-    head_distance < head_dist_threshold):
+    if (angle < angle_threshold and head_distance < head_dist_threshold):
         res = True
     else:
         res = False
@@ -208,45 +277,35 @@ def normalize_by_mean(motion):
     return normalized
 
 
-def combine_events(events):
+def combine_events(event_arr):
     """
-    Given an array of frame numbers, return an arrays of frame numbers 
-    with adjacent frames combined and duration numbers 
-    corresponding to the duration of adjacent frames.
-    For example, frames…
-    	1, 5, 12, 13, 14, 17, 22, 23, 34, 40
-    Would be returned as frame numbers
-        5, 12, 17, 22, 34, 40
-    And durations
-        1, 3, 1, 2, 1, 1
-    See Raghu's notes May 28, 2023, and example_get_runs_and_durations.py 
-        for a description of the method
+    Combine adjacent window frames into a single event with 
+    an associated duration.
 
     Args:
-        events (array): an array of frame numbers corresponding to events
-                           (e.g. frames of detected circling, 
-                            tail-rubbing, 90-degree events).
+        event_arr (array): an array of social behavior window frames
+                           (e.g. circling, tail-rubbing, 90-degree events).
 
     Returns:
-        combined_events_and_durations (array) : a 2 x N array; Row 1
-            are uninque, non-adjacent frame numbers, and Row 2 are the 
-            corresponding durations.
-            and duration numbers corresponding to the duration of adjacent frames.
-    """
-    d_events = np.diff(events)
-    idx1 = np.array(np.where(d_events==1)).flatten() + 1  # index + 1 of flat regions
-    idx_keep = np.setdiff1d(np.arange(len(events)), idx1) # indexes of x to keep
-    unique_events = events[idx_keep]
-    durations = np.ones_like(unique_events)
-    for j in range(len(idx1)-1,-1, -1):
-        # find the closest idx_keep under idx1[j]
-        close_idx = max(idx_keep[idx1[j] > idx_keep])
-        duration_idx = np.array(np.where(idx_keep == close_idx)).flatten()
-        durations[duration_idx] += 1
+        combined (array) : a modified array of social behavior window frames
+                           where adjacent window frames are classified as a 
+                           single event. 
     
-    combined_events_and_durations = np.stack((events[idx_keep], durations))
-    return combined_events_and_durations
+    """
+    combined = []
 
+    for k, g in groupby(enumerate(event_arr), lambda x:x[0]-x[1]):
+        group = (map(itemgetter(1), g))     # Adjacent frames have a diff of 1
+        group = list(map(int, group))
+
+        # Adjacent window frames have format (start, finish, duration)
+        # if len(group) > 1:
+        #     combined.append((group[0], group[-1], group[-1] - group[0]))
+        # else:
+        #     combined.append(group[0])
+        combined.append(group[0])
+
+    return np.array(combined)
 
 
 def get_mean_body_size(body1_x, body2_x, body1_y, body2_y, end):
@@ -317,4 +376,3 @@ def jitter(x, y, s=40, c='b', marker='o', cmap=None, norm=None, vmin=None,
                       s=s, c=c, marker=marker, cmap=cmap, norm=norm, 
                       vmin=vmin, vmax=vmax, alpha=alpha, linewidths=linewidths, 
                       **kwargs)
-

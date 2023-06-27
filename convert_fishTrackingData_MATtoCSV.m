@@ -23,19 +23,19 @@
 %             positions, videoDataResults.wellPositions{1,1} = 
 %             topLeftX, topLeftY,  lengthX, lengthY (px), saved in that
 %             order.
-%             (For example: wellOffsetPositionCSVfile.csv)
-%             NOTE: overwrites earlier files!
-%             NOTE: the well positions recorded in the MAT files seem to be
-%                   incorrect!
+%             (For example: wellOffsetPositionsCSVfile.csv)
+%             Note that arena centers are the center coordinates written in
+%                 ArenaCenters_SocPref_3456 minus (topLeftX, topLeftY).
 %             Leave empty to ignore well positions; skip writing a file
 %   makePlots : make plots; default = false
 
 % Raghuveer Parthasarathy
 % April 29, 2022
 % Major changes June 18, 2023 (reading and writing multiple MAT/CSV files, etc.)
-% last modified June 18, 2023
+% last modified June 19, 2023
 
-function convert_fishTrackingData_MATtoCSV(dataDir, MATfilenames, makePlots, wellOffsetPositionCSVfile)
+function convert_fishTrackingData_MATtoCSV(dataDir, MATfilenames, ...
+    makePlots, wellOffsetPositionCSVfile)
 
 %% Inputs
 
@@ -79,13 +79,24 @@ for j=1:Nfiles
     wellPositionStringsAll{j} = convertMAT_to_CSV_1(MATfilenames{j}, makePlots);
 end
 
-% Export all well positions to CSV, optional
+% Export all well offset positions to CSV, optional
 if ~isempty(wellOffsetPositionCSVfile)
-    fileID = fopen(wellOffsetPositionCSVfile,'w');
-    for j=1:Nfiles
-        fprintf(fileID,wellPositionStringsAll{j});
+    writeFile = true;
+    if exist(wellOffsetPositionCSVfile, 'file')==2
+        ask_overwrite = input('\nOffset Postions file exists. Overwrite? (y=yes)', 's');
+        if strcmpi(ask_overwrite, 'y')
+            writeFile = true;
+        else
+            writeFile = false;
+        end
     end
-    fclose(fileID);
+    if writeFile
+        fileID = fopen(wellOffsetPositionCSVfile,'w');
+        for j=1:Nfiles
+            fprintf(fileID,wellPositionStringsAll{j});
+        end
+        fclose(fileID);
+    end
 end
 
 cd(pDir)
