@@ -629,9 +629,10 @@ def write_behavior_txt_file(dataset, key_list):
     """
     with open(f"{dataset['dataset_name']}.txt", "w") as results_file:
         results_file.write(f"{dataset['dataset_name']}\n")
-        results_file.write(f"Duration: {dataset['total_time_seconds']:.1f} s\n")
-        results_file.write(f"Mean length: {dataset['fish_length_mean']:.2f} px\n")
-        results_file.write(f"Mean inter-fish distance: {dataset['inter-fish_distance_mean']:.2f} px\n")
+        results_file.write(f"   Duration: {dataset['total_time_seconds']:.1f} s\n")
+        results_file.write(f"   Mean length: {dataset['fish_length_mean']:.2f} px\n")
+        results_file.write(f"   Mean difference in length: {dataset['fish_length_Delta_mean']:.2f} px\n")
+        results_file.write(f"   Mean inter-fish distance: {dataset['inter-fish_distance_mean']:.2f} px\n")
         for k in key_list:
             outString = f'{k} N_events: {dataset[k]["combine_frames"].shape[1]}\n' + \
                     f'{k} Total N_frames: {dataset[k]["total_duration"]}\n' + \
