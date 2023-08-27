@@ -2,9 +2,10 @@
 # -*- coding: utf-8 -*- 
 #----------------------------------------------------------------------------
 # Created By  : Estelle Trieu 
+# Re-written by : Raghuveer Parthasarathy
 # Created Date: 9/19/2022
 # version ='2.0'
-# last modified: Raghuveer Parthasarathy, June 23, 2023
+# last modified: Raghuveer Parthasarathy, July 10, 2023
 # ---------------------------------------------------------------------------
 
 import csv
@@ -12,12 +13,14 @@ import os
 import numpy as np
 import xlsxwriter
 from time import perf_counter
+import pickle
 from toolkit import *
-from circling import *
-from ninety_deg import *
-from contact import *
-from tail_rubbing import *
-from visualize_behaviors import *
+from behavior_identification import get_circling_frames, \
+    get_contact_frames, get_inferred_contact_frames, get_90_deg_frames, \
+    get_tail_rubbing_frames, get_bent_frames, calcOrientationXCorr
+
+import matplotlib.pyplot as plt
+from scipy.stats import skew
 
 # ---------------------------------------------------------------------------
 
@@ -28,26 +31,30 @@ def defineParameters():
     """
 
     fps = 25.0  # frames per second
-    arena_radius_mm = 25.0  # arena radius
+    arena_radius_mm = 25.0  # arena radius, mm
 
     params = {
         "arena_edge_threshold_mm" : 5,
-        "circ_windowsize" : 25,
+        "circle_windowsize" : 25,
         "circle_fit_threshold" : 0.25,
-        "circ_head_dist": 240,
+        "circle_distance_threshold": 240,
         "cos_theta_AP_threshold" : -0.7,
         "cos_theta_tangent_threshold" : 0.34,
         "motion_threshold" : 2.0,
-        "90_ws" : 4,
+        "90_windowsize" : 4,
         "cos_theta_90_thresh" : 0.17,
+        "cosSeeingAngle" : 0.5,
         "90_head_dist" : 300,
-        "contact_distance" : 10,
+        "contact_distance_threshold" : 20,
+        "contact_inferred_distance_threshold" : 60,
         "contact_inferred_window" : 3,
         "tail_rub_ws" : 2,
         "tail_dist" : 30,
         "tail_rub_head_dist": 220,
         "tail_anti_low": -1,
         "tail_anti_high": -0.8,
+        "bending_threshold" : 2/np.pi, 
+        "angle_xcorr_windowsize" : 25
     }
     
     # Specify columns of the CSV files with fish trajectory information
@@ -90,9 +97,14 @@ def main():
     
     cwd = os.getcwd() # Current working directory
     
+    print(' ')
     folder_path, allCSVfileNames = get_CSV_folder_and_filenames() # Get folder containing CSV files
     print(f'\n\n All {len(allCSVfileNames)} CSV files starting with "results": ')
     print(allCSVfileNames)
+    
+    print(' ')
+    print('Enter the filename for an output pickle file (w/ all datasets).')
+    pickleFileName = input('   Will append .pickle. Leave blank for none.: ')
     
     # Number of datasets
     N_datasets = len(allCSVfileNames)
@@ -105,7 +117,7 @@ def main():
     for j, CSVfileName in enumerate(allCSVfileNames):
         datasets[j]["CSVfilename"] = CSVfileName
         datasets[j]["dataset_name"] = get_dataset_name(CSVfileName)
-        datasets[j]["image_scale"] = np.float(get_imageScale(datasets[j]["dataset_name"], 
+        datasets[j]["image_scale"] = float(get_imageScale(datasets[j]["dataset_name"], 
                                                     imageScaleLocation))
         # Load all the position information as a numpy array
         print('Loading dataset: ', datasets[j]["dataset_name"])
@@ -121,7 +133,6 @@ def main():
         datasets[j]["arena_center"] = get_ArenaCenter(datasets[j]["dataset_name"], 
                                                     arenaCentersLocation,
                                                     offsetPositionsFilename)
-        # print([d['arena_center'] for d in datasets])  # All arena centers
 
         # Estimate center location of Arena
         # datasets[j]["arena_center"] = estimate_arena_center(datasets[j]["all_data"],
@@ -151,6 +162,11 @@ def main():
             plt.plot(np.arange(datasets[j]["fish_length_array"].shape[0]), 
                      datasets[j]["fish_length_array"][:,1], c='darkturquoise')
             plt.title(datasets[j]["dataset_name"] )
+            
+        # Get the sliding window cross-correlation of heading angles
+        datasets[j]["xcorr_array"] = \
+            calcOrientationXCorr(datasets[j]["all_data"], CSVcolumns, 
+                                 params["angle_xcorr_windowsize"])
 
             
     # For each dataset, identify edge and bad-tracking frames
@@ -184,61 +200,129 @@ def main():
         print('   Number of bad body tracking frames: ', len(datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
 
         
-    # For each dataset, the mean inter-fish distance and fish length, 
-    # not counting bad-tracking frames
+    # For each dataset, exclude bad tracking frames from:
+    # the mean inter-fish distance, 
+    # the mean fish length, 
+    # the mean absolute difference in fish length, 
     for j in range(N_datasets):
-        print('Dataset: ', datasets[j]["dataset_name"])
-        goodIdx = np.where(np.setdiff1d(datasets[j]["frameArray"], datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+        print('Removing bad frames from stats for length, distance for Dataset: ', 
+              datasets[j]["dataset_name"])
+        goodIdx = np.where(np.in1d(datasets[j]["frameArray"], 
+                                   datasets[j]["bad_bodyTrack_frames"]["raw_frames"], 
+                                   invert=True))[0]
         goodLengthArray = datasets[j]["fish_length_array"][goodIdx]
         goodDistanceArray = datasets[j]["inter-fish_distance"][goodIdx]
         datasets[j]["fish_length_mean"] = np.mean(goodLengthArray)
+        datasets[j]["fish_length_Delta_mean"] = np.mean(np.abs(np.diff(goodLengthArray, 1)))
+        datasets[j]["fish_length_Delta_std"] = np.std(np.abs(np.diff(goodLengthArray, 1)))
         datasets[j]["inter-fish_distance_mean"] = np.mean(goodDistanceArray)
-        print(f'   Mean fish length {datasets[j]["fish_length_mean"]:.2f} px')
+        print(f'   Mean fish length: {datasets[j]["fish_length_mean"]:.2f} px')
+        print('   Mean +/- std. of difference in fish length: ', 
+              f'{datasets[j]["fish_length_Delta_mean"]:.2f} +/- {datasets[j]["fish_length_Delta_std"]:.2f}px')
         print(f'   Mean inter-fish distance {datasets[j]["inter-fish_distance_mean"]:.2f} px')
     
+    # For each dataset, exclude bad tracking frames from:
+    # the angle-heading cross-correlation
+    # if they occur anywhere in the sliding window
+    for j in range(N_datasets):
+        print('Removing bad frames from stats for angle xcorr for Dataset: ', 
+              datasets[j]["dataset_name"])
+        badFrames = datasets[j]["bad_bodyTrack_frames"]["raw_frames"]
+        expandBadFrames = []
+        for k in range(len(badFrames)):
+            # make a list of all frames that are within windowsize prior to bad frames
+            expandBadFrames = np.append(expandBadFrames, 
+                                        np.arange(badFrames[k] - 
+                                                  params["angle_xcorr_windowsize"]+1, 
+                                                  badFrames[k]))
+        expandBadFrames = np.unique(expandBadFrames)    
+        goodIdx = np.where(np.in1d(datasets[j]["frameArray"], 
+                                   expandBadFrames, invert=True))[0]
+        goodXCorrArray = datasets[j]["xcorr_array"][goodIdx]
+        datasets[j]["xcorr_mean"] = np.mean(goodXCorrArray)
+        datasets[j]["xcorr_std"] = np.std(goodXCorrArray)
+        datasets[j]["xcorr_skew"] = skew(goodXCorrArray)
+        print(f'   Mean, std, skew heading angle XCorr: {datasets[j]["xcorr_mean"]:.4f}, {datasets[j]["xcorr_std"]:.4f}, {datasets[j]["xcorr_skew"]:.4f}')
+
+
     # For each dataset, identify behaviors
     for j in range(N_datasets):
         
-            print('Dataset name: ', datasets[j]["dataset_name"])
+            print('Identifying behaviors for Dataset: ', 
+                  datasets[j]["dataset_name"])
             
-            circling_frames, noneSee90_frames, oneSees90_frames, \
-                    bothSee90_frames, contact_any_frames, \
-                    contact_head_body_frames, contact_inferred_frames, \
-                    tail_rubbing_frames = \
+            perpendicular_noneSee_frames, \
+                    perpendicular_oneSees_frames, \
+                    perpendicular_bothSee_frames, \
+                    perpendicular_larger_fish_sees_frames, \
+                    perpendicular_smaller_fish_sees_frames, \
+                    contact_any_frames, \
+                    contact_head_body_frames, \
+                    contact_larger_fish_head, contact_smaller_fish_head, \
+                    contact_inferred_frames, tail_rubbing_frames, \
+                    bending_frames = \
                     extract_behaviors(datasets[j], params, CSVcolumns)
+            # removed "circling_frames," from the list
             
             # For each behavior, a dictionary containing frames, 
             # frames with "bad" elements removed
             # and a 2xN array of initial frames and durations
             # I could replace this with a loop through a list of keys, 
-            # like below, but I'd have to include the names of strings like 
-            # "circling frames," so it wouldn't be much more elegant.
-            datasets[j]["circling"] = make_frames_dictionary(circling_frames,
+            # like below, but I'd have to include the names of variables like 
+            # "contact_head_body_frames," so it wouldn't be much more elegant.
+            datasets[j]["perpendicular_noneSee"] = make_frames_dictionary(perpendicular_noneSee_frames,
                                           (datasets[j]["edge_frames"]["raw_frames"],
-                                           datasets[j]["bad_bodyTrack_frames"]))
-            datasets[j]["noneSee90"] = make_frames_dictionary(noneSee90_frames,
+                                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+            datasets[j]["perpendicular_oneSees"] = make_frames_dictionary(perpendicular_oneSees_frames,
                                           (datasets[j]["edge_frames"]["raw_frames"],
-                                           datasets[j]["bad_bodyTrack_frames"]))
-            datasets[j]["oneSees90"] = make_frames_dictionary(oneSees90_frames,
+                                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+            datasets[j]["perpendicular_bothSee"] = make_frames_dictionary(perpendicular_bothSee_frames,
                                           (datasets[j]["edge_frames"]["raw_frames"],
-                                           datasets[j]["bad_bodyTrack_frames"]))
-            datasets[j]["bothSee90"] = make_frames_dictionary(bothSee90_frames,
+                                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+            datasets[j]["perpendicular_bothSee"] = make_frames_dictionary(perpendicular_bothSee_frames,
                                           (datasets[j]["edge_frames"]["raw_frames"],
-                                           datasets[j]["bad_bodyTrack_frames"]))
+                                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+            datasets[j]["perpendicular_larger_fish_sees"] = make_frames_dictionary(perpendicular_larger_fish_sees_frames,
+                                          (datasets[j]["edge_frames"]["raw_frames"],
+                                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+            datasets[j]["perpendicular_smaller_fish_sees"] = make_frames_dictionary(perpendicular_smaller_fish_sees_frames,
+                                          (datasets[j]["edge_frames"]["raw_frames"],
+                                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
             datasets[j]["contact_any"] = make_frames_dictionary(contact_any_frames,
                                           (datasets[j]["edge_frames"]["raw_frames"],
-                                           datasets[j]["bad_bodyTrack_frames"]))
+                                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
             datasets[j]["contact_head_body"] = make_frames_dictionary(contact_head_body_frames,
                                           (datasets[j]["edge_frames"]["raw_frames"],
-                                           datasets[j]["bad_bodyTrack_frames"]))
+                                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+            datasets[j]["contact_larger_fish_head"] = make_frames_dictionary(contact_larger_fish_head,
+                                          (datasets[j]["edge_frames"]["raw_frames"],
+                                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+            datasets[j]["contact_smaller_fish_head"] = make_frames_dictionary(contact_smaller_fish_head,
+                                          (datasets[j]["edge_frames"]["raw_frames"],
+                                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
             datasets[j]["contact_inferred"] = make_frames_dictionary(contact_inferred_frames,
                                           (datasets[j]["edge_frames"]["raw_frames"],
-                                           datasets[j]["bad_bodyTrack_frames"]))
+                                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
             datasets[j]["tail_rubbing"] = make_frames_dictionary(tail_rubbing_frames,
                                           (datasets[j]["edge_frames"]["raw_frames"],
-                                           datasets[j]["bad_bodyTrack_frames"]))
+                                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+            datasets[j]["bending"] = make_frames_dictionary(bending_frames,
+                                          (datasets[j]["edge_frames"]["raw_frames"],
+                                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+            # delete "circling"
+            # datasets[j]["circling"] = make_frames_dictionary(circling_frames,
+            #                               (datasets[j]["edge_frames"]["raw_frames"],
+            #                                datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
 
-
+    # Write pickle file containing all datasets
+    if pickleFileName != '':
+        list_for_pickle = [datasets, CSVcolumns, fps, arena_radius_mm, params]
+        pickleFileName = pickleFileName + '.pickle'
+        print(f'\nWriting pickle file: {pickleFileName}\n')
+        with open(pickleFileName, 'wb') as handle:
+            pickle.dump(list_for_pickle, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    
+    
     # Write to individual text files, individual Excel sheets, and summary CSV file
     allDatasets_markFrames_ExcelFile = 'behaviors_in_each_frame.xlsx'
     markFrames_workbook = xlsxwriter.Workbook(allDatasets_markFrames_ExcelFile)  
@@ -246,27 +330,47 @@ def main():
     print('File for collecting all behavior counts: ', allDatasetsCSVfileName)
     makeDiagram = False
     with open(allDatasetsCSVfileName, "w", newline='') as results_file:
-        # behaviors to write
-        key_list = ["circling", "noneSee90", "oneSees90", "bothSee90", 
-                    "contact_any", "contact_head_body", "contact_inferred", 
-                    "tail_rubbing", "edge_frames", "bad_bodyTrack_frames"]
+        # behaviors (events) to write
+        key_list = ["perpendicular_noneSee", 
+                    "perpendicular_oneSees", "perpendicular_bothSee", 
+                    "perpendicular_larger_fish_sees", 
+                    "perpendicular_smaller_fish_sees", 
+                    "contact_any", "contact_head_body", 
+                    "contact_larger_fish_head", "contact_smaller_fish_head", 
+                    "contact_inferred", "tail_rubbing", "bending", 
+                    "edge_frames", "bad_bodyTrack_frames"]
+        # removed "circling"
         
         # For summary file
         writer=csv.writer(results_file, delimiter=',')
         writer.writerow(['Dataset', 'Total Time (s)', 
+                         'Mean difference in fish lengths (px)', 
                          'Mean Inter-fish dist (px)', 
-                         'Circling N_Events', '90deg-None N_Events', 
+                         'Angle XCorr mean', 
+                         'Angle XCorr std dev', 
+                         'Angle XCorr skew', 
+                         '90deg-None N_Events', 
                          '90deg-One N_Events', '90deg-Both N_Events', 
+                         '90deg-largerSees N_events', '90deg-smallerSees N_events', 
                          'Contact (any) N_Events', 
                          'Contact (head-body) N_Events', 
+                         'Contact (Larger fish head-body) N_Events', 
+                         'Contact (Smaller fish head-body) N_Events', 
                          'Contact (inferred) N_events', 'Tail-Rub N_Events', 
+                         'Bending N_Events', 
                          'Dish edge N_Events', 'Bad tracking N_events', 
-                         'Circling Duration', '90deg-None Duration', 
+                         '90deg-None Duration', 
                          '90deg-One Duration', '90deg-Both Duration', 
+                         '90deg-largerSees Duration', '90deg-smallerSees Duration', 
                          'Contact (any) Duration', 
                          'Contact (head-body) Duration', 
+                         'Contact (Larger fish head-body) Duration', 
+                         'Contact (Smaller fish head-body) Duration', 
                          'Contact (inferred) Duration', 'Tail-Rub Duration', 
+                         'Bending Duration', 
                          'Dish edge Duration', 'Bad Tracking Duration'])
+        # removed 'Circling N_Events', 'Circling Duration', 
+        
         for j in range(N_datasets):
             
             # Write for this dataset: summary in text file
@@ -280,7 +384,11 @@ def main():
             writer = csv.writer(results_file)
             list_to_write = [datasets[j]["dataset_name"]]
             list_to_write.append(datasets[j]["total_time_seconds"])
+            list_to_write.append(datasets[j]["fish_length_Delta_mean"])
             list_to_write.append(datasets[j]["inter-fish_distance_mean"])
+            list_to_write.append(datasets[j]["xcorr_mean"])
+            list_to_write.append(datasets[j]["xcorr_std"])
+            list_to_write.append(datasets[j]["xcorr_skew"])
             for k in key_list:
                 list_to_write.append(datasets[j][k]["combine_frames"].shape[1])
             for k in key_list:
@@ -305,9 +413,10 @@ def extract_behaviors(dataset, params, CSVcolumns):
     Outputs:
         arrays of all initial frames (row 1) and durations (row 2)
                      in which the various behaviors are 
-                     found: circling_wfs, noneSee90, oneSees90, bothSee90, 
-                     contact_any, contact_head_body, contact_inferred, 
-                     tail_rubbing_wf
+                     found: circling_wfs, perpendicular_noneSee, perpendicular_oneSees, perpendicular_bothSee, 
+                     contact_any, contact_head_body, 
+                     contact_larger_fish_head, contact_smaller_fish_head,
+                     contact_inferred, tail_rubbing_frames, bending_frames
 
     """
     
@@ -319,57 +428,57 @@ def extract_behaviors(dataset, params, CSVcolumns):
     pos_data = dataset["all_data"][:,CSVcolumns["pos_data_column_x"]:CSVcolumns["pos_data_column_y"]+1, :]
         # pos_data is Nframes x 2 (x and y positions) x 2 (Nfish) array of head positions
     angle_data = dataset["all_data"][:,CSVcolumns["angle_data_column"], :]
+    # body_x and _y are the body positions, each of size Nframes x 10 x 2 (fish)
     body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
     body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
         
-    # Number of frames should be the same for all loaded data (); not checking
     Nframes = np.shape(pos_data)[0] 
-        
-    # Visualize fish positions in some range of frames (optional)
-    makeVisualization = False
-    if makeVisualization:
-        startFrame = 3710  #3710 cirlcing in 3b_k2
-        endFrame = startFrame+20
-        visualize_fish(body_x, body_y, dataset["frameArray"], 
-                       startFrame, endFrame, dataset["dataset_name"])
 
-    t1_1 = perf_counter()
-    print(f'   t1_1 start circling analysis: {t1_1 - t1_start:.2f} seconds')
-    # Circling 
-    circling_wfs = get_circling_wf(pos_data, dataset["inter-fish_distance"], 
-                                   angle_data, Nframes, params["circ_windowsize"], 
-                                   params["circle_fit_threshold"], 
-                                   params["cos_theta_AP_threshold"], 
-                                   params["cos_theta_tangent_threshold"], 
-                                   params["motion_threshold"], 
-                                   params["circ_head_dist"])
+    # REMOVE CIRCLING
+    # t1_1 = perf_counter()
+    # print(f'   t1_1 start circling analysis: {t1_1 - t1_start:.2f} seconds')
+    # # Circling 
+    # circling_wfs = get_circling_frames(pos_data, dataset["inter-fish_distance"], 
+    #                                angle_data, Nframes, params["circle_windowsize"], 
+    #                                params["circle_fit_threshold"], 
+    #                                params["cos_theta_AP_threshold"], 
+    #                                params["cos_theta_tangent_threshold"], 
+    #                                params["motion_threshold"], 
+    #                                params["circle_distance_threshold"])
     
     t1_2 = perf_counter()
     print(f'   t1_2 start 90degree analysis: {t1_2 - t1_start:.2f} seconds')
     # 90-degrees 
-    orientation_dict = get_90_deg_wf(pos_data[:,:,0], pos_data[:,:,1], angle_data[:,0], 
-    angle_data[:,1], Nframes, params["90_ws"], params["cos_theta_90_thresh"], 
-    params["90_head_dist"])
-    noneSee90 = orientation_dict["noneSee"]
-    oneSees90 = orientation_dict["oneSees"]
-    bothSee90 = orientation_dict["bothSee"]
+    orientation_dict = get_90_deg_frames(pos_data, angle_data, 
+                                         Nframes, params["90_windowsize"], 
+                                         params["cos_theta_90_thresh"], 
+                                         params["90_head_dist"],
+                                         params["cosSeeingAngle"], 
+                                         dataset["fish_length_array"])
+    perpendicular_noneSee = orientation_dict["noneSee"]
+    perpendicular_oneSees = orientation_dict["oneSees"]
+    perpendicular_bothSee = orientation_dict["bothSee"]
+    perpendicular_larger_fish_sees = orientation_dict["larger_fish_sees"]
+    perpendicular_smaller_fish_sees = orientation_dict["smaller_fish_sees"]
  
     t1_3 = perf_counter()
     print(f'   t1_3 start contact analysis: {t1_3 - t1_start:.2f} seconds')
     # Any contact, or head-body contact
-    contact_dict = get_contact_wf(body_x[:,:,0], body_x[:,:,1], 
-                                body_y[:,:,0], body_y[:,:,1], Nframes, 
-                                params["contact_distance"])
+    contact_dict = get_contact_frames(body_x, body_y,  
+                                params["contact_distance_threshold"], 
+                                dataset["fish_length_array"])
     contact_any = contact_dict["any_contact"]
     contact_head_body = contact_dict["head-body"]
+    contact_larger_fish_head = contact_dict["larger_fish_head_contact"]
+    contact_smaller_fish_head = contact_dict["smaller_fish_head_contact"]
     contact_inferred_frames = get_inferred_contact_frames(dataset,
                         params["contact_inferred_window"],                                  
-                        2.0*params["contact_distance"])
+                        params["contact_inferred_distance_threshold"])
 
     t1_4 = perf_counter()
     print(f'   t1_4 start tail-rubbing analysis: {t1_4 - t1_start:.2f} seconds')
     # Tail-rubbing
-    tail_rubbing_wf = get_tail_rubbing_wf(body_x, body_y, 
+    tail_rubbing_frames = get_tail_rubbing_frames(body_x, body_y, 
                                           dataset["inter-fish_distance"], 
                                           angle_data, 
                                           params["tail_rub_ws"], 
@@ -377,38 +486,22 @@ def extract_behaviors(dataset, params, CSVcolumns):
     params["tail_anti_high"], params["tail_rub_head_dist"])
 
     t1_5 = perf_counter()
-    print(f'   t1_5 end analysis: {t1_5 - t1_start:.2f} seconds')
+    print(f'   t1_5 start bending analysis: {t1_5 - t1_start:.2f} seconds')
+    # bending
+    bending_frames = get_bent_frames(dataset, CSVcolumns, params["bending_threshold"])
 
-    return circling_wfs, noneSee90, oneSees90, bothSee90, \
-        contact_any, contact_head_body, contact_inferred_frames, \
-        tail_rubbing_wf
+    t1_6 = perf_counter()
+    print(f'   t1_6 end analysis: {t1_6 - t1_start:.2f} seconds')
 
+    # removed "circling_wfs," from the list
 
-def singleDataset_output(dataset, key_list, makeDiagram=False): 
-    """
-    Export frames for various behaviors: summary to text file, and 
-        frame-by-frame in a large CSV file
-    
-    Inputs:
-        dataset : dictionary with all dataset info
-        key_list : list of behavior names as keys to dataset dictionaries, 
-                   for export
-        arrays of all initial frames (row 1) and durations (row 2)
-                     in which the various behaviors are 
-                     found: circling_wfs, noneSee90, one, both, contact_any, 
-                     contact_head_body, tail_rubbing_wf
-        makeDiagram : if true, make a figure (diagram) [DISABLED]
-    Outputs:
-        None
+    return perpendicular_noneSee, perpendicular_oneSees, \
+        perpendicular_bothSee, perpendicular_larger_fish_sees, \
+        perpendicular_smaller_fish_sees, \
+        contact_any, contact_head_body, contact_larger_fish_head, \
+        contact_smaller_fish_head, contact_inferred_frames, \
+        tail_rubbing_frames, bending_frames
 
-    """
-    
-    write_behavior_txt_file(dataset_name, key_list)
-    if makeDiagram:
-        print('makeDiagram in singleDataset_output is disabled.')
-        
-    get_excel_file(dataset_name, circling_wfs, noneSee90, oneSees90, bothSee90, contact_any,
-                   contact_head_body, tail_rubbing_wf)
 
 
     

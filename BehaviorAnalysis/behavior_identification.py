@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified June 2, 2023 -- Raghu Parthasarathy
+Last modified July 23, 2023 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -17,19 +17,17 @@ Module containing all zebrafish pair behavior identification functions:
     - Tail rubbing
 
 Requires prior import of TaubinSVD() from circle_fit_taubin (for circling)
-Requires prior import of numpy as np
 
 """
 
 import numpy as np
-from circle_fit_taubin import TaubinSVD
-
+# from circle_fit_taubin import TaubinSVD
 
 def get_circling_frames(fish_pos, head_separation, fish_angle_data,
                     Nframes, window_size, circle_fit_threshold, 
                     cos_theta_AP_threshold, 
                     cos_theta_tangent_threshold, motion_threshold, 
-                    head_dist_thresh):
+                    head_distance_thresh):
     """
     Returns an array of window frames for circling behavior. Each window
     frame represents the STARTING window frame for circling within some range 
@@ -49,12 +47,12 @@ def get_circling_frames(fish_pos, head_separation, fish_angle_data,
 
         Nframes (int): Number of frames (typically 15,000.)
         
-        window_size (int)     : window size for which circling is averaged over.
+        window_size (int)     : number of frames over which circling is assessed.
         circle_fit_threshold (float)     : relative RMSE radius threshold for circling.
         cos_theta_AP_threshold (float)     : antiparallel orientation upper bound for cos(theta) 
         cos_theta_tangent_threshold (float): the cosine(angle) threshold for tangency to the circle
         motion_threshold (float): root mean square frame-to-frame displacement threshold
-        head_dist_thresh (int): head distance threshold for the two fish.
+        head_distance_thresh (int): head distance threshold for the two fish.
 
     Returns:
         circling_wf (array): a 1D array of circling window frames.
@@ -64,7 +62,7 @@ def get_circling_frames(fish_pos, head_separation, fish_angle_data,
     # Assess head-head distance for all frames
     # dh_vec = fish2_pos - fish1_pos  
     # head_separation = np.sqrt(np.sum(dh_vec**2, axis=1))
-    head_separation_criterion = (head_separation < head_dist_thresh)
+    head_separation_criterion = (head_separation < head_distance_thresh)
     
     # To save computation time, we're going to consider only the windows
     # with starting frames that meet the head-separation criterion
@@ -112,7 +110,7 @@ def get_circling_frames(fish_pos, head_separation, fish_angle_data,
         dh_window = head_separation[idx:idx+window_size]
         head_separation_window = np.sqrt(np.sum(dh_window**2, axis=1))
         head_separation_window_criterion = \
-            (head_separation_window < head_dist_thresh).all()
+            (head_separation_window < head_distance_thresh).all()
         
         # Should be antiparallel, so cos(theta) < threshold (ideally cos(theta)==-1)
         cos_theta = np.cos(fish1_angles - fish2_angles)
@@ -165,43 +163,56 @@ def get_circling_frames(fish_pos, head_separation, fish_angle_data,
 
 
 
-def get_contact_frames(body1_x, body2_x, body1_y, body2_y, Nframes, contact_distance):
+def get_contact_frames(body_x, body_y, contact_distance, fish_length_array):
     """
     Returns a dictionary of window frames for different 
     contact between two fish: any body positions, or head-body contact
+    
+    Assumes frames are contiguous, as should have been checked earlier.
 
     Args:
-        body1_x (array): a 2D array of x positions along the 10 body markers of fish1.
-        body2_x (array): a 2D array of x positions along the 10 body markers of fish2.
-        body1_y (array): a 2D array of y positions along the 10 body markers of fish1.
-        body2_y (array): a 2D array of y positions along the 10 body markers of fish2.
-        Nframes (int): Number of frames (typically 15,000.)
+        body_x (array): a 3D array (Nframes x 10 x 2 fish) of x positions along the 10 body markers.
+        body_y (array): a 3D array (Nframes x 10 x 2 fish) of y positions along the 10 body markers.
         contact_distance: the contact distance threshold.
+        fish_length_array: Nframes x 2 array of fish lengths in each frame
 
     Returns:
-        contact_dict (dictionary): a dictionary of arrays of different contact types.
+        contact_dict (dictionary): a dictionary of arrays of different 
+            contact types: any_contact, head-body contact (a subset)
+            larger or smaller fish head contact (a subset)
     """
-    contact_dict = {"any_contact": [], "head-body": []}
+    contact_dict = {"any_contact": [], "head-body": [], 
+                    "larger_fish_head_contact": [], 
+                    "smaller_fish_head_contact": []}
 
-    for idx in range(Nframes):
+    for idx in range(body_x.shape[0]):
 
         # Any contact: look at closest element of distance matrix between
         # body points
-        d0 = np.subtract.outer(body1_x[idx], body2_x[idx]) # all pairs of subtracted x positions
-        d1 = np.subtract.outer(body1_y[idx], body2_y[idx]) # all pairs of subtracted y positions
+        d0 = np.subtract.outer(body_x[idx,:,0], body_x[idx,:,1]) # all pairs of subtracted x positions
+        d1 = np.subtract.outer(body_y[idx,:,0], body_y[idx,:,1]) # all pairs of subtracted y positions
         d = np.sqrt(d0**2 + d1**2) # Euclidean distance matrix, all points
         if np.min(d) < contact_distance:
             contact_dict["any_contact"].append(idx+1)
             
         # Head-body contact
-        d_head1_body2 = np.sqrt((body1_x[idx][0] - body2_x[idx])**2 + 
-                                (body1_y[idx][0] - body2_y[idx])**2)
-        d_head2_body1 = np.sqrt((body2_x[idx][0] - body1_x[idx])**2 + 
-                                (body2_y[idx][0] - body1_y[idx])**2)
-        if (np.min(d_head1_body2) < contact_distance) or \
-            (np.min(d_head2_body1) < contact_distance):
-                contact_dict["head-body"].append(idx+1)
-                # Note that "any contact" will be automatically satisfied.
+        d_head1_body2 = np.sqrt((body_x[idx,0,0] - body_x[idx,:,1])**2 + 
+                                (body_y[idx,0,0] - body_y[idx,:,1])**2)
+        d_head2_body1 = np.sqrt((body_x[idx,0,1] - body_x[idx,:,0])**2 + 
+                                (body_y[idx,0,1] - body_y[idx,:,0])**2)
+        fish1_hb_contact = np.min(d_head1_body2) < contact_distance
+        fish2_hb_contact = np.min(d_head2_body1) < contact_distance
+        
+        if fish1_hb_contact or fish2_hb_contact:
+            contact_dict["head-body"].append(idx+1)
+            # Note that "any contact" will be automatically satisfied.
+            if not (fish1_hb_contact and fish2_hb_contact):
+                # Only one is making head-body contact
+                largerFishIdx = np.argmax(fish_length_array[idx,:])
+                if largerFishIdx==0 and fish1_hb_contact:
+                    contact_dict["larger_fish_head_contact"].append(idx+1)
+                else:
+                    contact_dict["smaller_fish_head_contact"].append(idx+1)
 
     return contact_dict
 
@@ -243,28 +254,25 @@ def get_inferred_contact_frames(dataset, frameWindow, contact_dist):
 
 
 
-def get_90_deg_frames(fish1_pos, fish2_pos, fish1_angle_data, fish2_angle_data, 
-Nframes, window_size, cos_theta_90_thresh, head_dist_thresh):
+def get_90_deg_frames(fish_pos, fish_angle_data, Nframes, window_size, 
+                      cos_theta_90_thresh, head_distance_thresh, cosSeeingAngle, 
+                      fish_length_array):
     """
     Returns an array of frames for 90-degree orientation events.
     Each frame represents the starting  frame for 90-degree
        orientation events that span some window (parameter window_size).
 
     Args:
-        fish1_pos (array): a 2D array of (x, y) head positions for fish1. The
-                           array has form [[x1, y1], [x2, y2], [x3, y3],...].
-        fish2_pos (array): a 2D array of (x, y) head positions for fish2. The
-                           array has form [[x1, y1], [x2, y2], [x3, y3],...].
-        fish1_angle_data (array): a 1D array of angles at each window frame
-                                  for fish1.
-        fish2_angle_data (array): a 1D array of angles at each window frame
-                                  for fish2.
+        fish_pos (array): a 3D array of (x, y) head positions for both fish.
+                          Nframes x 2 [x, y] x 2 fish 
+        fish1_angle_data (array): a 2D array of angles; Nframes x 2 fish
 
         Nframes (int): Number of frames (typically 15,000.)
         
         window_size (int)      : window size for which circling is averaged over.
         cos_theta_90_thresh (float): the cosine(angle) threshold for 90-degree orientation.
-        head_dist_thresh (int) : head distance threshold for the two fish.
+        head_distance_thresh (int) : head distance threshold for the two fish.
+        fish_length_array: Nframes x 2 array of fish lengths in each frame
 
     Returns:
         orientations (dict): a dictionary of arrays of window frames for different 
@@ -273,19 +281,23 @@ Nframes, window_size, cos_theta_90_thresh, head_dist_thresh):
                       - "noneSee": none of the fish see each other.
                       - "oneSees"   : one fish sees the other.
                       - "bothSee": both fish see each other.
+                      - "larger_fish_sees", "smaller_fish_sees" : subset of
+                         oneSees; the larger or smaller of the fish see the other
     """
     orientations = {"noneSee": [], 
                     "oneSees": [], 
-                    "bothSee": []}
-    
+                    "bothSee": [],
+                    "larger_fish_sees": [], 
+                    "smaller_fish_sees": []}
+
     # cos_theta for all frames
-    cos_theta = np.cos(fish1_angle_data - fish2_angle_data)
+    cos_theta = np.cos(fish_angle_data[:,0] - fish_angle_data[:,1])
     cos_theta_criterion = (np.abs(cos_theta) < cos_theta_90_thresh)
     
     # head-head distance, and distance vector for all frames
-    dh_vec = fish2_pos - fish1_pos  # also used later, for the connecting vector
+    dh_vec = fish_pos[:,:,1] - fish_pos[:,:,0]  # also used later, for the connecting vector
     head_separation = np.sqrt(np.sum(dh_vec**2, axis=1))
-    head_separation_criterion = (head_separation < head_dist_thresh)
+    head_separation_criterion = (head_separation < head_distance_thresh)
 
     # All criteria (and), in each frame
     all_criteria_frame = np.logical_and(cos_theta_criterion, head_separation_criterion)
@@ -299,65 +311,45 @@ Nframes, window_size, cos_theta_90_thresh, head_dist_thresh):
     ninety_degree_idx = np.array(np.where(all_criteria_window==True))[0,:].flatten() + 1
     # Not sure why the [0,:] is needed, but otherwise returns additional zeros.
 
-    # For each 90 degree event, calculate sign of cross product of fish vectors 
-    # for the starting frame, to determine orientation type 
+    # For each 90 degree event, determine the orientation type -- whether
+    # 0, 1, or both fish are in the forward half-plane of the other
     # Could have done this for all frames and just kept those that met 
-    # the above criteria; not sure which is faster
+    # the above criteria; not sure which is faster, but this makes testing
+    # easier.
     for idx in ninety_degree_idx:
-        fish1_vector = np.array((np.cos(fish1_angle_data[idx]), np.sin(fish1_angle_data[idx])))
-        fish2_vector = np.array((np.cos(fish2_angle_data[idx]), np.sin(fish2_angle_data[idx])))
-        connecting_vector = dh_vec[idx]
-        connecting_vector_norm = connecting_vector / np.linalg.norm(connecting_vector)
-        
-        # signs of cross products
-        fish1xfish2 = np.sign(np.cross(fish1_vector, fish2_vector))
-        fish1xconnect = np.sign(np.cross(fish1_vector, connecting_vector_norm))
-        fish2xconnect = np.sign(np.cross(fish2_vector, connecting_vector_norm))
-        orientation_type = get_orientation_type((fish1xfish2, fish1xconnect,
-                                                 fish2xconnect))
-        if not(orientation_type is None):
-            # make sure it's not "None," for example from positions==0
-            orientations[orientation_type].append(idx+1) 
+        # (dx, dy) from fish 1 to 2, normalized to unit length
+        # Angle of the connecting vector from fish 1 to 2
+        dh_angle_12 = np.arctan2(dh_vec[idx,1], dh_vec[idx,0])
+        fish1sees = np.cos(fish_angle_data[idx,0] - dh_angle_12) >= cosSeeingAngle
+        fish2sees = np.cos(fish_angle_data[idx,1] - dh_angle_12) <= -1.0*cosSeeingAngle
+        if fish1sees or fish2sees:
+            if fish1sees and fish2sees:
+                orientations["bothSee"].append(idx+1)
+            else:
+                orientations["oneSees"].append(idx+1)
+                # For determining whether the larger or smaller fish is the one 
+                # that "sees", if only one does
+                largerFishIdx = np.argmax(fish_length_array[idx,:])
+                if largerFishIdx==0 and fish1sees:
+                    orientations["larger_fish_sees"].append(idx+1)
+                else:
+                    orientations["smaller_fish_sees"].append(idx+1)
+        else:
+            orientations["noneSee"].append(idx+1)
 
-
+    orientations["bothSee"] = np.array(orientations["bothSee"])
     orientations["noneSee"] = np.array(orientations["noneSee"])
     orientations["oneSees"] = np.array(orientations["oneSees"])
-    orientations["bothSee"] = np.array(orientations["bothSee"])
+    orientations["larger_fish_sees"] = np.array(orientations["larger_fish_sees"])
+    orientations["smaller_fish_sees"] = np.array(orientations["smaller_fish_sees"])
+    
     return orientations
 
-
-def get_orientation_type(sign_tuple):
-    """
-    Returns the orientation type of two fish
-    given the sign of their respective (a, b, c) vectors.
-
-    Args:
-        orientation_tuple (tuple): a tuple of signs of the cross-products
-        between two fish:
-            fish1xfish2, fish1xconnect, fish2xconnect
-    
-    Returns:
-        (str): "noneSee", "oneSees", or "bothSee".
-
-    """
-    # Orientations grouped according to the sign
-    # of their respective cross products
-    switcher = {
-        (1,1,1)   : "noneSee",
-        (-1,-1,-1): "noneSee",
-        (-1,-1,1) : "oneSees",
-        (1,1,-1)  : "oneSees",
-        (-1,1,-1) : "oneSees",
-        (1,-1,1)  : "oneSees",
-        (-1,1,1)  : "bothSee",
-        (1,-1,-1) : "bothSee"
-    }
-    return switcher.get(sign_tuple)
 
 
 def get_tail_rubbing_frames(body_x, body_y, head_separation,
                         fish_angle_data, window_size, tail_dist, 
-                        tail_anti_high, head_dist_thresh): 
+                        tail_anti_high, head_distance_thresh): 
     """
     Returns an array of tail-rubbing window frames.
 
@@ -374,7 +366,7 @@ def get_tail_rubbing_frames(body_x, body_y, head_separation,
         window_size (int): window size for which circling is averaged over.
         tail_dist (int): tail distance threshold for the two fish. .
         tail_anti_high (float): antiparallel orientation upper bound. 
-        head_dist_thresh (int): head distance threshold for the two fish. 
+        head_distance_thresh (int): head distance threshold for the two fish. 
 
     Returns:
         tail_rubbing_frames: a 1D array of tail-rubbing window frames
@@ -409,7 +401,7 @@ def get_tail_rubbing_frames(body_x, body_y, head_separation,
     angle_criterion = (cos_theta < tail_anti_high).flatten()
 
     # Assess head separation, for each frame
-    head_separation_criterion = (head_separation < head_dist_thresh).flatten()
+    head_separation_criterion = (head_separation < head_distance_thresh).flatten()
     
     # All criteria (and), in each frame
     all_criteria_frame = np.logical_and(close_tails, angle_criterion, head_separation_criterion)
@@ -423,3 +415,121 @@ def get_tail_rubbing_frames(body_x, body_y, head_separation,
     # Not sure why the [0,:] is needed, but otherwise returns additional zeros.
     
     return tail_rubbing_frames
+
+
+
+def get_bent_frames(dataset, CSVcolumns, bending_threshold = 2/np.pi):
+    """ 
+    Find frames in which one or more fish are bent (beyond threshold)
+    Bending is determined by ratio of head to tail-end distance / overall 
+    fish length (sum of segments); bend = ratio < threshold
+    Inputs:
+        dataset: dataset dictionary of all behavior information for a given expt.
+        CSVcolumns : information on what the columns of dataset["all_data"] are
+        bending_threshold : consider a fish bent if chord/arc < this threshold
+                         Default 2/pi (0.637) corresponds to a semicircle shape
+                         For a circle, chord/arc = sin(theta/2) / (theta/2)
+    Output : list of frames with bending < bending_threshold for any fish
+    """
+    
+    fish_length = dataset["fish_length_array"]  # length in each frame, Nframes x Nfish==2 array
+    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+    fish_head_tail_distance = np.sqrt((body_x[:,0,:]-body_x[:,-1,:])**2 + 
+                                      (body_y[:,0,:]-body_y[:,-1,:])**2) # Nframes x Nfish==2 array
+    bend_ratio = fish_head_tail_distance/fish_length # Nframes x Nfish==2 array
+    bend_criterion = np.any(bend_ratio < bending_threshold, axis=1) # True if either fish is bent
+    # print('number of bent frames: ', np.sum(bend_criterion))
+    # print('number of both-bent frames: ', np.sum(np.all(bend_ratio < bending_threshold, axis=1)))
+    
+    # Nframes = np.shape(fish_length)[0] 
+    # plt.figure()
+    # plt.plot(range(Nframes), bend_ratio[:,0], color='magenta', label='Fish 1')
+    # plt.plot(range(Nframes), bend_ratio[:,1], color='olivedrab', label='Fish 2')
+    
+    # plt.figure()
+    # plt.hist(bend_ratio[:,0], bins=50, color='magenta', label='Fish 1')
+    
+    bendingFrames = np.array(np.where(bend_criterion)).flatten() + 1
+    
+    return bendingFrames
+
+
+def calcOrientationXCorr(dataset, CSVcolumns, window_size = 25, makeDiagnosticPlots = False):
+    """
+    Heading angle Co-orientation behavior; see July 2023 notes
+    Calculate cross-correlation of fish heading angles, over a sliding window
+    xcorr at frame j is the normalized cross-correlation over the window 
+        *ending* at j
+    Inputs:
+        dataset: dataset dictionary of all behavior information for a given expt.
+        CSVcolumns : information on what the columns of dataset["all_data"] are
+        window_size : number frames for sliding window
+        makeDiagnosticPlots : if true, plot angles, xcorr
+    Outputs : 
+        xcorr : normalized cross-correlation at each frame (for the sliding 
+                            window frames *ending* at that frame)
+        
+    To do:
+        [not important] Make xcorr use a sliding window *starting* at that frame
+        [not important] Make functions and eliminate redundant code
+
+    """
+    angle_data = dataset[:,CSVcolumns["angle_data_column"], :]
+    Nframes = np.shape(angle_data)[0] 
+    
+    # Cross-correlation of angles over a sliding window
+    # (Method of sliding sums from
+    #    https://stackoverflow.com/questions/12709853/python-running-cumulative-sum-with-a-given-window)
+    # Should make this a function...
+    # First unwrap to avoid large jumps
+    angles_u1 = np.unwrap(angle_data[:,0], axis=0).flatten()
+    angles_u2 = np.unwrap(angle_data[:,1], axis=0)
+    # The running mean of each set of angles
+    angles_1_mean = np.cumsum(angles_u1)
+    angles_1_mean[window_size:] = angles_1_mean[window_size:] - angles_1_mean[:-window_size]
+    angles_1_mean = angles_1_mean/window_size
+    angles_2_mean = np.cumsum(angles_u2)
+    angles_2_mean[window_size:] = angles_2_mean[window_size:] - angles_2_mean[:-window_size]
+    angles_2_mean = angles_2_mean/window_size
+    angles_1_meanSub = angles_u1 - angles_1_mean
+    angles_2_meanSub = angles_u2 - angles_2_mean
+    xcorr_num = np.cumsum(angles_1_meanSub * angles_2_meanSub) # numerator of cross-correlation
+    xcorr_num[window_size:] = xcorr_num[window_size:] - xcorr_num[:-window_size]
+    xcorr_mag1 = np.cumsum(angles_1_meanSub**2)
+    xcorr_mag1[window_size:] = xcorr_mag1[window_size:] - xcorr_mag1[:-window_size]
+    xcorr_mag2 = np.cumsum(angles_2_meanSub**2)
+    xcorr_mag2[window_size:] = xcorr_mag2[window_size:] - xcorr_mag2[:-window_size]
+    xcorr = xcorr_num / np.sqrt(xcorr_mag1 * xcorr_mag2)
+        
+    
+    if makeDiagnosticPlots:
+        print('Diagnostic plots')
+        xlimits =  (7000,8000) # (12000, 12050) #
+
+        plt.figure()
+        plt.plot(range(Nframes), angle_data[:,0]*180/np.pi, color='magenta', label='Fish 1')
+        plt.plot(range(Nframes), angle_data[:,1]*180/np.pi, color='olivedrab', label='Fish 2')
+        plt.title('Angles of fish 1, 2; degrees')
+        plt.xlabel('Frame')
+        plt.xlim(xlimits)
+        plt.legend()
+    
+        plt.figure()
+        plt.hist(xcorr, 40, color='deepskyblue', edgecolor='steelblue', linewidth=1.2)
+        titleString = 'Cross-correlation, Dataset: ' + dataset["dataset_name"]
+        plt.title(titleString)
+        plt.xlabel('Angle Cross-correlation')
+        
+
+        plt.figure()
+        plt.plot(range(Nframes), xcorr, color='navy')
+        titleString = 'Cross-correlation of heading angles, Dataset: ' + dataset["dataset_name"]
+        plt.title(titleString)
+        plt.xlim(xlimits)
+        plt.xlabel('Frame')
+        plt.xlabel('Xcorr')
+        # plt.ylim((0, 10))
+
+    
+    return xcorr
