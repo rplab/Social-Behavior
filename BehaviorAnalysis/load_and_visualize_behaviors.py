@@ -9,8 +9,8 @@ Description
 -----------
 
 Contains the function visualize_fish for plotting fish body positions 
-   and trajectories, and a program to load datasets, select frames to plot, 
-   etc.
+   and trajectories, and a program to load datasets from the pickle file,
+   select frames to plot, etc.
 """
 
 import numpy as np
@@ -92,14 +92,10 @@ def plot_one_fish(fig, body_x, body_y, frameArray, cmap, relativej, isBadFrame):
     
 print(' ')
 #pickleFileName = input('Pickle file name; Will append .pickle: ')
-
 #pickleFileName = pickleFileName + '.pickle'
-
 # pickleFileName = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\temp\temp.pickle'
-
-pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\2 week old - pairs\all_2wk_light.pickle'
- 
-# pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\2 week old - pairs in the dark\all_2wk_dark.pickle'
+pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\2 week old - pairs\all_2week_light.pickle'
+ # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\2 week old - pairs in the dark\all_2week_dark.pickle'
 
 
 with open(pickleFileName, 'rb') as handle:
@@ -112,6 +108,7 @@ fps = b[2]
 arena_radius_mm = b[3]
 params = b[4]
 
+#%% 
 print('All dataset names:')
 for j in range(len(datasets)):
     print('   ' , datasets[j]["dataset_name"])
@@ -124,12 +121,38 @@ for j in range(len(datasets)):
 
 visualize_fish(chosenSet, CSVcolumns, 7430, 7490) # 7430, 7490
 
-bendingThreshold = 2/np.pi
-get_bent_frames(chosenSet, CSVcolumns, bendingThreshold)
-    
-coorientation_window_size = 50
-coorientation_threshold = 0.9
-makeDiagnosticPlots = True
-coOrientation(chosenSet, CSVcolumns, coorientation_threshold, 
-              params["circle_distance_threshold"], coorientation_window_size, 
-              makeDiagnosticPlots)
+#%% For behavior correlations
+
+behavior_key_list = ["perpendicular_noneSee", 
+                    "perpendicular_oneSees", "perpendicular_bothSee", 
+                    "perpendicular_larger_fish_sees", 
+                    "perpendicular_smaller_fish_sees", 
+                    "contact_any", "contact_head_body", 
+                    "contact_larger_fish_head", "contact_smaller_fish_head", 
+                    "contact_inferred", "tail_rubbing", "bending"]
+
+# create a 2D (nested) dictionary
+deltaFrames = {}
+for behavior_A in behavior_key_list:
+    deltaFrames[behavior_A] = {}
+# ... with an empty list at each element
+
+for behavior_A in behavior_key_list:
+    for behavior_B in behavior_key_list:
+        deltaFrames[behavior_A][behavior_B] = np.array([])
+
+# Append frame delays to these lists
+for behavior_A in behavior_key_list:
+    for behavior_B in behavior_key_list:
+        for j in range(len(datasets)):
+            # For each dataset, note each event and calculate the delay between
+            # this and other events of both the same and different behaviors
+            # Note: positive deltaFrames means behavior A is *after* behavior B
+            bA_frames = datasets[j][behavior_A]["combine_frames"][0]
+            bB_frames = datasets[j][behavior_B]["combine_frames"][0]
+            for k in bA_frames:
+                deltaFrames_temp = k - bB_frames
+                if behavior_A == behavior_B:
+                    deltaFrames_temp = deltaFrames_temp[deltaFrames_temp != 0]
+                deltaFrames[behavior_A][behavior_B] = np.append(deltaFrames[behavior_A][behavior_B], deltaFrames_temp.flatten())
+

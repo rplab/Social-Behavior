@@ -239,10 +239,14 @@ def main():
         goodIdx = np.where(np.in1d(datasets[j]["frameArray"], 
                                    expandBadFrames, invert=True))[0]
         goodXCorrArray = datasets[j]["xcorr_array"][goodIdx]
-        datasets[j]["xcorr_mean"] = np.mean(goodXCorrArray)
-        datasets[j]["xcorr_std"] = np.std(goodXCorrArray)
-        datasets[j]["xcorr_skew"] = skew(goodXCorrArray)
-        print(f'   Mean, std, skew heading angle XCorr: {datasets[j]["xcorr_mean"]:.4f}, {datasets[j]["xcorr_std"]:.4f}, {datasets[j]["xcorr_skew"]:.4f}')
+        # Also limit to finite values
+        finiteGoodXCorrArray = goodXCorrArray[np.isfinite(goodXCorrArray)]
+        datasets[j]["AngleXCorr_mean"] = np.mean(finiteGoodXCorrArray)
+        print(f'   Mean heading angle XCorr: {datasets[j]["AngleXCorr_mean"]:.4f}')
+        # Calculating the std dev and skew, but won't write to CSV
+        datasets[j]["AngleXCorr_std"] = np.std(finiteGoodXCorrArray)
+        datasets[j]["AngleXCorr_skew"] = skew(finiteGoodXCorrArray)
+        print(f'   (Not in CSV) std, skew heading angle XCorr: {datasets[j]["AngleXCorr_std"]:.4f}, {datasets[j]["AngleXCorr_skew"]:.4f}')
 
 
     # For each dataset, identify behaviors
@@ -347,8 +351,8 @@ def main():
                          'Mean difference in fish lengths (px)', 
                          'Mean Inter-fish dist (px)', 
                          'Angle XCorr mean', 
-                         'Angle XCorr std dev', 
-                         'Angle XCorr skew', 
+                         # 'Angle XCorr std dev', 
+                         # 'Angle XCorr skew', 
                          '90deg-None N_Events', 
                          '90deg-One N_Events', '90deg-Both N_Events', 
                          '90deg-largerSees N_events', '90deg-smallerSees N_events', 
@@ -386,9 +390,9 @@ def main():
             list_to_write.append(datasets[j]["total_time_seconds"])
             list_to_write.append(datasets[j]["fish_length_Delta_mean"])
             list_to_write.append(datasets[j]["inter-fish_distance_mean"])
-            list_to_write.append(datasets[j]["xcorr_mean"])
-            list_to_write.append(datasets[j]["xcorr_std"])
-            list_to_write.append(datasets[j]["xcorr_skew"])
+            list_to_write.append(datasets[j]["AngleXCorr_mean"])
+            # list_to_write.append(datasets[j]["AngleXCorr_std"])
+            # list_to_write.append(datasets[j]["AngleXCorr_skew"])
             for k in key_list:
                 list_to_write.append(datasets[j][k]["combine_frames"].shape[1])
             for k in key_list:
