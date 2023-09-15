@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified July 4, 2023 -- Raghu Parthasarathy
+Last modified Sept. 15, 2023 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -324,7 +324,8 @@ def get_imageScale(dataset_name, imageScaleFilename):
 
     Inputs:
         dataset_name : name of dataset
-        imageScaleFilename : name of CSV file containing image scale information
+        imageScaleFilename : name of CSV file containing image scale 
+                             information
     Returns:
         image scale (um/px)
     Returns none if no rows match the input dataset_name, 

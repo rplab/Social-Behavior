@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Jul 10 18:09:34 2023
-Last modified on July 21, 2023
+Last modified on September 6, 2023
 
 Description
 -----------
@@ -17,10 +17,6 @@ import numpy as np
 import matplotlib
 import matplotlib.pyplot as plt
 import pickle
-
-from misc_behaviors import coOrientation
-from behavior_identification import get_bent_frames
-
 
 
 def visualize_fish(dataset, CSVcolumns, startFrame, endFrame):
@@ -89,70 +85,61 @@ def plot_one_fish(fig, body_x, body_y, frameArray, cmap, relativej, isBadFrame):
     # Body of fish
     plt.plot(body_x.flatten(), body_y.flatten(), color=cmap(relativej), linestyle='solid')
 
+
+
+def loadAllFromPickle(pickleFileName = None):
+    """
+
+    Parameters
+    ----------
+    pickleFileName : string, optional
+        DESCRIPTION. The default is None; hard-coded options
+
+    Returns
+    -------
+    datasets : all datasets in the Pickle file
+    CSVcolumns : see behaviors_main()
+    fps : frames per second  
+    arena_radius_mm : arena radius, mm; see behaviors_main()
+    params : analysis parameters; see behaviors_main()
+    """
     
-print(' ')
-#pickleFileName = input('Pickle file name; Will append .pickle: ')
-#pickleFileName = pickleFileName + '.pickle'
-# pickleFileName = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\temp\temp.pickle'
-pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\2 week old - pairs\all_2week_light.pickle'
- # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\2 week old - pairs in the dark\all_2week_dark.pickle'
+    if pickleFileName == None:
+        #pickleFileName = input('Pickle file name; Will append .pickle: ')
+        #pickleFileName = pickleFileName + '.pickle'
+        # pickleFileName = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\temp\temp.pickle'
+        pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\2 week old - pairs\all_2week_light.pickle'
+         # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\2 week old - pairs in the dark\all_2week_dark.pickle'
 
 
-with open(pickleFileName, 'rb') as handle:
-    b = pickle.load(handle)
+    with open(pickleFileName, 'rb') as handle:
+        b = pickle.load(handle)
 
-# Assign variables
-datasets = b[0]
-CSVcolumns = b[1]
-fps = b[2]    
-arena_radius_mm = b[3]
-params = b[4]
-
-#%% 
-print('All dataset names:')
-for j in range(len(datasets)):
-    print('   ' , datasets[j]["dataset_name"])
+    # Assign variables
+    datasets = b[0]
+    CSVcolumns = b[1]
+    fps = b[2]    
+    arena_radius_mm = b[3]
+    params = b[4]
     
-whichDataset = '3b_nk5'
-chosenSet = None
-for j in range(len(datasets)):
-    if datasets[j]["dataset_name"]==whichDataset:
-        chosenSet = datasets[j]
+    return datasets, CSVcolumns, fps, arena_radius_mm, params
 
-visualize_fish(chosenSet, CSVcolumns, 7430, 7490) # 7430, 7490
 
-#%% For behavior correlations
 
-behavior_key_list = ["perpendicular_noneSee", 
-                    "perpendicular_oneSees", "perpendicular_bothSee", 
-                    "perpendicular_larger_fish_sees", 
-                    "perpendicular_smaller_fish_sees", 
-                    "contact_any", "contact_head_body", 
-                    "contact_larger_fish_head", "contact_smaller_fish_head", 
-                    "contact_inferred", "tail_rubbing", "bending"]
-
-# create a 2D (nested) dictionary
-deltaFrames = {}
-for behavior_A in behavior_key_list:
-    deltaFrames[behavior_A] = {}
-# ... with an empty list at each element
-
-for behavior_A in behavior_key_list:
-    for behavior_B in behavior_key_list:
-        deltaFrames[behavior_A][behavior_B] = np.array([])
-
-# Append frame delays to these lists
-for behavior_A in behavior_key_list:
-    for behavior_B in behavior_key_list:
-        for j in range(len(datasets)):
-            # For each dataset, note each event and calculate the delay between
-            # this and other events of both the same and different behaviors
-            # Note: positive deltaFrames means behavior A is *after* behavior B
-            bA_frames = datasets[j][behavior_A]["combine_frames"][0]
-            bB_frames = datasets[j][behavior_B]["combine_frames"][0]
-            for k in bA_frames:
-                deltaFrames_temp = k - bB_frames
-                if behavior_A == behavior_B:
-                    deltaFrames_temp = deltaFrames_temp[deltaFrames_temp != 0]
-                deltaFrames[behavior_A][behavior_B] = np.append(deltaFrames[behavior_A][behavior_B], deltaFrames_temp.flatten())
+if __name__ == '__main__':
+    
+    datasets, CSVcolumns, fps, arena_radius_mm, params = \
+        loadAllFromPickle(pickleFileName = None)
+    
+    print('\nAll dataset names:')
+    for j in range(len(datasets)):
+        print('   ' , datasets[j]["dataset_name"])
+    
+    whichDataset = '3b_nk5'
+    chosenSet = None
+    for j in range(len(datasets)):
+        if datasets[j]["dataset_name"]==whichDataset:
+            chosenSet = datasets[j]
+    
+    visualize_fish(chosenSet, CSVcolumns, 7430, 7490) # 7430, 7490
 

@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Sun Jun 25 17:03:10 2023
-Last modified on August 27, 2023
+Last modified on September 15, 2023
 
 Description
 -----------
@@ -34,7 +34,8 @@ def get_mean_std_overRows(rows, colIdx):
     return (vals, mean_vals, std_vals)
     
 def calc_relative_durations_csv(input_file, output_file, fps=25.0, 
-                                startCol = 19, endCol = 33):
+                                startCol = np.array([]), 
+                                endCol = np.array([])):
     """
     Inputs: 
     input_file : The csv file noting behavior counts and duration for each dataset,
@@ -45,8 +46,10 @@ def calc_relative_durations_csv(input_file, output_file, fps=25.0,
                   Suggested name: 'behavior_relDurations.csv'
     fps : frame rate of experiments (frames/sec), 
                   for proper normalization of durations. Probably 25.0
-    startCol : first column of Duration behaviors, default 19
-    endCol : last column+1 of Duration behaviors, default = 33 
+    startCol : First column Index No of Duration data in CSV file; 
+               default is to examine the header rows for "Duration"
+    endCol : last column Index No +1 of Duration data in CSV file 
+               default is to examine the header rows for "Duration"
                   
     Output:
         Writes a CSV file, with filename output_file
@@ -69,6 +72,11 @@ def calc_relative_durations_csv(input_file, output_file, fps=25.0,
     print('Number of datasets: ', Ndatasets)
     dataset = [row[0] for row in rows[1:]]
     
+    # Determine start, end columns if not input
+    durationIndices = [index for index, item in enumerate(header) if "duration" in item.lower()]
+    startCol = durationIndices[0]
+    endCol = durationIndices[-1]        
+
     (length_delta, mean_length_delta, std_length_delta) = get_mean_std_overRows(rows, 2)
     (interfish_distance, mean_interfish_distance, std_interfish_distance) = get_mean_std_overRows(rows, 3)
     (xcorr_mean, mean_xcorr_mean, std_xcorr_mean) = get_mean_std_overRows(rows, 4)

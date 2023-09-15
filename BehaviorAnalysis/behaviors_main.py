@@ -17,7 +17,8 @@ import pickle
 from toolkit import *
 from behavior_identification import get_circling_frames, \
     get_contact_frames, get_inferred_contact_frames, get_90_deg_frames, \
-    get_tail_rubbing_frames, get_bent_frames, calcOrientationXCorr
+    get_tail_rubbing_frames, get_Cbend_frames, get_Jbend_frames, \
+    calcOrientationXCorr
 
 import matplotlib.pyplot as plt
 from scipy.stats import skew
@@ -41,19 +42,21 @@ def defineParameters():
         "cos_theta_AP_threshold" : -0.7,
         "cos_theta_tangent_threshold" : 0.34,
         "motion_threshold" : 2.0,
-        "90_windowsize" : 4,
-        "cos_theta_90_thresh" : 0.17,
+        "cos_theta_90_thresh" : 0.26,
         "cosSeeingAngle" : 0.5,
-        "90_head_dist" : 300,
-        "contact_distance_threshold" : 20,
-        "contact_inferred_distance_threshold" : 60,
+        "perp_windowsize" : 2,
+        "perp_maxHeadDist_mm" : 17.0,
+        "contact_distance_threshold_mm" : 2.5,
+        "contact_inferred_distance_threshold_mm" : 3.5,
         "contact_inferred_window" : 3,
         "tail_rub_ws" : 2,
-        "tail_dist" : 30,
-        "tail_rub_head_dist": 220,
-        "tail_anti_low": -1,
-        "tail_anti_high": -0.8,
-        "bending_threshold" : 2/np.pi, 
+        "tailrub_maxTailDist_mm" : 2.0,
+        "tailrub_maxHeadDist_mm": 12.5,
+        "cos_theta_antipar": -0.8,
+        "Cbend_threshold" : 2/np.pi, 
+        "Jbend_rAP" : 0.98,
+        "Jbend_cosThetaN" : 0.34,
+        "Jbend_cosThetaNm1" : 0.7,
         "angle_xcorr_windowsize" : 25
     }
     
@@ -264,7 +267,7 @@ def main():
                     contact_head_body_frames, \
                     contact_larger_fish_head, contact_smaller_fish_head, \
                     contact_inferred_frames, tail_rubbing_frames, \
-                    bending_frames = \
+                    Cbend_frames, Jbend_frames = \
                     extract_behaviors(datasets[j], params, CSVcolumns)
             # removed "circling_frames," from the list
             
@@ -310,14 +313,16 @@ def main():
             datasets[j]["tail_rubbing"] = make_frames_dictionary(tail_rubbing_frames,
                                           (datasets[j]["edge_frames"]["raw_frames"],
                                            datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
-            datasets[j]["bending"] = make_frames_dictionary(bending_frames,
+            datasets[j]["Cbend"] = make_frames_dictionary(Cbend_frames,
+                                          (datasets[j]["edge_frames"]["raw_frames"],
+                                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+            datasets[j]["Jbend"] = make_frames_dictionary(Jbend_frames,
                                           (datasets[j]["edge_frames"]["raw_frames"],
                                            datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
             # delete "circling"
             # datasets[j]["circling"] = make_frames_dictionary(circling_frames,
             #                               (datasets[j]["edge_frames"]["raw_frames"],
             #                                datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
-
     # Write pickle file containing all datasets
     if pickleFileName != '':
         list_for_pickle = [datasets, CSVcolumns, fps, arena_radius_mm, params]
@@ -341,7 +346,7 @@ def main():
                     "perpendicular_smaller_fish_sees", 
                     "contact_any", "contact_head_body", 
                     "contact_larger_fish_head", "contact_smaller_fish_head", 
-                    "contact_inferred", "tail_rubbing", "bending", 
+                    "contact_inferred", "tail_rubbing", "Cbend", "Jbend",  
                     "edge_frames", "bad_bodyTrack_frames"]
         # removed "circling"
         
@@ -361,7 +366,7 @@ def main():
                          'Contact (Larger fish head-body) N_Events', 
                          'Contact (Smaller fish head-body) N_Events', 
                          'Contact (inferred) N_events', 'Tail-Rub N_Events', 
-                         'Bending N_Events', 
+                         'Cbend N_Events', 'Jbend N_Events', 
                          'Dish edge N_Events', 'Bad tracking N_events', 
                          '90deg-None Duration', 
                          '90deg-One Duration', '90deg-Both Duration', 
@@ -371,7 +376,7 @@ def main():
                          'Contact (Larger fish head-body) Duration', 
                          'Contact (Smaller fish head-body) Duration', 
                          'Contact (inferred) Duration', 'Tail-Rub Duration', 
-                         'Bending Duration', 
+                         'Cbend Duration', 'Jbend Duration',
                          'Dish edge Duration', 'Bad Tracking Duration'])
         # removed 'Circling N_Events', 'Circling Duration', 
         
@@ -420,7 +425,7 @@ def extract_behaviors(dataset, params, CSVcolumns):
                      found: circling_wfs, perpendicular_noneSee, perpendicular_oneSees, perpendicular_bothSee, 
                      contact_any, contact_head_body, 
                      contact_larger_fish_head, contact_smaller_fish_head,
-                     contact_inferred, tail_rubbing_frames, bending_frames
+                     contact_inferred, tail_rubbing_frames, Cbend_frames
 
     """
     
@@ -453,10 +458,11 @@ def extract_behaviors(dataset, params, CSVcolumns):
     t1_2 = perf_counter()
     print(f'   t1_2 start 90degree analysis: {t1_2 - t1_start:.2f} seconds')
     # 90-degrees 
+    perp_maxHeadDist_px = params["perp_maxHeadDist_mm"]/1000/dataset["image_scale"]
     orientation_dict = get_90_deg_frames(pos_data, angle_data, 
-                                         Nframes, params["90_windowsize"], 
+                                         Nframes, params["perp_windowsize"], 
                                          params["cos_theta_90_thresh"], 
-                                         params["90_head_dist"],
+                                         perp_maxHeadDist_px,
                                          params["cosSeeingAngle"], 
                                          dataset["fish_length_array"])
     perpendicular_noneSee = orientation_dict["noneSee"]
@@ -468,8 +474,10 @@ def extract_behaviors(dataset, params, CSVcolumns):
     t1_3 = perf_counter()
     print(f'   t1_3 start contact analysis: {t1_3 - t1_start:.2f} seconds')
     # Any contact, or head-body contact
+    contact_distance_threshold_px = params["contact_distance_threshold_mm"]/1000/dataset["image_scale"]
+    contact_inferred_distance_threshold_px = params["contact_inferred_distance_threshold"]/1000/dataset["image_scale"]
     contact_dict = get_contact_frames(body_x, body_y,  
-                                params["contact_distance_threshold"], 
+                                contact_distance_threshold_px, 
                                 dataset["fish_length_array"])
     contact_any = contact_dict["any_contact"]
     contact_head_body = contact_dict["head-body"]
@@ -477,25 +485,36 @@ def extract_behaviors(dataset, params, CSVcolumns):
     contact_smaller_fish_head = contact_dict["smaller_fish_head_contact"]
     contact_inferred_frames = get_inferred_contact_frames(dataset,
                         params["contact_inferred_window"],                                  
-                        params["contact_inferred_distance_threshold"])
+                        contact_inferred_distance_threshold_px)
 
     t1_4 = perf_counter()
     print(f'   t1_4 start tail-rubbing analysis: {t1_4 - t1_start:.2f} seconds')
     # Tail-rubbing
+    tailrub_maxHeadDist_px = params["tailrub_maxHeadDist_mm"]/1000/dataset["image_scale"]
+    tailrub_maxTailDist_px = params["tailrub_maxTailDist_mm"]/1000/dataset["image_scale"]
     tail_rubbing_frames = get_tail_rubbing_frames(body_x, body_y, 
                                           dataset["inter-fish_distance"], 
                                           angle_data, 
                                           params["tail_rub_ws"], 
-                                          params["tail_dist"], 
-    params["tail_anti_high"], params["tail_rub_head_dist"])
+                                          tailrub_maxTailDist_px, 
+                                          params["cos_theta_antipar"], 
+                                          tailrub_maxHeadDist_px)
 
     t1_5 = perf_counter()
-    print(f'   t1_5 start bending analysis: {t1_5 - t1_start:.2f} seconds')
-    # bending
-    bending_frames = get_bent_frames(dataset, CSVcolumns, params["bending_threshold"])
+    print(f'   t1_5 start Cbend analysis: {t1_5 - t1_start:.2f} seconds')
+    # Cbend
+    Cbend_frames = get_Cbend_frames(dataset, CSVcolumns, params["Cbend_threshold"])
 
     t1_6 = perf_counter()
-    print(f'   t1_6 end analysis: {t1_6 - t1_start:.2f} seconds')
+    print(f'   t1_6 start J-bend analysis: {t1_6 - t1_start:.2f} seconds')
+    # J-bend
+    Jbend_frames = get_Jbend_frames(dataset, CSVcolumns, 
+                                    (params["Jbend_rAP"], 
+                                     params["Jbend_cosThetaN"], 
+                                     params["Jbend_cosThetaNm1"]))
+
+    t1_end = perf_counter()
+    print(f'   t1_end end analysis: {t1_end - t1_start:.2f} seconds')
 
     # removed "circling_wfs," from the list
 
@@ -504,7 +523,7 @@ def extract_behaviors(dataset, params, CSVcolumns):
         perpendicular_smaller_fish_sees, \
         contact_any, contact_head_body, contact_larger_fish_head, \
         contact_smaller_fish_head, contact_inferred_frames, \
-        tail_rubbing_frames, bending_frames
+        tail_rubbing_frames, Cbend_frames, Jbend_frames
 
 
 
