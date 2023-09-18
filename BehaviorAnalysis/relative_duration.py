@@ -8,18 +8,23 @@ Last modified on September 15, 2023
 Description
 -----------
 
-Contains a function to read the summary behavior analysis CSV and return the 
+Contains a function, calc_relative_durations_csv(), 
+to read the summary behavior analysis CSV and return the 
 relative durations for each behavior for each dataset (total time relative
 to total experiment duration), as well as the mean and std. dev. across 
-datasets. (Last rows.)
+datasets. (Last rows.) Writes these to a CSV.
 
-"main" asks for file name information, and calls the above function.
+Also contains a function to read this info from a CSV file.
+
+"main" asks for file name information, and calls 
+calc_relative_durations_csv().
 
 """
 
 import csv
 import numpy as np
 import os
+import pandas as pd
 
 def get_mean_std_overRows(rows, colIdx):
     """
@@ -141,6 +146,102 @@ def calc_relative_durations_csv(input_file, output_file, fps=25.0,
         sem_row += (np.std(relative_duration, axis=0) / np.sqrt(Ndatasets)).tolist()
         writer.writerow(sem_row)
 
+
+def get_duration_info(CSVfilename = ''):
+    """
+    Read the CSV output by calc_relative_durations_csv(), 
+    containing fish length differences
+    
+    Inputs:
+        CSVfilename : CSV file name containing dataset names (col 1) 
+            and relative durations. Reading stops at the first blank
+            row, and so will ignore the mean, etc.
+            Leave empty to list csv files in the current directory that 
+            have 'relDuration' in the file name. If there's only one,
+            use it as default.
+
+    Outputs:
+        duration_data : Pandas dataframe. Indexed by dataset name 
+            (remove '_2wpf', '_light', '_dark')
+            Can, for example, print all info for a dataset with:
+                print(duration_data.loc['3b_k7'])
+            Can, for example, plot all sets' contact duration vs. fish
+                length difference with:
+                plt.scatter(duration_data['Mean difference in fish lengths (px)'], duration_data['Contact (any)'], marker='o')
+        
+    Raghuveer Parthasarathy
+    Sept. 17, 2023
+    """
+    
+    print('Current directory: ', os.getcwd())
+    input_directory = input('Input directory containing .csv file (blank for current dir.): ')
+    if input_directory == '':
+        input_directory = os.getcwd()
+        
+    if CSVfilename=='':
+        # List all files in the directory
+        file_list = os.listdir(input_directory)
+        # Filter files with "relDuration" in their filename and .csv extension
+        filtered_files = [file for file in file_list if "relDuration" in file and file.endswith('.csv')]
+        if len(filtered_files)==1:
+            print('File found: ', filtered_files)
+            use_ff = input('Use this CSV file? (y or n): ')
+            if use_ff.lower() == 'y':
+                CSVfilename = filtered_files[0]
+            else: 
+                CSVfilename = input('Enter the CSV filename, including .csv: ')
+        else:
+            # Print the filtered file names
+            print('Suggested files: ')
+            for file_name in filtered_files:
+                print(file_name)
+            CSVfilename = input('Enter the CSV filename, including .csv: ')
+    CSVfilename = os.path.join(input_directory, CSVfilename)
+
+    # Initialize an empty DataFrame to store the data
+    duration_data = pd.DataFrame()
+
+    # Open the CSV file for reading
+    with open(CSVfilename, 'r', newline='') as csvfile:
+        csvreader = csv.reader(csvfile)
+    
+        # Read the header row
+        header = next(csvreader)
+    
+        # Check if the header is present and has at least one column
+        if header:
+            # Get the column names from the header (not including the dataset names)
+            column_names = header[1:]
+    
+            # Read the data row by row
+            for row in csvreader:
+                if not any(row):
+                    break # exit the loop; don't read further if the row is empty
+
+                # Extract the name (first column) and convert it to a string
+                name = row[0]
+                # Remove "2wpf", "_light", or "_dark" from the dataset name
+                name = name.replace('_2wpf', '').replace('_light', '').replace('_dark', '')
+    
+                # Extract the durations (remaining columns) and convert them to floats
+                durations_row = [float(dataval) for dataval in row[1:]]
+    
+                # Create a temporary DataFrame for the current row
+                temp_df = pd.DataFrame([durations_row], columns=column_names, 
+                                       index=[name])
+                # Append the temporary DataFrame to the main DataFrame
+                duration_data = pd.concat([duration_data, temp_df], ignore_index=False)
+    
+    Ndatasets = len(duration_data)
+    print(f'Number of datasets: {Ndatasets}')
+    
+    # Print the extracted column names
+    print(' ')
+    print("Column Names:", column_names)
+
+    return duration_data
+
+
 if __name__ == '__main__':
     """
     Get input and output file names; call calc_relative_duration()
@@ -151,11 +252,11 @@ if __name__ == '__main__':
     if input_directory != '':
         os.chdir(input_directory)
     
-    input_file = input('Input CSV file name (blank for "behavior_count.csv"): ')
+    input_file = input('Input CSV file name (blank for "behavior_count.csv)"): ')
     if input_file == '':
         input_file = 'behavior_count.csv'
     output_file = input_file.replace('_count', '_relDuration') # default
-    temp_output_file = input('Output CSV file name (blank for ' + output_file + ': ')
+    temp_output_file = input('Output CSV file name (blank for ' + output_file + '): ')
     if temp_output_file != '':
         output_file = temp_output_file
     fps = input('frames per second (blank for 25.0): ')
@@ -164,3 +265,4 @@ if __name__ == '__main__':
     fps = float(fps)
 
     calc_relative_durations_csv(input_file, output_file, fps)
+

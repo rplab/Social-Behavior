@@ -245,11 +245,11 @@ def main():
         # Also limit to finite values
         finiteGoodXCorrArray = goodXCorrArray[np.isfinite(goodXCorrArray)]
         datasets[j]["AngleXCorr_mean"] = np.mean(finiteGoodXCorrArray)
-        print(f'   Mean heading angle XCorr: {datasets[j]["AngleXCorr_mean"]:.4f}')
+        # print(f'   Mean heading angle XCorr: {datasets[j]["AngleXCorr_mean"]:.4f}')
         # Calculating the std dev and skew, but won't write to CSV
         datasets[j]["AngleXCorr_std"] = np.std(finiteGoodXCorrArray)
         datasets[j]["AngleXCorr_skew"] = skew(finiteGoodXCorrArray)
-        print(f'   (Not in CSV) std, skew heading angle XCorr: {datasets[j]["AngleXCorr_std"]:.4f}, {datasets[j]["AngleXCorr_skew"]:.4f}')
+        # print(f'   (Not in CSV) std, skew heading angle XCorr: {datasets[j]["AngleXCorr_std"]:.4f}, {datasets[j]["AngleXCorr_skew"]:.4f}')
 
 
     # For each dataset, identify behaviors
@@ -458,7 +458,7 @@ def extract_behaviors(dataset, params, CSVcolumns):
     t1_2 = perf_counter()
     print(f'   t1_2 start 90degree analysis: {t1_2 - t1_start:.2f} seconds')
     # 90-degrees 
-    perp_maxHeadDist_px = params["perp_maxHeadDist_mm"]/1000/dataset["image_scale"]
+    perp_maxHeadDist_px = params["perp_maxHeadDist_mm"]*1000/dataset["image_scale"]
     orientation_dict = get_90_deg_frames(pos_data, angle_data, 
                                          Nframes, params["perp_windowsize"], 
                                          params["cos_theta_90_thresh"], 
@@ -474,8 +474,8 @@ def extract_behaviors(dataset, params, CSVcolumns):
     t1_3 = perf_counter()
     print(f'   t1_3 start contact analysis: {t1_3 - t1_start:.2f} seconds')
     # Any contact, or head-body contact
-    contact_distance_threshold_px = params["contact_distance_threshold_mm"]/1000/dataset["image_scale"]
-    contact_inferred_distance_threshold_px = params["contact_inferred_distance_threshold"]/1000/dataset["image_scale"]
+    contact_distance_threshold_px = params["contact_distance_threshold_mm"]*1000/dataset["image_scale"]
+    contact_inferred_distance_threshold_px = params["contact_inferred_distance_threshold_mm"]*1000/dataset["image_scale"]
     contact_dict = get_contact_frames(body_x, body_y,  
                                 contact_distance_threshold_px, 
                                 dataset["fish_length_array"])
@@ -490,8 +490,8 @@ def extract_behaviors(dataset, params, CSVcolumns):
     t1_4 = perf_counter()
     print(f'   t1_4 start tail-rubbing analysis: {t1_4 - t1_start:.2f} seconds')
     # Tail-rubbing
-    tailrub_maxHeadDist_px = params["tailrub_maxHeadDist_mm"]/1000/dataset["image_scale"]
-    tailrub_maxTailDist_px = params["tailrub_maxTailDist_mm"]/1000/dataset["image_scale"]
+    tailrub_maxHeadDist_px = params["tailrub_maxHeadDist_mm"]*1000/dataset["image_scale"]
+    tailrub_maxTailDist_px = params["tailrub_maxTailDist_mm"]*1000/dataset["image_scale"]
     tail_rubbing_frames = get_tail_rubbing_frames(body_x, body_y, 
                                           dataset["inter-fish_distance"], 
                                           angle_data, 
