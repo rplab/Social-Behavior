@@ -107,9 +107,9 @@ def loadAllFromPickle(pickleFileName = None):
     if pickleFileName == None:
         #pickleFileName = input('Pickle file name; Will append .pickle: ')
         #pickleFileName = pickleFileName + '.pickle'
-        # pickleFileName = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\temp\temp.pickle'
-        pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\2 week old - pairs\all_2week_light.pickle'
-         # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\2 week old - pairs in the dark\all_2week_dark.pickle'
+        pickleFileName = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\temp\temp.pickle'
+        # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\2 week old - pairs\all_2week_light.pickle'
+        # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\2 week old - pairs in the dark\all_2week_dark.pickle'
 
 
     with open(pickleFileName, 'rb') as handle:
@@ -135,7 +135,7 @@ if __name__ == '__main__':
     for j in range(len(datasets)):
         print('   ' , datasets[j]["dataset_name"])
     
-    whichDataset = '3b_nk5'
+    whichDataset = '3b_k6'
     chosenSet = None
     for j in range(len(datasets)):
         if datasets[j]["dataset_name"]==whichDataset:

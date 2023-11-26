@@ -2,9 +2,8 @@
 A collection of Python programs used to analyze social behaviors in zebrafish. 
 
 ## Modules:
-- Behaviors: contains functions for finding specific social behaviors (e.g. circling, tail-rubbing, etc.).
-- Helper Functions: contains functions used commonly throughout numerous modules or those that help test/visualize behaviors.
-- Raghu's Starter Code: starter code from Raghu pertaining to time series analysis.
+- BehaviorAnaysis: contains functions for finding specific social behaviors (e.g. circling, tail-rubbing, etc.).
+- Helper Functions: event sensitivity testing
 - Time Series Analysis: contains functions to find autocorrelations, cross-correlations, conditional probabilities, etc.
 - To-do: contains partially implemented new social behaviors/analysis functions that need to be updated or refined. 
 - convert matlab to csv: matlab to CSV file converter for datasets.
@@ -16,7 +15,6 @@ The Social-Behavior GitHub repository contains various analysis functions that a
 ## Data
 
 The matlab files found in Zebrafish_Movies are produced by a tracking software called ZebraZoom, which in the case of our analysis, tracks two young kin or non-kin zebrafish. Like the matlab files, the CSV converted files contain one row per fish per movie frame. The columns are 
-
 
 - 1 AnimalNumber (Always either 0 or 1 in the two-fish examples; I’ll follow the Python convention of number starting at zero.)
 

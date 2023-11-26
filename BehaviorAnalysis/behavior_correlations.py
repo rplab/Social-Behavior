@@ -3,15 +3,14 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Wed Sep  6 13:38:21 2023
-Last modified on Wed Sep  6 13:38:21 2023
+Last modified on Sept 21, 2023
 
 Description
 -----------
 
 Contains function(s) for calculating the correlation between different 
-behavior events.
-For each event, note relative time of all other events of same and of different types. Save this, combine for datasets. Merge lists of numbers, histogram. See asymmetry. Fit / get moments?
-Consider the relative times of the start of any runs of a given behavior. For example, if one run of behavior A is at frames 3, 4, 5, and behavior B is at frames 10, 11, the relative time of B is +7 (only) from A; only +7 is recorded. If Behavior A is 3, 4, 5, 15, 16, and B is 10, 11, 12, then +7 (3 to 10) and -6 (16 to 10) are recorded.
+behavior events, and comparing relative durations of events across 
+experiments.
 
 Inputs:
     
@@ -21,22 +20,18 @@ Outputs:
 """
 
 import numpy as np
-import csv
-import os
-import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.stats import linregress
 from relative_duration import get_duration_info
 
 
-def calcDeltaFramesEvents(datasets, binWidthFrames = 25, frameRange = (-15000, 15000)):
+def calcDeltaFramesEvents(datasets):
     """
-    Calculate the correlation between behavior “events” – i.e. 
-    likelihood that one behavior precedes / follows another. 
+    Calculate the delay between behavior “events” – i.e. 
+    the intervals that one behavior precedes / follows another. 
     For each event, note the relative time (delay in the number of frames) 
     of all other events, past and future, of the same and
-    of different types. Save this list of frame delays (deltaFrames); 
-    combine for datasets. 
+    of different types. Save this list of frame delays (deltaFrames).
     
     Consider the relative times of the start of any runs of a given 
     behavior. For example, if one run of behavior A is at frames 3, 4, 5, 
@@ -45,11 +40,11 @@ def calcDeltaFramesEvents(datasets, binWidthFrames = 25, frameRange = (-15000, 1
     B is 10, 11, 12, then +7 (3 to 10) and -6 (16 to 10) are recorded.
     Note that positive numbers for corr_BA mean that B occurs after A. 
 
-    Parameters
+    Inputs
     ----------
     datasets : dictionary
         All datasets to analyze
-    binWidth : width of bins for histogram, number of frames
+    binWidthFrames : width of bins for histogram, number of frames
         Default 25, usual 25 fps, so this is 1 second
     frameRange : (-15000, 15000) min and max possible DeltaFrames,
         which should be +/- total number of frames
@@ -58,11 +53,11 @@ def calcDeltaFramesEvents(datasets, binWidthFrames = 25, frameRange = (-15000, 1
     Returns
     -------
     behav_corr : dictionary of dictionaries
-                 Each element contains "deltaFrames", a 
-                 2D (nested) dictionary of the frame delay between
-                 behaviors A, B for all events.
-    binCenters: bin centers, from bin edges used for histogram
-    behavior_key_list : list of all behaviors
+                 First key: dataset
+                 Second and third keys: behaviors A, B
+                 Third key: "deltaFrames", the frame delays between A, B 
+                             for all events.
+    behavior_key_list : list of all behaviors considered
 
     """
 
@@ -72,39 +67,27 @@ def calcDeltaFramesEvents(datasets, binWidthFrames = 25, frameRange = (-15000, 1
                         "perpendicular_smaller_fish_sees", 
                         "contact_any", "contact_head_body", 
                         "contact_larger_fish_head", "contact_smaller_fish_head", 
-                        "contact_inferred", "tail_rubbing", "bending"]
+                        "contact_inferred", "tail_rubbing", 
+                        "Cbend", "Jbend"]
     
-    # Keep correlation results in a separate dictionary, "behav_corr"
     # Number of datasets
     N_datasets = len(datasets)
     
-    # for histogram
-    binEdges = np.arange(frameRange[0], frameRange[1], binWidthFrames)
-    binCenters = 0.5*(binEdges[1:] + binEdges[:-1])
-    
-    # initialize a list of dictionaries for datasets
+    # initialize nested dictionaries for datasets
+    # There's probably a better way to do this...
     behav_corr = [{} for j in range(N_datasets)]
     for j in range(N_datasets):
         # keep the dataset_name" key
         behav_corr[j]["dataset_name"] = datasets[j]["dataset_name"]
-        # create a 2D (nested) dictionary
-        behav_corr[j]["deltaFrames"] = {}
-        # And more nested dictionaries, for bin counts
-        behav_corr[j]["counts"] = {}
-        behav_corr[j]["norm_counts"] = {}
-        for behavior_A in behavior_key_list:
-            behav_corr[j]["deltaFrames"][behavior_A] = {}
-            behav_corr[j]["counts"][behavior_A] = {}
-            behav_corr[j]["norm_counts"][behavior_A] = {}
-        # ... with an empty list at each element
-        for behavior_A in behavior_key_list:
-            for behavior_B in behavior_key_list:
-                behav_corr[j]["deltaFrames"][behavior_A][behavior_B] = np.array([])
-                behav_corr[j]["counts"][behavior_A][behavior_B] = np.array([])
-                behav_corr[j]["norm_counts"][behavior_A][behavior_B] = np.array([])
+        print('Dataset ', j, '; ', behav_corr[j]["dataset_name"])
+        for bA in behavior_key_list:
+            behav_corr[j][bA] = {}
+            behav_corr[j][bA]["allDeltaFrames"] = np.array([])
+            for bB in behavior_key_list:
+                behav_corr[j][bA][bB] = {}
+                behav_corr[j][bA][bB]["deltaFrames"] = np.array([])
         # Calculate frame delays and append to each deltaFrames list
         for behavior_A in behavior_key_list:
-            behav_corr[j]["allDeltaFrames"] = np.array([])
             for behavior_B in behavior_key_list:
                 # For each dataset, note each event and calculate the delay between
                 # this and other events of both the same and different behaviors
@@ -115,33 +98,88 @@ def calcDeltaFramesEvents(datasets, binWidthFrames = 25, frameRange = (-15000, 1
                     deltaFrames_temp = bB_frames - k
                     if behavior_A == behavior_B:
                         deltaFrames_temp = deltaFrames_temp[deltaFrames_temp != 0]
-                    if behavior_A == "perpendicular_noneSee" and behavior_B == "contact_any": 
-                        print('j  =' , j)
-                        print(behavior_A)
-                        print(behavior_B)
-                        print('k = ', k, '  bB_frames = ', bB_frames)
-                        print('Delta Frames: ', deltaFrames_temp.flatten())
-                    behav_corr[j]["deltaFrames"][behavior_A][behavior_B] = \
-                        np.append(behav_corr[j]["deltaFrames"][behavior_A][behavior_B], 
+                    # if behavior_A == "perpendicular_noneSee" and behavior_B == "contact_any": 
+                    #     print('Diagnostics: ', behav_corr[j]["dataset_name"])
+                    #     print(behavior_A)
+                    #     print(behavior_B)
+                    #     print('bA frame k = ', k, '  bB_frames = ', bB_frames)
+                    #     print('Delta Frames: ', deltaFrames_temp.flatten())
+                    behav_corr[j][behavior_A][behavior_B]["deltaFrames"] = \
+                        np.append(behav_corr[j][behavior_A][behavior_B]["deltaFrames"], 
                                   deltaFrames_temp.flatten())
                     # All the frame delays (for all Behaviors B)
-                    behav_corr[j]["allDeltaFrames"] = \
-                        np.append(behav_corr[j]["allDeltaFrames"], 
+                    behav_corr[j][behavior_A]["allDeltaFrames"] = \
+                        np.append(behav_corr[j][behavior_A]["allDeltaFrames"], 
                                   deltaFrames_temp.flatten())
-                behav_corr[j]["counts"][behavior_A][behavior_B] = \
-                    np.histogram(behav_corr[j]["deltaFrames"][behavior_A][behavior_B], 
+    
+    return behav_corr, behavior_key_list
+
+
+def bin_deltaFrames(behav_corr, behavior_key_list, binWidthFrames = 25, 
+                          frameRange = (-15000, 15000)):
+    """
+    Bin the "deltaFrames" delays between events of behaviors A, B
+    for each dataset.
+    Force the central bin to be centered at deltaFrames = 0
+    
+    Inputs
+    ----------
+    behav_corr : dictionary of dictionaries
+                 First key: dataset
+                 Second and third keys: behaviors A, B
+                 Third key: "deltaFrames", the frame delays between A, B 
+                             for all events.
+    behavior_key_list : list of all behaviors
+    binWidthFrames : width of bins for histogram, number of frames
+        Default 25, usual 25 fps, so this is 1 second
+    frameRange : (-15000, 15000) min and max possible DeltaFrames,
+        which should be +/- total number of frames
+    
+        
+    Returns
+    -------
+    behav_corr : dictionary of dictionaries
+                 First key: dataset
+                 Second and third keys: behaviors A, B
+                 Fourth: "counts_normAcrossBehavior" and 
+                         "counts_normAcrossTime" , normalized likelihoods
+    binCenters: bin centers, from bin edges used for histogram
+    """
+    # for histogram of deltaFrames. Bin centers and edges. 
+    # Force 0.0 to be at the center of a bin
+    binCenters1 = np.arange(frameRange[0], 0.0, binWidthFrames)
+    binCenters2 = np.arange(0.0, frameRange[1]+binWidthFrames, binWidthFrames)
+    binCenters = np.concatenate((binCenters1, binCenters2))
+    binEdges = np.concatenate((binCenters - binWidthFrames/2.0, 
+                               np.array([np.max(binCenters)+binWidthFrames/2.0])))
+    
+    # Number of datasets
+    N_datasets = len(behav_corr)
+    for j in range(N_datasets):
+        print('Dataset ', j, '; ', behav_corr[j]["dataset_name"])
+        # Calculate frame delays and append to each deltaFrames list
+        for behavior_A in behavior_key_list:
+            for behavior_B in behavior_key_list:
+                # Histogram counts for deltaFrames_AB
+                behav_corr[j][behavior_A][behavior_B]["counts"] = \
+                    np.histogram(behav_corr[j][behavior_A][behavior_B]["deltaFrames"], 
                                  bins=binEdges)[0] # [0] to just get the counts array
             # Histogram counts of all the behaviors' Frame Delays, rel. to A
-            behav_corr[j]["counts_all"] = np.histogram(behav_corr[j]["allDeltaFrames"], 
+            behav_corr[j][behavior_A]["counts_all"] = \
+                np.histogram(behav_corr[j][behavior_A]["allDeltaFrames"], 
                                                        bins=binEdges)[0]
-            # Normalize the deltaFrames_AB by the total for all deltaFrames
+            # Normalize the deltaFrames_AB 
+            # (1) by the total for all deltaFrames
             for behavior_B in behavior_key_list:
-                behav_corr[j]["norm_counts"][behavior_A][behavior_B] = \
-                    behav_corr[j]["counts"][behavior_A][behavior_B] / \
-                        behav_corr[j]["counts_all"]
-
-    return behav_corr, binCenters, behavior_key_list
-
+                behav_corr[j][behavior_A][behavior_B]["counts_normAcrossBehavior"] = \
+                    behav_corr[j][behavior_A][behavior_B]["counts"] / \
+                        behav_corr[j][behavior_A]["counts_all"]
+                behav_corr[j][behavior_A][behavior_B]["counts_normAcrossTime"] = \
+                    behav_corr[j][behavior_A][behavior_B]["counts"] / \
+                        np.sum(behav_corr[j][behavior_A][behavior_B]["counts"])
+    
+    return behav_corr, binCenters
+    
 def calcBehavCorrAllSets(behav_corr, behavior_key_list, binCenters):
     """
     Average the normalized correlations (binned Delta Frames for a 
@@ -150,33 +188,117 @@ def calcBehavCorrAllSets(behav_corr, behavior_key_list, binCenters):
     Parameters
     ----------
     behav_corr : nested dictionary, output by calcDeltaFramesEvents()
+                 and then bin_deltaFrames()
     behavior_key_list : list of all behaviors, used in calcDeltaFramesEvents()
     binCenters : bin centers, for plotting
 
     Returns
     -------
-    behav_corr_allSets : 
+    behav_corr_allSets : Likelihood of behaviors preceding / following
+                         other behaviors. Two initial keys:
+                        behav_corr_allSets['normAcrossBehavior']
+                        behav_corr_allSets['normAcrossTime']
+                        For each next two keys are behaviors A, B; 
+                        contains a numpy array of the relative likelihood
+                        of event B following event A in each of the frame 
+                        delay bins with center BinCenters
 
     """
+    
     # Number of datasets
     N_datasets = len(behav_corr)
-        # initialize a list of dictionaries for datasets
-    behav_corr_allSets = {}
-    # create a 2D (nested) dictionary
-    behav_corr_allSets["norm_counts"] = {}
-    for behavior_A in behavior_key_list:
-        behav_corr_allSets["norm_counts"][behavior_A] = {}
-        for behavior_B in behavior_key_list:
-            behav_corr_allSets["norm_counts"][behavior_A][behavior_B] = \
-                np.zeros((len(binCenters),N_datasets))
-            for j in range(N_datasets):
-                behav_corr_allSets["norm_counts"][behavior_A][behavior_B][:,j] = \
-                    behav_corr[j]["norm_counts"][behavior_A][behavior_B]
-                print(behav_corr[j]["norm_counts"][behavior_A][behavior_B])
-    
+    # Number of bins
+    Nbins = len(binCenters)
+
+    behav_corr_acrossBehavior_array = np.zeros((N_datasets, 
+                                                len(behavior_key_list),
+                                                len(behavior_key_list), 
+                                                Nbins), dtype=float)
+    behav_corr_acrossTime_array = np.zeros((N_datasets, 
+                                                len(behavior_key_list),
+                                                len(behavior_key_list), 
+                                                Nbins), dtype=float)
+    for j in range(N_datasets):
+        for ibA, bA in enumerate(behavior_key_list):
+            for ibB, bB in enumerate(behavior_key_list):
+                behav_corr_acrossBehavior_array[j, ibA, ibB, :] = \
+                    behav_corr[j][bA][bB]["counts_normAcrossBehavior"]
+                behav_corr_acrossTime_array[j, ibA, ibB, :] = \
+                    behav_corr[j][bA][bB]["counts_normAcrossTime"]
+
+    # Average over all datasets
+    behav_corr_acrossBehavior_array_mean = \
+        np.nanmean(behav_corr_acrossBehavior_array, axis=0)
+    behav_corr_acrossTime_array_mean = \
+        np.nanmean(behav_corr_acrossTime_array, axis=0)
+
+    # Put this into a nested dictionary
+    # initialize nested dictionaries for datasets
+    # There's probably a better way to do this...
+    behav_corr_allSets = {'normAcrossBehavior' : {}, 'normAcrossTime': {}}
+    for ibA, bA in enumerate(behavior_key_list):
+        behav_corr_allSets['normAcrossBehavior'][bA] = {}
+        behav_corr_allSets['normAcrossTime'][bA] = {}
+        for ibB, bB in enumerate(behavior_key_list):
+            behav_corr_allSets['normAcrossBehavior'][bA][bB] = \
+                behav_corr_acrossBehavior_array_mean[ibA, ibB, :]
+            behav_corr_allSets['normAcrossTime'][bA][bB] = \
+                behav_corr_acrossTime_array_mean[ibA, ibB, :]
+
     return behav_corr_allSets
 
 
+def plot_behaviorCorrelation(behav_corr_allSets, binCenters, 
+                             behavior_key_list, behaviorA, behaviorB=''):
+    """ 
+    Plot Behavior B likelihood following/preceding Behavior A
+    Can plot a single A-B pair, or all B for a given A
+    Plots both types of normalizations (across Behaviors and across Time)
+    
+    Inputs:
+    behav_corr_allSets : Likelihood of behaviors preceding / following
+                         other behaviors. From calcBehavCorrAllSets()
+    binCenters : bin centers, for plotting
+    behaviorA , B: (string) Behavior A, B, to plot, if  just plotting 
+                   one pair. Leave B empty ('') to skip plotting
+                   a single A-B pair, and only plot all pairs
+    behavior_key_list : list of behaviors to plot. (Can be a subset of all)
+    """
+
+    # Just one AB pair    
+    if not behaviorB=='':
+        plt.figure()
+        plt.plot(binCenters, behav_corr_allSets['normAcrossBehavior'][behaviorA][behaviorB],
+                 color='darkturquoise')
+        plt.xlabel('Delta Frames')
+        plt.ylabel('Relative likelihood')
+        plt.title(f'{behaviorA} then {behaviorB}; norm. across behaviors.')
+        
+        plt.figure()
+        plt.plot(binCenters, behav_corr_allSets['normAcrossTime'][behaviorA][behaviorB],
+                 color='darkorange')
+        plt.xlabel('Delta Frames')
+        plt.ylabel('Relative likelihood; norm. across time')
+        plt.title(f'{behaviorA} then {behaviorB}; norm. across time.')
+    
+    # All pairs
+    plt.figure(figsize=(7, 6), dpi=100)
+    for bB in behavior_key_list:
+        plt.plot(binCenters, behav_corr_allSets['normAcrossBehavior'][behaviorA][bB], 
+                 label=bB)
+    plt.xlabel('Delta Frames')
+    plt.ylabel('Relative likelihood')
+    plt.title(f'{behaviorA} then each behavior; norm. across behaviors')
+    plt.legend()
+
+    plt.figure(figsize=(7, 6), dpi=100)
+    for bB in behavior_key_list:
+        plt.plot(binCenters, behav_corr_allSets['normAcrossTime'][behaviorA][bB], 
+                 label=bB)
+    plt.xlabel('Delta Frames')
+    plt.ylabel('Relative likelihood')
+    plt.title(f'{behaviorA} then each behavior; norm. across time')
+    plt.legend()
 
 def compare_relative_durations(CSVfilename1 = '', CSVfilename2 = '',):
     """
@@ -185,8 +307,8 @@ def compare_relative_durations(CSVfilename1 = '', CSVfilename2 = '',):
     for *two* different experiments.
     Plot the mean of each behavior for each experiment vs. the other.
     
-    Ignore CSV columns for length, etc.; column names (keys) hard-coded
-    in 'keysToIgnore'
+    Ignore CSV columns for length, "smaller" or "larger" fish, etc.
+        column names (keys) hard-coded in 'keysToIgnore'
 
     Inputs:
         CSVfilename1, CSVfilename2 : CSV file names containing 
@@ -215,7 +337,10 @@ def compare_relative_durations(CSVfilename1 = '', CSVfilename2 = '',):
     
     keysToIgnore = ['Mean difference in fish lengths (px)', 
                     'Mean Inter-fish dist (px)',
-                    'Angle XCorr mean']
+                    'Angle XCorr mean', '90deg-largerSees', 
+                    '90deg-smallerSees', 'Contact (Larger fish head-body)',
+                    'Contact (Smaller fish head-body)', 
+                    'Contact (inferred)']
     key_list = list(set(duration_data1.columns) - set(keysToIgnore))
 
     for key in key_list:
@@ -241,6 +366,8 @@ def compare_relative_durations(CSVfilename1 = '', CSVfilename2 = '',):
     plt.figure()
     plt.errorbar(mean_values1, mean_values2, xerr=sem_values1, 
                  yerr=sem_values2, fmt='o', markersize=16, capsize=5, 
+                 markeredgecolor = 'darkturquoise', 
+                 markerfacecolor='paleturquoise',
                  label='Means with Error Bars')
 
     # Add labels and a legend
@@ -252,7 +379,8 @@ def compare_relative_durations(CSVfilename1 = '', CSVfilename2 = '',):
     # Display the key names next to data points
     for i, key in enumerate(key_list):
         plt.annotate(key, (mean_values1[i], mean_values2[i]), 
-                     xytext=(5,5), textcoords='offset points')
+                     xytext=(-30,5), textcoords='offset points',
+                     rotation=-45)
 
     # Show the plot
     plt.grid(True)
@@ -310,6 +438,9 @@ def length_difference_correlation(CSVfilename = '', behavior_to_plot=''):
     length_diff = filtered_df["Mean difference in fish lengths (px)"]
     print(f'Number of filtered datasets: {len(length_diff)}')
     
+    print('here')
+    print(filtered_df.columns)
+    print(behavior_to_plot)
     # Check if "behavior_to_plot" column exists in the filtered DataFrame
     if behavior_to_plot in filtered_df.columns:
         # Extract the data from the specified columns
@@ -327,11 +458,12 @@ def length_difference_correlation(CSVfilename = '', behavior_to_plot=''):
     
         # Create a scatter plot
         plt.figure()
-        plt.scatter(length_diff, behavior_values, marker='o', color='b', label=behavior_to_plot)
+        plt.scatter(length_diff, behavior_values, marker='o', 
+                    color='deepskyblue', label=behavior_to_plot)
 
         # Add the linear regression line to the plot
         plt.plot(np.array(length_diff), intercept + slope * np.array(length_diff), 
-                 color='r', label='Linear Regression')
+                 color='steelblue', label='Linear Regression')
         
         # Add labels and a legend
         plt.xlabel("Length Difference (px)")

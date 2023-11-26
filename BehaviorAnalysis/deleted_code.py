@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Wed Jul  5 17:54:16 2023
-Last modified on Wed Jul  5 17:54:16 2023
+Last modified on Nov. 21, 2023
 
 Description
 -----------
@@ -11,6 +11,40 @@ Description
 Misc. deleted code
 
 """
+
+
+
+def extract_single_fish_behaviors(dataset, params, CSVcolumns): 
+    """
+    Calls functions to identify frames corresponding to single-fish behaviors, 
+    such as length or J-bends. 
+
+    Inputs:
+        dataset : dictionary, with keys like "all_data" containing all 
+                    position data
+        params : parameters for behavior criteria
+        CSVcolumns : CSV column parameters
+    Outputs:
+        arrays of all frames in which the various behaviors are found:
+            Cbend_frames,
+            Jbend_frames
+
+    """
+    # C-bend
+    Cbend_frames_each = get_Cbend_frames(dataset, CSVcolumns, 
+                                    params["Cbend_threshold"])
+    # numpy array of frames with C-bend for *any* fish
+    Cbend_frames = np.unique(np.concatenate(list(Cbend_frames_each.values())))
+
+    # J-bend
+    Jbend_frames_each = get_Jbend_frames(dataset, CSVcolumns, 
+                                    (params["Jbend_rAP"], 
+                                     params["Jbend_cosThetaN"], 
+                                     params["Jbend_cosThetaNm1"]))
+    # numpy array of frames with J-bend for *any* fish
+    Jbend_frames = np.unique(np.concatenate(list(Jbend_frames_each.values())))
+    
+    return Cbend_frames, Jbend_frames
 
 
 ## From get_90_deg_frames()

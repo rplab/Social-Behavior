@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*- 
 #----------------------------------------------------------------------------
 # Created By  : Estelle Trieu 
-# Re-written by : Raghuveer Parthasarathy
+# Re-written by : Raghuveer Parthasarathy (2023)
 # Created Date: 9/19/2022
 # version ='2.0'
-# last modified: Raghuveer Parthasarathy, July 10, 2023
+# last modified: Raghuveer Parthasarathy, November 19, 2023
 # ---------------------------------------------------------------------------
 
 import csv
@@ -14,11 +14,16 @@ import numpy as np
 import xlsxwriter
 from time import perf_counter
 import pickle
-from toolkit import *
-from behavior_identification import get_circling_frames, \
-    get_contact_frames, get_inferred_contact_frames, get_90_deg_frames, \
+from toolkit import get_CSV_folder_and_filenames, load_data, \
+    get_dataset_name, make_frames_dictionary, remove_frames, \
+        combine_events, get_ArenaCenter, get_edge_frames, get_imageScale, \
+        estimate_arena_center, get_interfish_distance, \
+        get_fish_lengths, get_bad_headTrack_frames, get_bad_bodyTrack_frames, \
+        plotAllPositions, write_behavior_txt_file, mark_behavior_frames_Excel
+from behavior_identification import get_contact_frames, \
+    get_inferred_contact_frames, get_90_deg_frames, \
     get_tail_rubbing_frames, get_Cbend_frames, get_Jbend_frames, \
-    calcOrientationXCorr
+    calcOrientationXCorr, get_approach_flee_frames
 
 import matplotlib.pyplot as plt
 from scipy.stats import skew
@@ -57,7 +62,10 @@ def defineParameters():
         "Jbend_rAP" : 0.98,
         "Jbend_cosThetaN" : 0.34,
         "Jbend_cosThetaNm1" : 0.7,
-        "angle_xcorr_windowsize" : 25
+        "angle_xcorr_windowsize" : 25,
+        "approach_speed_threshold_mm_second" : 20,
+        "approach_cos_angle_thresh" : 0.5,
+        "approach_min_frame_duration" : (2,2)
     }
     
     # Specify columns of the CSV files with fish trajectory information
@@ -100,13 +108,11 @@ def main():
     
     cwd = os.getcwd() # Current working directory
     
-    print(' ')
     folder_path, allCSVfileNames = get_CSV_folder_and_filenames() # Get folder containing CSV files
     print(f'\n\n All {len(allCSVfileNames)} CSV files starting with "results": ')
     print(allCSVfileNames)
     
-    print(' ')
-    print('Enter the filename for an output pickle file (w/ all datasets).')
+    print('\nEnter the filename for an output pickle file (w/ all datasets).')
     pickleFileName = input('   Will append .pickle. Leave blank for none.: ')
     
     # Number of datasets
@@ -136,7 +142,6 @@ def main():
         datasets[j]["arena_center"] = get_ArenaCenter(datasets[j]["dataset_name"], 
                                                     arenaCentersLocation,
                                                     offsetPositionsFilename)
-
         # Estimate center location of Arena
         # datasets[j]["arena_center"] = estimate_arena_center(datasets[j]["all_data"],
         #                                                    CSVcolumns["pos_data_column_x"],
@@ -148,31 +153,7 @@ def main():
             plotAllPositions(datasets[j], CSVcolumns, arena_radius_mm, 
                              params["arena_edge_threshold_mm"])
 
-        # Get the inter-fish distance (distance between head positions) in 
-        # each frame (Nframes x 1 array)
-        datasets[j]["inter-fish_distance"] = \
-            get_interfish_distance(datasets[j]["all_data"], CSVcolumns)
-        
-        # Get the length of each fish in each frame (sum of all segments)
-        # Nframes x 2 array
-        datasets[j]["fish_length_array"] = \
-            get_fish_lengths(datasets[j]["all_data"], CSVcolumns)
-        plotFishLengths = False
-        if plotFishLengths:
-            plt.figure()
-            plt.plot(np.arange(datasets[j]["fish_length_array"].shape[0]), 
-                     datasets[j]["fish_length_array"][:,0], c='magenta')
-            plt.plot(np.arange(datasets[j]["fish_length_array"].shape[0]), 
-                     datasets[j]["fish_length_array"][:,1], c='darkturquoise')
-            plt.title(datasets[j]["dataset_name"] )
-            
-        # Get the sliding window cross-correlation of heading angles
-        datasets[j]["xcorr_array"] = \
-            calcOrientationXCorr(datasets[j]["all_data"], CSVcolumns, 
-                                 params["angle_xcorr_windowsize"])
-
-            
-    # For each dataset, identify edge and bad-tracking frames
+    # For each dataset, identify close-to-edge and bad-tracking frames
     for j in range(N_datasets):
         print('Dataset: ', datasets[j]["dataset_name"])
         # Identify frames in which one or both fish are too close to the edge
@@ -202,11 +183,74 @@ def main():
         datasets[j]["bad_bodyTrack_frames"] = make_frames_dictionary(bad_bodyTrack_frames, ())
         print('   Number of bad body tracking frames: ', len(datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
 
+
+    # For each dataset, characterizations that involve single fish
+    # (e.g. length, bending)
+    for j in range(N_datasets):
+        print('Single-fish characterizations for Dataset: ', 
+                  datasets[j]["dataset_name"])
+        # Get the length of each fish in each frame (sum of all segments)
+        # Nframes x 2 array
+        datasets[j]["fish_length_array"] = \
+            get_fish_lengths(datasets[j]["all_data"], CSVcolumns)
+            
+        # Frames with C-bends and J-bends; each is a dictionary with two 
+        # keys, one for each fish, each containing a numpy array of frames
+        Cbend_frames_each = get_Cbend_frames(datasets[j], CSVcolumns, 
+                                             params["Cbend_threshold"])
+        Jbend_frames_each = get_Jbend_frames(datasets[j], CSVcolumns, 
+                                             (params["Jbend_rAP"], 
+                                              params["Jbend_cosThetaN"], 
+                                              params["Jbend_cosThetaNm1"]))
+        # numpy array of frames with C-bend for *any* fish
+        Cbend_frames_any = np.unique(np.concatenate(list(Cbend_frames_each.values())))
+        # numpy array of frames with J-bend for *any* fish
+        Jbend_frames_any = np.unique(np.concatenate(list(Jbend_frames_each.values())))
         
-    # For each dataset, exclude bad tracking frames from:
+        # For C-bends and J-bends, for each fish and for any fish,
+        # make a dictionary containing frames, 
+        # remove frames with "bad" elements
+        # Also makes a 2xN array of initial frames and durations, though
+        # the duration of bends should be 1
+        datasets[j]["Cbend_Fish0"] = make_frames_dictionary(Cbend_frames_each[0],
+                                      (datasets[j]["edge_frames"]["raw_frames"],
+                                       datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+        datasets[j]["Cbend_Fish1"] = make_frames_dictionary(Cbend_frames_each[1],
+                                      (datasets[j]["edge_frames"]["raw_frames"],
+                                       datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+        datasets[j]["Cbend_any"] = make_frames_dictionary(Cbend_frames_any,
+                                      (datasets[j]["edge_frames"]["raw_frames"],
+                                       datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+        datasets[j]["Jbend_Fish0"] = make_frames_dictionary(Jbend_frames_each[0],
+                                      (datasets[j]["edge_frames"]["raw_frames"],
+                                       datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+        datasets[j]["Jbend_Fish1"] = make_frames_dictionary(Jbend_frames_each[1],
+                                      (datasets[j]["edge_frames"]["raw_frames"],
+                                       datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+        datasets[j]["Jbend_any"] = make_frames_dictionary(Jbend_frames_any,
+                                      (datasets[j]["edge_frames"]["raw_frames"],
+                                       datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+        
+            
+    # For each dataset, identify inter-fish distance and
+    # sliding window cross-correlation of heading angles
+    for j in range(N_datasets):
+
+        # Get the inter-fish distance (distance between head positions) in 
+        # each frame (Nframes x 1 array)
+        datasets[j]["inter-fish_distance"] = \
+            get_interfish_distance(datasets[j]["all_data"], CSVcolumns)
+        
+        # Get the sliding window cross-correlation of heading angles
+        datasets[j]["xcorr_array"] = \
+            calcOrientationXCorr(datasets[j]["all_data"], CSVcolumns, 
+                                 params["angle_xcorr_windowsize"])
+
+        
+    # For each dataset, exclude bad tracking frames from calculations of:
     # the mean inter-fish distance, 
     # the mean fish length, 
-    # the mean absolute difference in fish length, 
+    # the mean and std. absolute difference in fish length, 
     for j in range(N_datasets):
         print('Removing bad frames from stats for length, distance for Dataset: ', 
               datasets[j]["dataset_name"])
@@ -224,9 +268,9 @@ def main():
               f'{datasets[j]["fish_length_Delta_mean"]:.2f} +/- {datasets[j]["fish_length_Delta_std"]:.2f}px')
         print(f'   Mean inter-fish distance {datasets[j]["inter-fish_distance_mean"]:.2f} px')
     
-    # For each dataset, exclude bad tracking frames from:
-    # the angle-heading cross-correlation
-    # if they occur anywhere in the sliding window
+    # For each dataset, exclude bad tracking frames from the calculation
+    # of the mean angle-heading cross-correlation
+    # if the bad frames occur anywhere in the sliding window
     for j in range(N_datasets):
         print('Removing bad frames from stats for angle xcorr for Dataset: ', 
               datasets[j]["dataset_name"])
@@ -252,7 +296,7 @@ def main():
         # print(f'   (Not in CSV) std, skew heading angle XCorr: {datasets[j]["AngleXCorr_std"]:.4f}, {datasets[j]["AngleXCorr_skew"]:.4f}')
 
 
-    # For each dataset, identify behaviors
+    # For each dataset, identify two-fish behaviors
     for j in range(N_datasets):
         
             print('Identifying behaviors for Dataset: ', 
@@ -267,8 +311,8 @@ def main():
                     contact_head_body_frames, \
                     contact_larger_fish_head, contact_smaller_fish_head, \
                     contact_inferred_frames, tail_rubbing_frames, \
-                    Cbend_frames, Jbend_frames = \
-                    extract_behaviors(datasets[j], params, CSVcolumns)
+                    approaching_frames, fleeing_frames \
+                    = extract_behaviors(datasets[j], params, CSVcolumns, fps)
             # removed "circling_frames," from the list
             
             # For each behavior, a dictionary containing frames, 
@@ -313,16 +357,27 @@ def main():
             datasets[j]["tail_rubbing"] = make_frames_dictionary(tail_rubbing_frames,
                                           (datasets[j]["edge_frames"]["raw_frames"],
                                            datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
-            datasets[j]["Cbend"] = make_frames_dictionary(Cbend_frames,
+            # For approaching and fleeing, again a dictionary of frames,
+            # for each fish. approaching_Fish0 means Fish0 is approaching Fish 1
+            datasets[j]["approaching_Fish0"] = make_frames_dictionary(approaching_frames[0],
                                           (datasets[j]["edge_frames"]["raw_frames"],
                                            datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
-            datasets[j]["Jbend"] = make_frames_dictionary(Jbend_frames,
+            datasets[j]["approaching_Fish1"] = make_frames_dictionary(approaching_frames[1],
                                           (datasets[j]["edge_frames"]["raw_frames"],
                                            datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+            datasets[j]["fleeing_Fish0"] = make_frames_dictionary(fleeing_frames[0],
+                                          (datasets[j]["edge_frames"]["raw_frames"],
+                                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+            datasets[j]["fleeing_Fish1"] = make_frames_dictionary(fleeing_frames[1],
+                                          (datasets[j]["edge_frames"]["raw_frames"],
+                                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+
+
             # delete "circling"
             # datasets[j]["circling"] = make_frames_dictionary(circling_frames,
             #                               (datasets[j]["edge_frames"]["raw_frames"],
             #                                datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+
     # Write pickle file containing all datasets
     if pickleFileName != '':
         list_for_pickle = [datasets, CSVcolumns, fps, arena_radius_mm, params]
@@ -337,7 +392,6 @@ def main():
     markFrames_workbook = xlsxwriter.Workbook(allDatasets_markFrames_ExcelFile)  
     allDatasetsCSVfileName = 'behavior_count.csv' 
     print('File for collecting all behavior counts: ', allDatasetsCSVfileName)
-    makeDiagram = False
     with open(allDatasetsCSVfileName, "w", newline='') as results_file:
         # behaviors (events) to write
         key_list = ["perpendicular_noneSee", 
@@ -346,7 +400,10 @@ def main():
                     "perpendicular_smaller_fish_sees", 
                     "contact_any", "contact_head_body", 
                     "contact_larger_fish_head", "contact_smaller_fish_head", 
-                    "contact_inferred", "tail_rubbing", "Cbend", "Jbend",  
+                    "contact_inferred", "tail_rubbing", 
+                    "Cbend_Fish0", "Cbend_Fish1", "Jbend_Fish0", "Jbend_Fish1",
+                    "approaching_Fish0", "approaching_Fish1", 
+                    "fleeing_Fish0", "fleeing_Fish1", 
                     "edge_frames", "bad_bodyTrack_frames"]
         # removed "circling"
         
@@ -366,7 +423,10 @@ def main():
                          'Contact (Larger fish head-body) N_Events', 
                          'Contact (Smaller fish head-body) N_Events', 
                          'Contact (inferred) N_events', 'Tail-Rub N_Events', 
-                         'Cbend N_Events', 'Jbend N_Events', 
+                         'Cbend Fish0 N_Events', 'Cbend Fish1 N_Events',
+                         'Jbend Fish0 N_Events', 'Jbend Fish1 N_Events',
+                         'Fish0 Approaches N_Events', 'Fish1 Approaches N_Events',
+                         'Fish0 Flees N_Events', 'Fish1 Flees N_Events',
                          'Dish edge N_Events', 'Bad tracking N_events', 
                          '90deg-None Duration', 
                          '90deg-One Duration', '90deg-Both Duration', 
@@ -376,7 +436,10 @@ def main():
                          'Contact (Larger fish head-body) Duration', 
                          'Contact (Smaller fish head-body) Duration', 
                          'Contact (inferred) Duration', 'Tail-Rub Duration', 
-                         'Cbend Duration', 'Jbend Duration',
+                         'Cbend Fish0 Duration', 'Cbend Fish1 Duration', 
+                         'Jbend Fish0 Duration', 'Jbend Fish1 Duration', 
+                         'Fish0 Approaches Duration', 'Fish1 Approaches Duration',
+                         'Fish0 Flees Duration', 'Fish1 Flees Duration',
                          'Dish edge Duration', 'Bad Tracking Duration'])
         # removed 'Circling N_Events', 'Circling Duration', 
         
@@ -409,23 +472,25 @@ def main():
         # Return to original directory
         os.chdir(cwd)
     
-def extract_behaviors(dataset, params, CSVcolumns): 
+
+
+def extract_behaviors(dataset, params, CSVcolumns, fps): 
     """
-    FuncFunction for identifying frames (or frame windows) 
-    exhibiting corresponding to each behavior..
+    Calls functions to identify frames corresponding to each two-fish
+    behavioral motif.
     
     Inputs:
         dataset : dictionary, with keys like "all_data" containing all 
                     position data
         params : parameters for behavior criteria
         CSVcolumns : CSV column parameters
+        fps : frames per second. From defineParameters; same for all datasets
     Outputs:
-        arrays of all initial frames (row 1) and durations (row 2)
-                     in which the various behaviors are 
-                     found: circling_wfs, perpendicular_noneSee, perpendicular_oneSees, perpendicular_bothSee, 
-                     contact_any, contact_head_body, 
-                     contact_larger_fish_head, contact_smaller_fish_head,
-                     contact_inferred, tail_rubbing_frames, Cbend_frames
+        arrays of all frames in which the various behaviors are found:
+            perpendicular_noneSee, perpendicular_oneSees, 
+            perpendicular_bothSee, contact_any, contact_head_body, 
+            contact_larger_fish_head, contact_smaller_fish_head,
+            contact_inferred, tail_rubbing_frames
 
     """
     
@@ -501,17 +566,16 @@ def extract_behaviors(dataset, params, CSVcolumns):
                                           tailrub_maxHeadDist_px)
 
     t1_5 = perf_counter()
-    print(f'   t1_5 start Cbend analysis: {t1_5 - t1_start:.2f} seconds')
-    # Cbend
-    Cbend_frames = get_Cbend_frames(dataset, CSVcolumns, params["Cbend_threshold"])
+    print(f'   t1_5 start approaching / fleeing analysis: {t1_5 - t1_start:.2f} seconds')
+    # Approaching or fleeing
+    speed_threshold_px_frame = params["approach_speed_threshold_mm_second"]\
+                                     /dataset["image_scale"]/fps*1000
+    (approaching_frames, fleeing_frames) = get_approach_flee_frames(dataset, 
+                                                CSVcolumns, 
+                                                speed_threshold_px_frame = speed_threshold_px_frame,
+                                                min_frame_duration = params["approach_min_frame_duration"],
+                                                cos_angle_thresh = params["approach_cos_angle_thresh"])
 
-    t1_6 = perf_counter()
-    print(f'   t1_6 start J-bend analysis: {t1_6 - t1_start:.2f} seconds')
-    # J-bend
-    Jbend_frames = get_Jbend_frames(dataset, CSVcolumns, 
-                                    (params["Jbend_rAP"], 
-                                     params["Jbend_cosThetaN"], 
-                                     params["Jbend_cosThetaNm1"]))
 
     t1_end = perf_counter()
     print(f'   t1_end end analysis: {t1_end - t1_start:.2f} seconds')
@@ -523,7 +587,7 @@ def extract_behaviors(dataset, params, CSVcolumns):
         perpendicular_smaller_fish_sees, \
         contact_any, contact_head_body, contact_larger_fish_head, \
         contact_smaller_fish_head, contact_inferred_frames, \
-        tail_rubbing_frames, Cbend_frames, Jbend_frames
+        tail_rubbing_frames, approaching_frames, fleeing_frames
 
 
 

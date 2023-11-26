@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified Sept. 15, 2023 -- Raghu Parthasarathy
+Last modified Nov. 19, 2023 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -284,7 +284,7 @@ def get_tail_rubbing_frames(body_x, body_y, head_separation,
 
 def get_Cbend_frames(dataset, CSVcolumns, Cbend_threshold = 2/np.pi):
     """ 
-    Find frames in which one or more fish are sharply bent (C-bend)
+    Find frames in which a fish is sharply bent (C-bend)
     Bending is determined by ratio of head to tail-end distance / overall 
     fish length (sum of segments); bend = ratio < threshold
     Inputs:
@@ -293,7 +293,11 @@ def get_Cbend_frames(dataset, CSVcolumns, Cbend_threshold = 2/np.pi):
         Cbend_threshold : consider a fish bent if chord/arc < this threshold
                          Default 2/pi (0.637) corresponds to a semicircle shape
                          For a circle, chord/arc = sin(theta/2) / (theta/2)
-    Output : list of frames with bending < bending_threshold for any fish
+    Output : 
+        Cbend_frames : dictionary with two keys, 0 and 1, each of which
+                       contains a numpy array of frames with 
+                       identified C-bend frames for fish 0 and fish 1, 
+                       i.e. with bending < Cbend_threshold
     """
     
     fish_length = dataset["fish_length_array"]  # length in each frame, Nframes x Nfish==2 array
@@ -301,22 +305,17 @@ def get_Cbend_frames(dataset, CSVcolumns, Cbend_threshold = 2/np.pi):
     body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
     fish_head_tail_distance = np.sqrt((body_x[:,0,:]-body_x[:,-1,:])**2 + 
                                       (body_y[:,0,:]-body_y[:,-1,:])**2) # Nframes x Nfish==2 array
-    bend_ratio = fish_head_tail_distance/fish_length # Nframes x Nfish==2 array
-    bend_criterion = np.any(bend_ratio < Cbend_threshold, axis=1) # True if either fish is bent
-    # print('number of bent frames: ', np.sum(bend_criterion))
-    # print('number of both-bent frames: ', np.sum(np.all(bend_ratio < bending_threshold, axis=1)))
+    Cbend_ratio = fish_head_tail_distance/fish_length # Nframes x Nfish==2 array
+    Cbend = Cbend_ratio < Cbend_threshold # # True if fish is bent; Nframes x Nfish==2 array
     
-    # Nframes = np.shape(fish_length)[0] 
-    # plt.figure()
-    # plt.plot(range(Nframes), bend_ratio[:,0], color='magenta', label='Fish 1')
-    # plt.plot(range(Nframes), bend_ratio[:,1], color='olivedrab', label='Fish 2')
+    # Dictionary containing C-bend frames for each fish
+    Cbend_frames = {0: np.array(np.where(Cbend[:,0])).flatten() + 1, 
+                         1: np.array(np.where(Cbend[:,1])).flatten() + 1}
+
+    # Cbend_criterion = np.any(Cbend_ratio < Cbend_threshold, axis=1) # True if either fish is bent
+    # Cbend_frames = np.array(np.where(Cbend_criterion)).flatten() + 1
     
-    # plt.figure()
-    # plt.hist(bend_ratio[:,0], bins=50, color='magenta', label='Fish 1')
-    
-    bendingFrames = np.array(np.where(bend_criterion)).flatten() + 1
-    
-    return bendingFrames
+    return Cbend_frames
 
 
 def get_Jbend_frames(dataset, CSVcolumns, JbendThresholds = (0.98, 0.34, 0.70)):
@@ -333,13 +332,17 @@ def get_Jbend_frames(dataset, CSVcolumns, JbendThresholds = (0.98, 0.34, 0.70)):
         dataset: dataset dictionary of all behavior information for a given expt.
         CSVcolumns : information on what the columns of dataset["all_data"] are
         JbendThresholds : see J-bend definition above
-    Output : list of frames with J-bend for any fish
+    Output : 
+        Jbend_frames : dictionary with two keys, 0 and 1, each of which
+                       contains a numpy array of frames with 
+                       identified J-bend frames for fish 0 and fish 1
+
     """
     
     midColumn = int(CSVcolumns["body_Ncolumns"]/2)
     # print('midColumn should be 5: ', midColumn)
     
-    # All body positions, as in bending function
+    # All body positions, as in C-bending function
     body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
     body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
     
@@ -390,21 +393,16 @@ def get_Jbend_frames(dataset, CSVcolumns, JbendThresholds = (0.98, 0.34, 0.70)):
     cos_angle_2ndlast_heading = np.cos(segment_angles[:,-2,:] - angle_data)
     cos_angle_2ndlast_criterion = np.abs(cos_angle_2ndlast_heading) < JbendThresholds[2]
     
-    # print('Hello 1')
-    # print(dataset["dataset_name"])
-    # print(' * cosAngle_anterior_absmean *')
-    # print(cosAngle_anterior_absmean[82:92,:])
-    # print(' * cos_angle_last_heading *')
-    # print(cos_angle_last_heading[82:92,:])
-    # print(' * cos_angle_2ndlast_heading *')
-    # print(cos_angle_2ndlast_heading[82:92,:])
-    
     allCriteria = np.all(np.stack((anterior_straight_criterion, 
                            cos_angle_last_criterion, cos_angle_2ndlast_criterion), 
                            axis=2), axis=2) # for each fish, all criteria must be true
-    JbendFrames = np.array(np.where(np.any(allCriteria, axis=1))).flatten() + 1
+
     
-    return JbendFrames
+    # Dictionary containing J-bend frames for each fish
+    Jbend_frames = {0: np.array(np.where(allCriteria[:,0])).flatten() + 1, 
+                         1: np.array(np.where(allCriteria[:,1])).flatten() + 1}
+    
+    return Jbend_frames
 
 
 def calcOrientationXCorr(dataset, CSVcolumns, window_size = 25, makeDiagnosticPlots = False):
@@ -486,7 +484,166 @@ def calcOrientationXCorr(dataset, CSVcolumns, window_size = 25, makeDiagnosticPl
     
     return xcorr
 
+def get_approach_flee_frames(dataset, CSVcolumns, 
+                           speed_threshold_px_frame = 15, 
+                           cos_angle_thresh = 0.5,
+                           min_frame_duration = (2, 2)):
+    """ 
+    Find frames in which a fish is rapidly approaching the other fish,
+        or fleeing from the other fish
+    Approaching is defined by the following all being true over 
+        a frame interval of at least min_frame_duration[0]
+        - speed > speed_threshold
+        - closest distance btw fish is decreasing
+        - cos(angle) between the fish heading and the vector to the closest 
+          point on the other fish is greater than cos_angle_thresh
+    Fleeing is defined by the following all being true over 
+        a frame interval of min_frame_duration[1]
+        - speed > speed_threshold
+        - closest distance btw fish is increasing
+        - cos(angle) between the fish heading and the vector to the closest 
+          point on the other fish is less than cos_angle_thresh 
+          (NOT -cos_angle_thresh -- doesn't have to be moving directly
+           away; allow anything not approaching)
+    Inputs:
+        dataset: dataset dictionary of all behavior information for a given expt.
+        CSVcolumns : information on what the columns of dataset["all_data"] are
+        min_frame_duration : number of frames over which condition must be met.
+                      Tuple, for Approaching [0] and Fleeing [1]
+                      Default (2, 2)
+        speed_threshold_px_frame : speed threshold, px/frame, default 15
+        cos_angle_thresh : min cosine of angle between heading and 
+                      vector to other fish to consider as approaching. 
+                      For approaching, cos(angle) must be > cos_angle_thres
+                      For fleeing, cos(angle) must be < cos_angle_thresh 
+                         (not -cos_angle_thresh -- allow very wide range)
+                      Default 0.5 (60 degrees)
+    Output : 
+        approaching_frames : dictionary with two keys, 0 and 1, each of 
+                       which contains a numpy array of frames in which
+                       fish 0 is approaching and fish 1 is approaching, resp.
+        fleeinging_frames : dictionary with two keys, 0 and 1, each of 
+                       which contains a numpy array of frames in which
+                       fish 0 is fleeing and fish 1 is fleeing, resp.
+    """
 
+    # All body positions, as in C-bending function
+    angle_data = dataset["all_data"][:,CSVcolumns["angle_data_column"], :]
+    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+    
+    Nframes = body_x.shape[0]
+
+    # Minimum head-body distances: closest element of distance matrix 
+    # between head of one fish and body of the other.
+    # Also angles; head to closest point on other fish
+    # Array of Nframes x Nfish==2 values
+    # First col. = Fish 0 head to Fish 1 body; Second 1 head to 0 body
+    d_head_body = np.zeros((Nframes, 2), dtype = float)
+    angle_head_body = np.zeros((Nframes, 2), dtype = float)
+    for idx in range(Nframes):
+        d_head_body[idx, 0] = np.min(np.sqrt((body_x[idx,0,0] - body_x[idx,:,1])**2 + 
+                                (body_y[idx,0,0] - body_y[idx,:,1])**2))
+        d_head_body[idx, 1] = np.min(np.sqrt((body_x[idx,0,1] - body_x[idx,:,0])**2 + 
+                                (body_y[idx,0,1] - body_y[idx,:,0])**2))
+        # Also want the index of the closest position, for calculating approach angle
+        d_argmin_head0_body1 = np.argmin(np.sqrt((body_x[idx,0,0] - body_x[idx,:,1])**2 + 
+                                (body_y[idx,0,0] - body_y[idx,:,1])**2))
+        d_argmin_head1_body0 = np.argmin(np.sqrt((body_x[idx,0,1] - body_x[idx,:,0])**2 + 
+                                (body_y[idx,0,1] - body_y[idx,:,0])**2))
+        angle_head_body[idx, 0] = np.arctan2(body_y[idx,d_argmin_head0_body1,1] - body_y[idx,0,0], 
+                                            body_x[idx,d_argmin_head0_body1,1] - body_x[idx,0,0])
+        angle_head_body[idx, 1] = np.arctan2(body_y[idx,d_argmin_head1_body0,0] - body_y[idx,0,1], 
+                                            body_x[idx,d_argmin_head1_body0,0] - body_x[idx,0,1])
+    
+    # Cosine of angle between heading and closest distance vector
+    cos_angle_head_body = np.cos(angle_head_body - angle_data)
+    print('Cosine angle shape: ', cos_angle_head_body.shape)
+    
+    # frame-to-frame change in distance between fish (px)
+    delta_dheadbody = d_head_body[1:,:] - d_head_body[:-1, :]
+             
+    # Frame-to-frame speed, px/frame
+    speed = np.sqrt((body_x[1:,0,:] - body_x[:-1,0,:])**2 + 
+                    (body_y[1:,0,:] - body_y[:-1,0,:])**2)
+    # to make Nframes x Nfish==2 
+    speed = np.append(speed, np.zeros((1, 2)), axis=0)
+    
+    # Is the distance decreasing over min_frame_duration[0] frames (from the
+    # initial frame)? Is it increasing?
+    # Boolean array; [0] is for head0-body1; [1] is head1-body0
+    indices = np.arange(delta_dheadbody.shape[0] - min_frame_duration[0] + 1)[:, None] + \
+        np.arange(min_frame_duration[0])
+    distance_decr_over_window = np.zeros((Nframes, 2), dtype=bool)
+    distance_decr_over_window[:(-min_frame_duration[0]),:] = \
+        np.all(delta_dheadbody[indices,:] < 0, axis=1)    
+    indices = np.arange(delta_dheadbody.shape[0] - min_frame_duration[1] + 1)[:, None] + \
+        np.arange(min_frame_duration[1])
+    distance_incr_over_window = np.zeros((Nframes, 2), dtype=bool)
+    distance_incr_over_window[:(-min_frame_duration[1]),:] = \
+        np.all(delta_dheadbody[indices,:] > 0, axis=1)    
+    
+    # All the criteria for approaching. (All must be true)
+    # Nframes x Nfish==2 array, Boolean. (Could just multiply, but this
+    # might be clearer to read)
+    approaching = np.all(np.stack((speed > speed_threshold_px_frame, 
+                                  cos_angle_head_body > cos_angle_thresh, 
+                                  distance_decr_over_window), axis=2),
+                         axis=2) 
+    # All the criteria for fleeing. (All 
+    fleeing = np.all(np.stack((speed > speed_threshold_px_frame, 
+                                  cos_angle_head_body < cos_angle_thresh, 
+                                  distance_incr_over_window), axis=2),
+                         axis=2) 
+
+    # Dictionary containing approaching frames for each fish
+    approaching_frames = {0: np.array(np.where(approaching[:,0])).flatten() + 1, 
+                         1: np.array(np.where(approaching[:,1])).flatten() + 1}
+    # Dictionary containing fleeing frames for each fish
+    fleeing_frames = {0: np.array(np.where(fleeing[:,0])).flatten() + 1, 
+                         1: np.array(np.where(fleeing[:,1])).flatten() + 1}
+    
+    makeDiagnosticPlots = True
+    if makeDiagnosticPlots:
+        
+        xlimits = (90, 170)
+        plt.figure()
+        plt.plot(range(Nframes), speed[:,0], label='Fish 0')
+        plt.plot(range(Nframes), speed[:,1], label='Fish 1')
+        plt.xlabel('Frame')
+        plt.ylabel('Speed (px/frame)')
+        plt.title(dataset['dataset_name'])
+        plt.legend()
+        plt.xlim(xlimits[0], xlimits[1])
+        
+        plt.figure()
+        plt.plot(range(Nframes), d_head_body[:,0], label='head0-body1')
+        plt.plot(range(Nframes), d_head_body[:,1], label='head1-body0')
+        plt.xlabel('Frame')
+        plt.ylabel('Inter-fish distance (px)')
+        plt.title(dataset['dataset_name'])
+        plt.legend()
+        plt.xlim(xlimits[0], xlimits[1])
+        
+        plt.figure()
+        plt.plot(range(Nframes), approaching[:,0], color='royalblue', 
+                 label='Fish0 approaching Fish1')
+        plt.plot(range(Nframes), approaching[:,1], color='darkorange', 
+                 label='Fish1 approaching Fish0')
+        plt.plot(range(Nframes), -1.0*(fleeing[:,0].astype(int)), 
+                 color='lightseagreen', 
+                 label='Fish0 fleeing from Fish1')
+        plt.plot(range(Nframes), -1.0*(fleeing[:,1].astype(int)), 
+                 color='gold', 
+                 label='Fish1 fleeing from Fish0')
+        plt.title(dataset['dataset_name'])
+        plt.ylabel('Approaching (+1), Fleeing (-1)')
+        plt.legend()
+        plt.xlim(xlimits[0], xlimits[1])
+        
+
+    return approaching_frames, fleeing_frames
+    
 
 def get_circling_frames(fish_pos, head_separation, fish_angle_data,
                     Nframes, window_size, circle_fit_threshold, 
