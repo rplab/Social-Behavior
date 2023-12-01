@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Wed Sep  6 13:38:21 2023
-Last modified on Sept 21, 2023
+Last modified on Nov. 26, 2023
 
 Description
 -----------
@@ -68,7 +68,11 @@ def calcDeltaFramesEvents(datasets):
                         "contact_any", "contact_head_body", 
                         "contact_larger_fish_head", "contact_smaller_fish_head", 
                         "contact_inferred", "tail_rubbing", 
-                        "Cbend", "Jbend"]
+                        "Cbend_Fish0", "Cbend_Fish1", 
+                        "Jbend_Fish0", "Jbend_Fish1", 
+                        "approaching_Fish0", "approaching_Fish1",
+                        "fleeing_Fish0", "fleeing_Fish1",
+                        ]
     
     # Number of datasets
     N_datasets = len(datasets)
@@ -116,7 +120,7 @@ def calcDeltaFramesEvents(datasets):
 
 
 def bin_deltaFrames(behav_corr, behavior_key_list, binWidthFrames = 25, 
-                          frameRange = (-15000, 15000)):
+                          halfFrameRange = 15000):
     """
     Bin the "deltaFrames" delays between events of behaviors A, B
     for each dataset.
@@ -132,8 +136,9 @@ def bin_deltaFrames(behav_corr, behavior_key_list, binWidthFrames = 25,
     behavior_key_list : list of all behaviors
     binWidthFrames : width of bins for histogram, number of frames
         Default 25, usual 25 fps, so this is 1 second
-    frameRange : (-15000, 15000) min and max possible DeltaFrames,
-        which should be +/- total number of frames
+    halfFrameRange : max possible DeltaFrames to bin; make bins from
+        -halfFrameRange to +halfFrameRange, forcing a bin centered at 0.
+        Default: 15000, which is probablly the total number of frames
     
         
     Returns
@@ -147,12 +152,11 @@ def bin_deltaFrames(behav_corr, behavior_key_list, binWidthFrames = 25,
     """
     # for histogram of deltaFrames. Bin centers and edges. 
     # Force 0.0 to be at the center of a bin
-    binCenters1 = np.arange(frameRange[0], 0.0, binWidthFrames)
-    binCenters2 = np.arange(0.0, frameRange[1]+binWidthFrames, binWidthFrames)
+    binCenters2 = np.arange(0.0, halfFrameRange+binWidthFrames, binWidthFrames)
+    binCenters1 = -1.0*np.flipud(binCenters2)[:-1]
     binCenters = np.concatenate((binCenters1, binCenters2))
     binEdges = np.concatenate((binCenters - binWidthFrames/2.0, 
                                np.array([np.max(binCenters)+binWidthFrames/2.0])))
-    
     # Number of datasets
     N_datasets = len(behav_corr)
     for j in range(N_datasets):

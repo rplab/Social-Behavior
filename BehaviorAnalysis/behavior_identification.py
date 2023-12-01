@@ -5,18 +5,16 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified Nov. 19, 2023 -- Raghu Parthasarathy
+Last modified Nov. 25, 2023 -- Raghu Parthasarathy
 
 Description
 -----------
 
 Module containing all zebrafish pair behavior identification functions:
-    - Circling 
     - Contact
     - 90-degree orientation
     - Tail rubbing
-
-Requires prior import of TaubinSVD() from circle_fit_taubin (for circling)
+    - (and more)
 
 """
 import matplotlib.pyplot as plt
@@ -603,7 +601,7 @@ def get_approach_flee_frames(dataset, CSVcolumns,
     fleeing_frames = {0: np.array(np.where(fleeing[:,0])).flatten() + 1, 
                          1: np.array(np.where(fleeing[:,1])).flatten() + 1}
     
-    makeDiagnosticPlots = True
+    makeDiagnosticPlots = False
     if makeDiagnosticPlots:
         
         xlimits = (90, 170)
