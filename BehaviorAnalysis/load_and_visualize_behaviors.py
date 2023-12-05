@@ -3,14 +3,16 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Jul 10 18:09:34 2023
-Last modified on September 6, 2023
+Last modified on Dec. 4, 2023
 
 Description
 -----------
 
-Contains the function visualize_fish for plotting fish body positions 
-   and trajectories, and a program to load datasets from the pickle file,
-   select frames to plot, etc.
+Contains the functions 
+    - visualize_fish for plotting fish body positions and trajectories
+    - loadAllFromPickle to load datasets from a pickle file
+    - a program (main function) to load datasets from the pickle file,
+      select frames to plot, etc.
 """
 
 import numpy as np
@@ -23,8 +25,10 @@ def visualize_fish(dataset, CSVcolumns, startFrame, endFrame):
     """
     Plot fish body positions (position 1 == head) over some range of frames
     body{x, y} are Nframes x 10 x Nfish=2 arrays of x and y positions.
-    Color by frame, with one fish markers in "cool" colormap (cyan to magenta)
-    and the other "summer_r" (reversed summer, yellow to green).
+    Color by frame, with Fish 0 markers in the "summer_r" 
+    (reversed summer, yellow to green) colormap, and Fish 1 markers in 
+    "cool" colormap (cyan to magenta)    and the other 
+    Marker for head = circle (Fish 0) and Diamond (Fish 1); x's for bad frames
 
     Parameters
     ----------
@@ -47,8 +51,8 @@ def visualize_fish(dataset, CSVcolumns, startFrame, endFrame):
     body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
     frameArray = dataset["frameArray"]
     
-    cmap1 = matplotlib.cm.get_cmap('cool')
-    cmap2 = matplotlib.cm.get_cmap('summer_r')
+    cmap1 = matplotlib.colormaps.get_cmap('cool')
+    cmap2 = matplotlib.colormaps.get_cmap('summer_r')
     fig = plt.figure()
     print(fig)
     ax = plt.axes()
@@ -56,15 +60,16 @@ def visualize_fish(dataset, CSVcolumns, startFrame, endFrame):
         isBadFrame = np.isin(j,  dataset["bad_bodyTrack_frames"]["raw_frames"])
         relativej = (j-startFrame)/(endFrame-startFrame+1)
         plot_one_fish(fig, body_x[frameArray==j,:,0], body_y[frameArray==j,:,0], 
-                      frameArray, cmap1, relativej, isBadFrame)
+                      frameArray, cmap1, relativej, isBadFrame, marker='o')
         plot_one_fish(fig, body_x[frameArray==j,:,1], body_y[frameArray==j,:,1], 
-                      frameArray, cmap2, relativej, isBadFrame)
+                      frameArray, cmap2, relativej, isBadFrame, marker='D')
     ax.set_aspect('equal', adjustable='box')
     plt.draw()
     plt.title(f'{dataset["dataset_name"]}: frames {startFrame} to {endFrame}')
 
 
-def plot_one_fish(fig, body_x, body_y, frameArray, cmap, relativej, isBadFrame):
+def plot_one_fish(fig, body_x, body_y, frameArray, cmap, 
+                  relativej, isBadFrame, marker='o'):
     """
     Plots head (marker) and body (line) of one fish in a single frame,
     with color set by "relativej" = [0,1] position in colormap. 
@@ -76,8 +81,8 @@ def plot_one_fish(fig, body_x, body_y, frameArray, cmap, relativej, isBadFrame):
     """ 
     plt.figure(fig.number)
     # head of fish
-    plt.plot(body_x.flatten()[0], body_y.flatten()[0], color=cmap(relativej), marker='o',
-             markersize=12)
+    plt.plot(body_x.flatten()[0], body_y.flatten()[0], color=cmap(relativej), 
+             markersize=12, marker=marker)
     # 'x' if this frame is in "bad frames"
     if isBadFrame:
         plt.plot(body_x.flatten()[0], body_y.flatten()[0], color='black', marker='x',
@@ -135,11 +140,14 @@ if __name__ == '__main__':
     for j in range(len(datasets)):
         print('   ' , datasets[j]["dataset_name"])
     
-    whichDataset = '3b_k6'
+    whichDataset = '3b_k7'
     chosenSet = None
     for j in range(len(datasets)):
         if datasets[j]["dataset_name"]==whichDataset:
             chosenSet = datasets[j]
     
-    visualize_fish(chosenSet, CSVcolumns, 7430, 7490) # 7430, 7490
+    startFrame = 295
+    endFrame = 300
+    visualize_fish(chosenSet, CSVcolumns, 
+                   startFrame=startFrame, endFrame=endFrame) # 7430, 7490
 
