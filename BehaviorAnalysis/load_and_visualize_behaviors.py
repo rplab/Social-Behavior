@@ -21,6 +21,44 @@ import matplotlib.pyplot as plt
 import pickle
 
 
+def loadAllFromPickle(pickleFileName = None):
+    """
+
+    Parameters
+    ----------
+    pickleFileName : string, optional
+        DESCRIPTION. The default is None; hard-coded options
+
+    Returns
+    -------
+    datasets : all datasets in the Pickle file
+    CSVcolumns : see behaviors_main()
+    fps : frames per second  
+    arena_radius_mm : arena radius, mm; see behaviors_main()
+    params : analysis parameters; see behaviors_main()
+    """
+    
+    if pickleFileName == None:
+        #pickleFileName = input('Pickle file name; Will append .pickle: ')
+        #pickleFileName = pickleFileName + '.pickle'
+        pickleFileName = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\temp\temp.pickle'
+        # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\2 week old - pairs\all_2week_light.pickle'
+        # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\2 week old - pairs in the dark\all_2week_dark.pickle'
+
+
+    with open(pickleFileName, 'rb') as handle:
+        b = pickle.load(handle)
+
+    # Assign variables
+    datasets = b[0]
+    CSVcolumns = b[1]
+    fps = b[2]    
+    arena_radius_mm = b[3]
+    params = b[4]
+    
+    return datasets, CSVcolumns, fps, arena_radius_mm, params
+
+
 def visualize_fish(dataset, CSVcolumns, startFrame, endFrame):
     """
     Plot fish body positions (position 1 == head) over some range of frames
@@ -91,50 +129,138 @@ def plot_one_fish(fig, body_x, body_y, frameArray, cmap,
     plt.plot(body_x.flatten(), body_y.flatten(), color=cmap(relativej), linestyle='solid')
 
 
-
-def loadAllFromPickle(pickleFileName = None):
+def flag_possible_IDswitch(dataset, CSVcolumns):
     """
-
+    Assess possible flags for switched fish IDs
+    Consider angle, head-head distance, etc.
+    
+    Unfinished diagnostic function to determine candidate frames for 
+    flipped Fish IDs.
+    
+    Raghu: 4 Dec. 2023
+    
     Parameters
     ----------
-    pickleFileName : string, optional
-        DESCRIPTION. The default is None; hard-coded options
+    dataset: dataset dictionary of all behavior information for a given expt.
+        Note that dataset["all_data"] contains all the position information
+        Rows = frame numbers
+        Columns = x, y, angle data -- see CSVcolumns
+        Dim 3 = fish (2 fish)
+    CSVcolumns: information on what the columns of dataset["all_data"] are
 
     Returns
     -------
-    datasets : all datasets in the Pickle file
-    CSVcolumns : see behaviors_main()
-    fps : frames per second  
-    arena_radius_mm : arena radius, mm; see behaviors_main()
-    params : analysis parameters; see behaviors_main()
+    None.
+
     """
+    # All heading angles
+    angle_data = dataset["all_data"][:,CSVcolumns["angle_data_column"], :]
+    cos_diff_angle = np.cos(np.diff(angle_data, n=1, axis=0))
+    plt.figure()
+    plt.hist(cos_diff_angle[:,0], bins=50)
+    plt.hist(cos_diff_angle[:,1], bins=50)
+    cos_diff_thresh = 0.0
+    large_angle_change_flag = np.argwhere(cos_diff_angle < cos_diff_thresh)
+    print('large angle change shape:', large_angle_change_flag.shape)
     
-    if pickleFileName == None:
-        #pickleFileName = input('Pickle file name; Will append .pickle: ')
-        #pickleFileName = pickleFileName + '.pickle'
-        pickleFileName = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\temp\temp.pickle'
-        # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\2 week old - pairs\all_2week_light.pickle'
-        # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\2 week old - pairs in the dark\all_2week_dark.pickle'
-
-
-    with open(pickleFileName, 'rb') as handle:
-        b = pickle.load(handle)
-
-    # Assign variables
-    datasets = b[0]
-    CSVcolumns = b[1]
-    fps = b[2]    
-    arena_radius_mm = b[3]
-    params = b[4]
+    # all lengths
+    fish_lengths = dataset["fish_length_array"]
+    diff_fish_length = np.diff(fish_lengths, n=1, axis=0)
+    diff_fish_length_fraction = np.abs(diff_fish_length) / fish_lengths[:-1,:]
+    print('diff_fish_length_fraction shape:', large_angle_change_flag.shape)
+    diff_fish_length_fraction_thresh = 0.2
+    diff_fish_length_flag = np.argwhere(diff_fish_length_fraction > diff_fish_length_fraction_thresh)
     
-    return datasets, CSVcolumns, fps, arena_radius_mm, params
+    # head-head distance in adjacent frames
+    # All positions
+    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+    
+    #print('\n\n\n*** DIAGNOSTIC! ***\n')
+    #body_x = body_x[0:500,:,:]
+    #body_y = body_y[0:500,:,:]
 
+    # Difference across adjacent frames for positions for the same fish IDs
+    d_all_same = np.sqrt(np.diff(body_x, n=1, axis=0)**2 + np.diff(body_y, n=1, axis=0)**2)
+    # Difference across adjacent frames for positions for alternating fish IDs
+    # There's probably a clever way to do this, but my attempts fail, so I'll loop:
+    d_all_01 = np.zeros((body_x.shape[0]-1, body_x.shape[1]))    
+    d_all_10 = np.zeros((body_x.shape[0]-1, body_x.shape[1]))    
+    for j in range(body_x.shape[0]-1):
+        d_all_01[j,:] = np.sqrt((body_x[j+1, :, (j+1)%2] - body_x[j, :, j%2])**2 + 
+                                  (body_y[j+1, :, (j+1)%2] - body_y[j, :, j%2])**2)
+        d_all_10[j,:] = np.sqrt((body_x[j+1, :, j%2] - body_x[j, :, (j+1)%2])**2 + 
+                                  (body_y[j+1, :, j%2] - body_y[j, :, (j+1)%2])**2)
+    
+    # Does switching ID reduce total difference?
+    switch_difference = (d_all_01 + d_all_01) - np.sum(d_all_same, axis=2)
+    # Considering just head positions:
+    wrongID_head = np.argwhere(switch_difference[:,0] < 0)
+    print('Head only')
+    for j in range(wrongID_head.shape[0]):
+        wrongFrame = int(wrongID_head[j])
+        print(f'{wrongFrame}: same {d_all_same[wrongFrame,0,0]:.2f}, {d_all_same[wrongFrame,0,1]:.2f}, ', 
+              f'switch {d_all_01[wrongFrame,0]:.2f}, {d_all_10[wrongFrame,0]:.2f}')
+    # Considering total body positions:
+    wrongID_body = np.argwhere(np.sum(switch_difference, axis=1) < 0)
+    print('Total body')
+    for j in range(wrongID_body.shape[0]):
+        wrongFrame = int(wrongID_body[j])
+        print(f'{wrongFrame}: same {np.sum(d_all_same[wrongFrame,:,0]):.2f},  ',
+              f'{np.sum(d_all_same[wrongFrame,:,1]):.2f}, ', 
+              f'switch {np.sum(d_all_01[wrongFrame,:]):.2f}, ',
+              f'{np.sum(d_all_10[wrongFrame,:]):.2f}')
+    
+    
+    plt.figure()
+    plt.hist(diff_fish_length_fraction[:,0], bins=100)
+    plt.hist(diff_fish_length_fraction[:,1], bins=100)
+    plt.yscale('log')
+
+
+def how_many_both_approaching_frames(dataset):
+    """
+    Note frames in which both Fish are approaching each other
+
+    Parameters
+    ----------
+    dataset: dataset dictionary of all behavior information for a given expt.
+        Note that dataset["all_data"] contains all the position information
+        Rows = frame numbers
+        Columns = x, y, angle data -- see CSVcolumns
+        Dim 3 = fish (2 fish)
+
+    Returns
+    -------
+    
+    Number of frames in which both fish are classified as approaching each other
+    
+    None.
+
+    """
+    # Identify frames in which both fish are approaching
+    approach_Fish0_rawFrames = dataset["approaching_Fish0"]["raw_frames"]
+    approach_Fish1_rawFrames = dataset["approaching_Fish1"]["raw_frames"]
+    approach_both_rawFrames = np.intersect1d(approach_Fish0_rawFrames, 
+                                             approach_Fish1_rawFrames)
+    print('\n')
+    print(dataset["dataset_name"], 
+          ': Frames in which both fish are approaching (raw Frames):')
+    print('Number of frames: ', len(approach_both_rawFrames), 'out of ',
+          len(approach_Fish0_rawFrames), ' and ', len(approach_Fish1_rawFrames))
+    print(approach_both_rawFrames)
+
+    return len(approach_both_rawFrames)
 
 
 if __name__ == '__main__':
     
+    # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\temp\temp.pickle'
+    pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - pairs\all_2week_light.pickle'
+    
+    
     datasets, CSVcolumns, fps, arena_radius_mm, params = \
-        loadAllFromPickle(pickleFileName = None)
+        loadAllFromPickle(pickleFileName = pickleFileName) # or None
     
     print('\nAll dataset names:')
     for j in range(len(datasets)):
@@ -146,8 +272,14 @@ if __name__ == '__main__':
         if datasets[j]["dataset_name"]==whichDataset:
             chosenSet = datasets[j]
     
-    startFrame = 295
-    endFrame = 300
+    startFrame = 759
+    endFrame = 766
     visualize_fish(chosenSet, CSVcolumns, 
                    startFrame=startFrame, endFrame=endFrame) # 7430, 7490
+    
+    flag_possible_IDswitch(chosenSet, CSVcolumns)
 
+    n_bothApproachFrames = np.zeros(len(datasets))
+    for j in range(len(datasets)):
+        n_bothApproachFrames[j] = how_many_both_approaching_frames(datasets[j])
+    print(f'\n\nAverage n_bothApproachFrames: {np.mean(n_bothApproachFrames):.1f}')

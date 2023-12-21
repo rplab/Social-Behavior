@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Wed Sep  6 13:38:21 2023
-Last modified on Nov. 26, 2023
+Last modified on Dec. 21, 2023
 
 Description
 -----------
@@ -23,7 +23,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import linregress
 from relative_duration import get_duration_info
-
+import pickle
 
 def calcDeltaFramesEvents(datasets):
     """
@@ -39,6 +39,9 @@ def calcDeltaFramesEvents(datasets):
     from A; only +7 is recorded. If Behavior A is 3, 4, 5, 15, 16, and 
     B is 10, 11, 12, then +7 (3 to 10) and -6 (16 to 10) are recorded.
     Note that positive numbers for corr_BA mean that B occurs after A. 
+    
+    Faster w/ ChatGPT input! Avoid repeated access to a nested dictionary,
+    and avoid looping through frames
 
     Inputs
     ----------
@@ -55,10 +58,11 @@ def calcDeltaFramesEvents(datasets):
     behav_corr : dictionary of dictionaries
                  First key: dataset
                  Second and third keys: behaviors A, B
-                 Third key: "deltaFrames", the frame delays between A, B 
+                 Third key: "allDeltaFrames" for behavior A
+                 Fourth key: "deltaFrames", the frame delays between A, B 
                              for all events.
     behavior_key_list : list of all behaviors considered
-
+behav_corr, behavior_key_list = calcDeltaFramesEvents(datasets)
     """
 
     behavior_key_list = ["perpendicular_noneSee", 
@@ -73,65 +77,64 @@ def calcDeltaFramesEvents(datasets):
                         "approaching_Fish0", "approaching_Fish1",
                         "fleeing_Fish0", "fleeing_Fish1",
                         ]
+    #behavior_key_list = ["approaching_Fish0", "approaching_Fish1",
+    #                    "fleeing_Fish0", "fleeing_Fish1"]
+    #print('PARTIAL BEHAVIORS!')
     
     # Number of datasets
     N_datasets = len(datasets)
     
     # initialize nested dictionaries for datasets
-    # There's probably a better way to do this...
     behav_corr = [{} for j in range(N_datasets)]
     for j in range(N_datasets):
         # keep the dataset_name" key
-        behav_corr[j]["dataset_name"] = datasets[j]["dataset_name"]
+        behav_corr_j = behav_corr[j]
+        behav_corr_j["dataset_name"] = datasets[j]["dataset_name"]
         print('Dataset ', j, '; ', behav_corr[j]["dataset_name"])
         for bA in behavior_key_list:
-            behav_corr[j][bA] = {}
-            behav_corr[j][bA]["allDeltaFrames"] = np.array([])
+            behav_corr_j[bA] = {"allDeltaFrames": np.array([])}
             for bB in behavior_key_list:
-                behav_corr[j][bA][bB] = {}
-                behav_corr[j][bA][bB]["deltaFrames"] = np.array([])
+                behav_corr_j[bA][bB] = {"deltaFrames": np.array([])}
         # Calculate frame delays and append to each deltaFrames list
         for behavior_A in behavior_key_list:
+            bA_frames = datasets[j][behavior_A]["combine_frames"][0]
             for behavior_B in behavior_key_list:
                 # For each dataset, note each event and calculate the delay between
                 # this and other events of both the same and different behaviors
                 # Note: positive deltaFrames means behavior A is *after* behavior B
-                bA_frames = datasets[j][behavior_A]["combine_frames"][0]
                 bB_frames = datasets[j][behavior_B]["combine_frames"][0]
-                for k in bA_frames:
-                    deltaFrames_temp = bB_frames - k
-                    if behavior_A == behavior_B:
-                        deltaFrames_temp = deltaFrames_temp[deltaFrames_temp != 0]
-                    # if behavior_A == "perpendicular_noneSee" and behavior_B == "contact_any": 
-                    #     print('Diagnostics: ', behav_corr[j]["dataset_name"])
-                    #     print(behavior_A)
-                    #     print(behavior_B)
-                    #     print('bA frame k = ', k, '  bB_frames = ', bB_frames)
-                    #     print('Delta Frames: ', deltaFrames_temp.flatten())
-                    behav_corr[j][behavior_A][behavior_B]["deltaFrames"] = \
-                        np.append(behav_corr[j][behavior_A][behavior_B]["deltaFrames"], 
-                                  deltaFrames_temp.flatten())
-                    # All the frame delays (for all Behaviors B)
-                    behav_corr[j][behavior_A]["allDeltaFrames"] = \
-                        np.append(behav_corr[j][behavior_A]["allDeltaFrames"], 
-                                  deltaFrames_temp.flatten())
+                deltaFrames_temp = bB_frames[:, None] - bA_frames # all at once!
+                if behavior_A == behavior_B:
+                    deltaFrames_temp = deltaFrames_temp[deltaFrames_temp != 0]
+
+                behav_corr_j[behavior_A][behavior_B]["deltaFrames"] = \
+                    np.append(behav_corr_j[behavior_A][behavior_B]["deltaFrames"], 
+                              deltaFrames_temp.flatten())
+                # All the frame delays (for all Behaviors B)
+                behav_corr_j[behavior_A]["allDeltaFrames"] = \
+                    np.append(behav_corr_j[behavior_A]["allDeltaFrames"], 
+                              deltaFrames_temp.flatten())
     
     return behav_corr, behavior_key_list
 
 
 def bin_deltaFrames(behav_corr, behavior_key_list, binWidthFrames = 25, 
-                          halfFrameRange = 15000):
+                          halfFrameRange = 15000, 
+                          outputPickleFileName = None):
     """
     Bin the "deltaFrames" delays between events of behaviors A, B
     for each dataset.
     Force the central bin to be centered at deltaFrames = 0
+    This can take ~20 minutes for all keys and 60 datasets, so save outputs
+    in outPickleFileName.pickle if input isn't None
     
     Inputs
     ----------
     behav_corr : dictionary of dictionaries
                  First key: dataset
                  Second and third keys: behaviors A, B
-                 Third key: "deltaFrames", the frame delays between A, B 
+                 Third key: "allDeltaFrames" for behavior A
+                 Fourth key: "deltaFrames", the frame delays between A, B 
                              for all events.
     behavior_key_list : list of all behaviors
     binWidthFrames : width of bins for histogram, number of frames
@@ -139,15 +142,22 @@ def bin_deltaFrames(behav_corr, behavior_key_list, binWidthFrames = 25,
     halfFrameRange : max possible DeltaFrames to bin; make bins from
         -halfFrameRange to +halfFrameRange, forcing a bin centered at 0.
         Default: 15000, which is probablly the total number of frames
+    outputPickleFileName : name of the Pickle file in which to save 
+                            outputs. Will append ".pickle"
+                            Note that pickle file will be very large!
+                            Default: None (don't save) (recommended)
     
         
     Returns
     -------
-    behav_corr : dictionary of dictionaries
+    behav_corr : dictionary of dictionaries, updated
                  First key: dataset
                  Second and third keys: behaviors A, B
-                 Fourth: "counts_normAcrossBehavior" and 
-                         "counts_normAcrossTime" , normalized likelihoods
+                 Third key: "allDeltaFrames" for behavior A
+                 Fourth key (unchanged): "deltaFrames", the frame delays 
+                             between A, B for all events.
+                 Fourth key (new): : 
+                     "counts" : counts in each bin for A, B at deltaFrames
     binCenters: bin centers, from bin edges used for histogram
     """
     # for histogram of deltaFrames. Bin centers and edges. 
@@ -167,27 +177,23 @@ def bin_deltaFrames(behav_corr, behavior_key_list, binWidthFrames = 25,
                 # Histogram counts for deltaFrames_AB
                 behav_corr[j][behavior_A][behavior_B]["counts"] = \
                     np.histogram(behav_corr[j][behavior_A][behavior_B]["deltaFrames"], 
-                                 bins=binEdges)[0] # [0] to just get the counts array
-            # Histogram counts of all the behaviors' Frame Delays, rel. to A
-            behav_corr[j][behavior_A]["counts_all"] = \
-                np.histogram(behav_corr[j][behavior_A]["allDeltaFrames"], 
-                                                       bins=binEdges)[0]
-            # Normalize the deltaFrames_AB 
-            # (1) by the total for all deltaFrames
-            for behavior_B in behavior_key_list:
-                behav_corr[j][behavior_A][behavior_B]["counts_normAcrossBehavior"] = \
-                    behav_corr[j][behavior_A][behavior_B]["counts"] / \
-                        behav_corr[j][behavior_A]["counts_all"]
-                behav_corr[j][behavior_A][behavior_B]["counts_normAcrossTime"] = \
-                    behav_corr[j][behavior_A][behavior_B]["counts"] / \
-                        np.sum(behav_corr[j][behavior_A][behavior_B]["counts"])
-    
+                                 bins=binEdges)[0] # [0] to only get the counts array
+
+    if outputPickleFileName != None:
+        list_for_pickle = [behav_corr, binCenters, behavior_key_list]
+        outputPickleFileName = outputPickleFileName + '.pickle'
+        print(f'\nWriting pickle file: {outputPickleFileName}\n')
+        with open(outputPickleFileName, 'wb') as handle:
+            pickle.dump(list_for_pickle, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
     return behav_corr, binCenters
     
 def calcBehavCorrAllSets(behav_corr, behavior_key_list, binCenters):
     """
-    Average the normalized correlations (binned Delta Frames for a 
-            given behavior, relative to all the behaviors) across datasets
+    Average the correlations (binned Delta Frames for a 
+            given behavior, relative to all the behaviors) across datasets,
+            normalizing the pooled counts (not normalizing per datset)
+    
 
     Parameters
     ----------
@@ -226,15 +232,17 @@ def calcBehavCorrAllSets(behav_corr, behavior_key_list, binCenters):
         for ibA, bA in enumerate(behavior_key_list):
             for ibB, bB in enumerate(behavior_key_list):
                 behav_corr_acrossBehavior_array[j, ibA, ibB, :] = \
-                    behav_corr[j][bA][bB]["counts_normAcrossBehavior"]
+                    behav_corr[j][bA][bB]["counts"]
                 behav_corr_acrossTime_array[j, ibA, ibB, :] = \
-                    behav_corr[j][bA][bB]["counts_normAcrossTime"]
-
-    # Average over all datasets
-    behav_corr_acrossBehavior_array_mean = \
-        np.nanmean(behav_corr_acrossBehavior_array, axis=0)
-    behav_corr_acrossTime_array_mean = \
-        np.nanmean(behav_corr_acrossTime_array, axis=0)
+                    behav_corr[j][bA][bB]["counts"]
+    
+    # Pool across all datasets
+    behav_corr_array_sum = np.sum(behav_corr_acrossBehavior_array, axis=0)
+    # Sum over behavior B (for each frame delay)
+    behav_corr_sum_behaviorB = np.sum(behav_corr_array_sum, axis=1)
+    # Sum over time (for each behavior B)
+    behav_corr_sum_time = np.sum(behav_corr_array_sum, axis=2)
+    
 
     # Put this into a nested dictionary
     # initialize nested dictionaries for datasets
@@ -244,11 +252,14 @@ def calcBehavCorrAllSets(behav_corr, behavior_key_list, binCenters):
         behav_corr_allSets['normAcrossBehavior'][bA] = {}
         behav_corr_allSets['normAcrossTime'][bA] = {}
         for ibB, bB in enumerate(behavior_key_list):
+            # print(ibA, bA, ibB, bB)
             behav_corr_allSets['normAcrossBehavior'][bA][bB] = \
-                behav_corr_acrossBehavior_array_mean[ibA, ibB, :]
+                behav_corr_array_sum[ibA, ibB, :] / \
+                behav_corr_sum_behaviorB[ibA, :]
             behav_corr_allSets['normAcrossTime'][bA][bB] = \
-                behav_corr_acrossTime_array_mean[ibA, ibB, :]
-
+                behav_corr_array_sum[ibA, ibB, :] / \
+                behav_corr_sum_time[ibA,ibB]
+     
     return behav_corr_allSets
 
 
@@ -257,6 +268,7 @@ def plot_behaviorCorrelation(behav_corr_allSets, binCenters,
     """ 
     Plot Behavior B likelihood following/preceding Behavior A
     Can plot a single A-B pair, or all B for a given A
+    If a single A-B pair, also include the mean value as a dashed line
     Plots both types of normalizations (across Behaviors and across Time)
     
     Inputs:
@@ -274,6 +286,9 @@ def plot_behaviorCorrelation(behav_corr_allSets, binCenters,
         plt.figure()
         plt.plot(binCenters, behav_corr_allSets['normAcrossBehavior'][behaviorA][behaviorB],
                  color='darkturquoise')
+        meanCorr = np.mean(behav_corr_allSets['normAcrossBehavior'][behaviorA][behaviorB])
+        plt.plot(binCenters, meanCorr*np.ones(binCenters.shape), 
+                 linestyle='dashed', color='turquoise')
         plt.xlabel('Delta Frames')
         plt.ylabel('Relative likelihood')
         plt.title(f'{behaviorA} then {behaviorB}; norm. across behaviors.')
@@ -281,6 +296,9 @@ def plot_behaviorCorrelation(behav_corr_allSets, binCenters,
         plt.figure()
         plt.plot(binCenters, behav_corr_allSets['normAcrossTime'][behaviorA][behaviorB],
                  color='darkorange')
+        meanCorr = np.mean(behav_corr_allSets['normAcrossTime'][behaviorA][behaviorB])
+        plt.plot(binCenters, meanCorr*np.ones(binCenters.shape), 
+                 linestyle='dashed', color='gold')
         plt.xlabel('Delta Frames')
         plt.ylabel('Relative likelihood; norm. across time')
         plt.title(f'{behaviorA} then {behaviorB}; norm. across time.')
@@ -303,94 +321,6 @@ def plot_behaviorCorrelation(behav_corr_allSets, binCenters,
     plt.ylabel('Relative likelihood')
     plt.title(f'{behaviorA} then each behavior; norm. across time')
     plt.legend()
-
-def compare_relative_durations(CSVfilename1 = '', CSVfilename2 = '',):
-    """
-    Calls get_duration_info to read the CSV output by 
-    calc_relative_durations_csv(), containing fish length differences, etc.
-    for *two* different experiments.
-    Plot the mean of each behavior for each experiment vs. the other.
-    
-    Ignore CSV columns for length, "smaller" or "larger" fish, etc.
-        column names (keys) hard-coded in 'keysToIgnore'
-
-    Inputs:
-        CSVfilename1, CSVfilename2 : CSV file names containing 
-            dataset names (col 1) 
-            and relative durations. Reading stops at the first blank
-            row, and so will ignore the mean, etc.
-            Leave empty to list csv files in the current directory that 
-            have 'relDuration' in the file name. If there's only one,
-            use it as default.
-
-    Outputs:
-        
-    Raghuveer Parthasarathy
-    Sept. 17, 2023           
-    Last modified Sept. 18, 2023
-    """
-    
-    duration_data1 = get_duration_info(CSVfilename1)  # Will ask for CSV file info
-    duration_data2 = get_duration_info(CSVfilename2)  # Will ask for CSV file info
-    
-    # Initialize lists to store statistics
-    mean_values1 = []    # To store the means of df1
-    mean_values2 = []    # To store the means of df2
-    std_dev1 = []        # To store the standard deviations of df1
-    std_dev2 = []        # To store the standard deviations of df2
-    
-    keysToIgnore = ['Mean difference in fish lengths (px)', 
-                    'Mean Inter-fish dist (px)',
-                    'Angle XCorr mean', '90deg-largerSees', 
-                    '90deg-smallerSees', 'Contact (Larger fish head-body)',
-                    'Contact (Smaller fish head-body)', 
-                    'Contact (inferred)']
-    key_list = list(set(duration_data1.columns) - set(keysToIgnore))
-
-    for key in key_list:
-        # Note that the keys must be the same in both dataframes -- not 
-        # checking this!
-        # Calculate mean and standard deviation for df1
-        mean1 = duration_data1[key].mean()
-        std1 = duration_data1[key].std()
-        mean_values1.append(mean1)
-        std_dev1.append(std1)
-
-        # Calculate mean and standard deviation for df2
-        mean2 = duration_data2[key].mean()
-        std2 = duration_data2[key].std()
-        mean_values2.append(mean2)
-        std_dev2.append(std2)        
-        
-    # Calculate standard errors
-    sem_values1 = [std / np.sqrt(len(duration_data1)) for std in std_dev1]
-    sem_values2 = [std / np.sqrt(len(duration_data2)) for std in std_dev2]
-
-    # Create a scatter plot of the means with error bars
-    plt.figure()
-    plt.errorbar(mean_values1, mean_values2, xerr=sem_values1, 
-                 yerr=sem_values2, fmt='o', markersize=16, capsize=5, 
-                 markeredgecolor = 'darkturquoise', 
-                 markerfacecolor='paleturquoise',
-                 label='Means with Error Bars')
-
-    # Add labels and a legend
-    plt.xlabel('Mean of Expt. 1', fontsize=18)
-    plt.ylabel('Mean of Expt. 2', fontsize=18)
-    plt.title('Relative Duration of Behaviors', fontsize=20)
-    # plt.legend()
-
-    # Display the key names next to data points
-    for i, key in enumerate(key_list):
-        plt.annotate(key, (mean_values1[i], mean_values2[i]), 
-                     xytext=(-30,5), textcoords='offset points',
-                     rotation=-45)
-
-    # Show the plot
-    plt.grid(True)
-    plt.xscale('log')
-    plt.yscale('log')
-    plt.show()
 
    
 def length_difference_correlation(CSVfilename = '', behavior_to_plot=''):
