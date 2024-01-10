@@ -20,6 +20,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import pickle
 
+from toolkit import link_weighted
 
 def loadAllFromPickle(pickleFileName = None):
     """
@@ -62,11 +63,14 @@ def loadAllFromPickle(pickleFileName = None):
 def visualize_fish(dataset, CSVcolumns, startFrame, endFrame):
     """
     Plot fish body positions (position 1 == head) over some range of frames
-    body{x, y} are Nframes x 10 x Nfish=2 arrays of x and y positions.
+       body{x, y} are Nframes x 10 x Nfish=2 arrays of x and y positions.
+    Calls plot_one_fish() to plot. Note that plot_one_fish flips "y"
+       to match movie orientation
     Color by frame, with Fish 0 markers in the "summer_r" 
-    (reversed summer, yellow to green) colormap, and Fish 1 markers in 
-    "cool" colormap (cyan to magenta)    and the other 
-    Marker for head = circle (Fish 0) and Diamond (Fish 1); x's for bad frames
+       (reversed summer, yellow to green) colormap, and Fish 1 markers in 
+       "cool" colormap (cyan to magenta)  
+    Marker for head = circle (Fish 0) and Diamond (Fish 1); 
+       x's for bad frames
 
     Parameters
     ----------
@@ -92,7 +96,6 @@ def visualize_fish(dataset, CSVcolumns, startFrame, endFrame):
     cmap1 = matplotlib.colormaps.get_cmap('cool')
     cmap2 = matplotlib.colormaps.get_cmap('summer_r')
     fig = plt.figure()
-    print(fig)
     ax = plt.axes()
     for j in range(startFrame, endFrame+1):
         isBadFrame = np.isin(j,  dataset["bad_bodyTrack_frames"]["raw_frames"])
@@ -110,7 +113,8 @@ def plot_one_fish(fig, body_x, body_y, frameArray, cmap,
                   relativej, isBadFrame, marker='o'):
     """
     Plots head (marker) and body (line) of one fish in a single frame,
-    with color set by "relativej" = [0,1] position in colormap. 
+       with color set by "relativej" = [0,1] position in colormap. 
+    Flip "y" to match movies (in datasets, y is row no.)
     Also a Black X if isBadFrame == True
     Inputs
         body_x, _y = array of # body positions x 2==Nfish body positions in 
@@ -119,14 +123,14 @@ def plot_one_fish(fig, body_x, body_y, frameArray, cmap,
     """ 
     plt.figure(fig.number)
     # head of fish
-    plt.plot(body_x.flatten()[0], body_y.flatten()[0], color=cmap(relativej), 
+    plt.plot(body_x.flatten()[0], -1.0*body_y.flatten()[0], color=cmap(relativej), 
              markersize=12, marker=marker)
     # 'x' if this frame is in "bad frames"
     if isBadFrame:
-        plt.plot(body_x.flatten()[0], body_y.flatten()[0], color='black', marker='x',
+        plt.plot(body_x.flatten()[0], -1.0*body_y.flatten()[0], color='black', marker='x',
                  markersize=12)
     # Body of fish
-    plt.plot(body_x.flatten(), body_y.flatten(), color=cmap(relativej), linestyle='solid')
+    plt.plot(body_x.flatten(), -1.0*body_y.flatten(), color=cmap(relativej), linestyle='solid')
 
 
 def flag_possible_IDswitch(dataset, CSVcolumns):
@@ -150,15 +154,16 @@ def flag_possible_IDswitch(dataset, CSVcolumns):
 
     Returns
     -------
-    None.
+    wrongID_head : frames with possible wrong IDs, from considering head positions
+    wrongID_body : : frames with possible wrong IDs, from considering all body positions
 
     """
     # All heading angles
     angle_data = dataset["all_data"][:,CSVcolumns["angle_data_column"], :]
     cos_diff_angle = np.cos(np.diff(angle_data, n=1, axis=0))
-    plt.figure()
-    plt.hist(cos_diff_angle[:,0], bins=50)
-    plt.hist(cos_diff_angle[:,1], bins=50)
+    #plt.figure()
+    #plt.hist(cos_diff_angle[:,0], bins=50)
+    #plt.hist(cos_diff_angle[:,1], bins=50)
     cos_diff_thresh = 0.0
     large_angle_change_flag = np.argwhere(cos_diff_angle < cos_diff_thresh)
     print('large angle change shape:', large_angle_change_flag.shape)
@@ -171,7 +176,6 @@ def flag_possible_IDswitch(dataset, CSVcolumns):
     diff_fish_length_fraction_thresh = 0.2
     diff_fish_length_flag = np.argwhere(diff_fish_length_fraction > diff_fish_length_fraction_thresh)
     
-    # head-head distance in adjacent frames
     # All positions
     body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
     body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
@@ -193,30 +197,30 @@ def flag_possible_IDswitch(dataset, CSVcolumns):
                                   (body_y[j+1, :, j%2] - body_y[j, :, (j+1)%2])**2)
     
     # Does switching ID reduce total difference?
-    switch_difference = (d_all_01 + d_all_01) - np.sum(d_all_same, axis=2)
+    switch_difference = (d_all_01 + d_all_10) - np.sum(d_all_same, axis=2)
     # Considering just head positions:
-    wrongID_head = np.argwhere(switch_difference[:,0] < 0)
+    wrongID_head = np.argwhere(switch_difference[:,0] < 0).flatten()
     print('Head only')
     for j in range(wrongID_head.shape[0]):
-        wrongFrame = int(wrongID_head[j])
-        print(f'{wrongFrame}: same {d_all_same[wrongFrame,0,0]:.2f}, {d_all_same[wrongFrame,0,1]:.2f}, ', 
-              f'switch {d_all_01[wrongFrame,0]:.2f}, {d_all_10[wrongFrame,0]:.2f}')
+        print(f'{wrongID_head[j]}: same {d_all_same[wrongID_head[j],0,0]:.2f}, {d_all_same[wrongID_head[j],0,1]:.2f}, ', 
+              f'switch {d_all_01[wrongID_head[j],0]:.2f}, {d_all_10[wrongID_head[j],0]:.2f}')
     # Considering total body positions:
-    wrongID_body = np.argwhere(np.sum(switch_difference, axis=1) < 0)
+    wrongID_body = np.argwhere(np.sum(switch_difference, axis=1) < 0).flatten()
     print('Total body')
     for j in range(wrongID_body.shape[0]):
-        wrongFrame = int(wrongID_body[j])
-        print(f'{wrongFrame}: same {np.sum(d_all_same[wrongFrame,:,0]):.2f},  ',
-              f'{np.sum(d_all_same[wrongFrame,:,1]):.2f}, ', 
-              f'switch {np.sum(d_all_01[wrongFrame,:]):.2f}, ',
-              f'{np.sum(d_all_10[wrongFrame,:]):.2f}')
+        print(f'{wrongID_body[j]}: same {np.sum(d_all_same[wrongID_body[j],:,0]):.2f},  ',
+              f'{np.sum(d_all_same[wrongID_body[j],:,1]):.2f}, ', 
+              f'switch {np.sum(d_all_01[wrongID_body[j],:]):.2f}, ',
+              f'{np.sum(d_all_10[wrongID_body[j],:]):.2f}, ', 
+              f'Difference {np.sum(switch_difference, axis=1)[wrongID_body[j]]:.2f}')
     
     
-    plt.figure()
-    plt.hist(diff_fish_length_fraction[:,0], bins=100)
-    plt.hist(diff_fish_length_fraction[:,1], bins=100)
-    plt.yscale('log')
+    #plt.figure()
+    #plt.hist(diff_fish_length_fraction[:,0], bins=100)
+    #plt.hist(diff_fish_length_fraction[:,1], bins=100)
+    #plt.yscale('log')
 
+    return wrongID_head, wrongID_body
 
 def how_many_both_approaching_frames(dataset):
     """
@@ -255,9 +259,8 @@ def how_many_both_approaching_frames(dataset):
 
 if __name__ == '__main__':
     
-    # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\temp\temp.pickle'
-    pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - pairs\all_2week_light.pickle'
-    
+    pickleFileNameBase  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs'
+    pickleFileName = pickleFileNameBase + r'\temp\temp.pickle'    
     
     datasets, CSVcolumns, fps, arena_radius_mm, params = \
         loadAllFromPickle(pickleFileName = pickleFileName) # or None
@@ -272,14 +275,28 @@ if __name__ == '__main__':
         if datasets[j]["dataset_name"]==whichDataset:
             chosenSet = datasets[j]
     
-    startFrame = 759
-    endFrame = 766
+    startFrame = 876
+    endFrame = 884
     visualize_fish(chosenSet, CSVcolumns, 
                    startFrame=startFrame, endFrame=endFrame) # 7430, 7490
     
-    flag_possible_IDswitch(chosenSet, CSVcolumns)
+    # (wrongID_head, wrongID_body) = flag_possible_IDswitch(chosenSet, CSVcolumns)
 
-    n_bothApproachFrames = np.zeros(len(datasets))
-    for j in range(len(datasets)):
-        n_bothApproachFrames[j] = how_many_both_approaching_frames(datasets[j])
-    print(f'\n\nAverage n_bothApproachFrames: {np.mean(n_bothApproachFrames):.1f}')
+    # frameRange = 3
+    # startFrame = wrongID_body[0] - frameRange
+    # endFrame = wrongID_body[0] + frameRange
+    # visualize_fish(chosenSet, CSVcolumns, 
+    #                startFrame=startFrame, endFrame=endFrame) 
+
+    # Fix IDs
+    IDs, newIDs = link_weighted(chosenSet["all_data"], CSVcolumns)
+    
+    # Find frames in which both fish are approaching each other
+    findApproaching = False
+    if findApproaching==True:
+        n_bothApproachFrames = np.zeros(len(datasets))
+        for j in range(len(datasets)):
+            n_bothApproachFrames[j] = how_many_both_approaching_frames(datasets[j])
+        print(f'\n\nAverage n_bothApproachFrames: {np.mean(n_bothApproachFrames):.1f}')
+        
+    

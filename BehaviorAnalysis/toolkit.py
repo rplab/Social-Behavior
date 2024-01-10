@@ -5,13 +5,14 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified Sept. 15, 2023 -- Raghu Parthasarathy
+Last modified Jan. 4, 2024 -- Raghu Parthasarathy
 
 Description
 -----------
 
 Module containing functions to get lists of files to load, 
 load data, assess proximity to the edge, assess bad frames, etc.
+link_weighted(): re-do fish IDs (track linkage)
 
 """
 
@@ -19,7 +20,7 @@ import numpy as np
 import csv
 import os
 import matplotlib.pyplot as plt
-
+from scipy.optimize import linear_sum_assignment
 
 def get_CSV_folder_and_filenames():
     """
@@ -426,7 +427,7 @@ def get_bad_headTrack_frames(dataset, params, xcol=3, ycol=4, tol=0.001):
         params : parameters
         xcol, ycol = column indices (0==first) of the x and y head 
                         position columns
-        tol : tolerance for "zero", pixels
+        tol : tolerance for "zero" (bad tracking), pixels
         
     Output:
         bad_headTrack_frames : array of frame numbers (not index numbers!)
@@ -461,7 +462,7 @@ def get_bad_bodyTrack_frames(dataset, params, body_column_x_start=6,
         tol : tolerance for "zero", pixels
         
     Output:
-        bad_headTrack_frames : array of frame numbers (not index numbers!)
+        bad_bodyTrack_frames : array of frame numbers (not index numbers!)
     """
     x = dataset["all_data"][:,body_column_x_start:(body_column_x_start+body_Ncolumns),:]
     y = dataset["all_data"][:,body_column_y_start:(body_column_y_start+body_Ncolumns),:]
@@ -524,10 +525,8 @@ def plotAllPositions(dataset, CSVcolumns, arena_radius_mm,
     plt.title(dataset["dataset_name"] )
     plt.axis('equal')
 
-    
 
 
-        
 def write_behavior_txt_file(dataset, key_list):
     """
     Creates a txt file of the relevant window frames and event durations
@@ -586,4 +585,91 @@ def mark_behavior_frames_Excel(markFrames_workbook, dataset, key_list):
             for duration_idx in range(dataset[k]["combine_frames"][1,run_idx]):
                 sheet1.write(f'{ascii_uppercase[j+1]}{dataset[k]["combine_frames"][0,run_idx]+duration_idx+1}', 
                          "X".center(17))
-                
+
+
+
+def link_weighted(pos_input, CSVcolumns, tol=0.001):
+    """
+    Re-do fish IDs (track linkage) based on whole-body distances
+       and other weighted measures.
+    Assesses bad tracking (zeros in track data), redundantly with
+       get_bad_bodyTrack_frames etc., but simple and self-contained
+    Allow frame gap of bad tracking
+
+    Author:   Raghuveer Parthasarathy
+    Created on Thu Jan  4 11:26:30 2024
+    Last modified on Thu Jan  4 11:26:30 2024
+    
+    Description
+    -----------
+    
+    Inputs:
+        pos_input: all the position information for a given expt.
+            Possibly from dataset["all_data"] 
+            Rows = frame numbers
+            Columns = x, y, angle data -- see CSVcolumns
+            Dim 3 = fish (2 fish)
+        CSVcolumns: information on what the columns of pos_input are
+           (same as columsn of dataset["all_data"] in other functions)
+        tol : tolerance for "zero" (bad tracking), pixels
+    
+        
+    Outputs:
+        newIDs
+    """
+    
+    # Number of frames, and number of fish
+    Nframes = pos_input.shape[0]
+    Nfish = pos_input.shape[2]
+    
+    # All positions: Nframes x N body positions x Nfish arrays for x, y
+    body_x = pos_input[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = pos_input[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+
+    # Identify frames with good tracking (head, body values nonzero)
+    # Each array is Nframes x Nfish
+    good_track_head = np.logical_and(body_x[:,0,:] > tol, 
+                                     body_y[:,0,:] > tol)
+    good_track_body = np.logical_and(np.all(body_x > tol, axis=1), 
+                                     np.all(body_y > tol, axis=1))
+    
+    # Verify that first frame information looks ok: no zeros
+    if np.any(good_track_head[0,:] == False):
+        raise ValueError("Bad tracking (head) in the first frame! -- link_weighted()")
+    if np.any(good_track_body[0,:] == False):
+        raise ValueError("Bad tracking (head) in the first frame! -- link_weighted()")
+    
+    # Initial IDs
+    IDs = np.tile(np.arange(Nfish), (Nframes, 1))    
+    # IDs after re-linking; initialize to same
+    newIDs = IDs.copy()
+
+    # Iterate over frames starting from the second frame
+    for j in range(1, Nframes):
+        if np.all(good_track_body[j-1,:]) and np.all(good_track_body[j,:]):
+            # "Distances matrix" is the sum of inter-body distances between
+            # each fish in frame j and each fish in frame j-1.
+            # j and frame j-1.
+            pos_j = np.stack([body_x[j, :, :], body_y[j, :, :]], axis=-1)  # Shape: (Npos, Nfish, 2 (x and y))
+            pos_j_minus_1 = np.stack([body_x[j-1, :, :], body_y[j-1, :, :]], axis=-1)  # Shape: (Npos, Nfish, 2)
+            # Avoiding loop using NumPy broadcasting and vectorized operations 
+            # (From ChatGPT 3.5; tested in temp_testlinks.py)
+            distances_matrix = np.sum(np.linalg.norm(pos_j[:, :, np.newaxis, :] 
+                                                     - pos_j_minus_1[:, np.newaxis, :, :], 
+                                                     axis=-1), axis=0)
+            
+            # Use the distances_matrix for assignment of IDs.
+            # Note that this can be generalized to a weighted score 
+            # incorporating other factors; calculate a weighted sum of
+            # distances_matrix and whatever else, and apply the 
+            # linear sum assignment to that.
+            
+            # Use linear_sum_assignment to find the optimal assignment
+            row_indices, col_indices = linear_sum_assignment(distances_matrix)
+            newIDs[j, :] = col_indices
+
+    switchIndexes= np.where(np.any(IDs != newIDs, axis=1))[0].flatten()
+    print("Frames for switched IDs (==index + 1)\n", switchIndexes+1)
+    return IDs, newIDs
+        
+    
