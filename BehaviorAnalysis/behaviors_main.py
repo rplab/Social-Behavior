@@ -35,12 +35,9 @@ from scipy.stats import skew
 
 def defineParameters():
     """ 
-    Defines parameters for behavior identification, sets filenames 
-    for arena coordinates, identifies columns of trajectory CSV files
+    Defines parameters for behavior identification, 
+    identifies columns of trajectory CSV files
     """
-
-    fps = 25.0  # frames per second
-    arena_radius_mm = 25.0  # arena radius, mm
 
     params = {
         "arena_edge_threshold_mm" : 5,
@@ -82,36 +79,94 @@ def defineParameters():
         "body_Ncolumns" : 10 # number of body datapoints
     }
     
-    # Image scale, read from file
-    imageScalePathName = 'C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior'
-    imageScaleFilename = 'ArenaCenters_SocPref_3456.csv'
-    imageScaleLocation = os.path.join(imageScalePathName, imageScaleFilename)
+    return  params, CSVcolumns
+
+def define_imageParameters(exptName):
+    """
+    Defines parameters related to imaging, such as filenames
+    with arena coordinates, frame rate, arena radius.
     
-    # Arena center locations -- if these are tabulated elsewhere.
-    arenaCentersPathName = 'C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior'
-    arenaCentersFilename = 'ArenaCenters_SocPref_3456.csv'
-    arenaCentersLocation = os.path.join(arenaCentersPathName, arenaCentersFilename)
-    # filename of CSV file *in each data folder* with image offset filename
-    offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
+    Write options for different experiments, done with different parameters
+    
+    Input: 
+        exptName = one of 'TwoWeek2023', 'CA2024'
+    """
 
-    return fps, arena_radius_mm, params, CSVcolumns, imageScaleLocation, \
-        arenaCentersLocation, offsetPositionsFilename
+    fps = 25.0  # frames per second
+    arena_radius_mm = 25.0  # arena radius, mm
 
+    if exptName == 'TwoWeek2023':
+        # Image scale, to be read from file
+        imageScalePathName = 'C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior'
+        imageScaleFilename = 'ArenaCenters_SocPref_3456.csv'
+        imageScaleLocation = os.path.join(imageScalePathName, 
+                                          imageScaleFilename)
+        imageScaleColumn  = 4 # column (0-indexed) with image scale
+        
+        # Arena center locations
+        arenaCentersPathName = 'C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior'
+        arenaCentersFilename = 'ArenaCenters_SocPref_3456.csv'
+        arenaCentersLocation = os.path.join(arenaCentersPathName, arenaCentersFilename)
+        arenaCentersColumns = (5,6) # columns (0-indexed) with x,y arena centers
+        
+        # filename of CSV file *in each data folder* with image offset filename
+        offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
+        
+        return fps, arena_radius_mm, imageScaleLocation, imageScaleColumn, \
+            arenaCentersLocation, arenaCentersColumns, offsetPositionsFilename
 
+    elif exptName == 'CA2024':
+        # Image scale, to be read from file
+        imageScalePathName = 'C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior/CSV files and outputs/2 week old - pairs - cholic acid'
+        imageScaleFilename = 'ImageScale_SocPrefBA_3b_all.csv'
+        imageScaleLocation = os.path.join(imageScalePathName, 
+                                          imageScaleFilename)
+        imageScaleColumn  = 4 # column (0-indexed) with image scale
+        
+        # Arena center locations
+        arenaCentersLocation = None # estimate from well offset positions
+        arenaCentersColumns = None
+        
+        # filename of CSV file *in each data folder* with image offset filename
+        offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
+        
+        return fps, arena_radius_mm, imageScaleLocation, imageScaleColumn, \
+            arenaCentersLocation, arenaCentersColumns, offsetPositionsFilename
+
+    else:
+        raise ValueError("define_imageParameters: Bad experiment set")
+
+    
+    
 def main():
     """
     Main function for calling reading functions, basic analysis functions,
     and behavior extraction functions for all CSV files in a set 
     """
     
+    exptNameList = ['TwoWeek2023', 'CA2024']
+    
+    # Ask the user to indicate the experiment name, constrained 
+    exptName = input("Choose a value for exptName (options: {}): ".format(', '.join(exptNameList)))
+    # Check if the user's choice is in the list
+    while exptName not in exptNameList:
+        print("Invalid choice. Choose a value of exptName from the list.")
+        exptName = input("Choose a value for exptName (options: {}): ".format(', '.join(exptNameList)))
+
+
+    exptName = 'CA2024'  # for loading image parameters
+    
     showAllPositions = False
     
-    fps, arena_radius_mm, params, CSVcolumns, imageScaleLocation, \
-        arenaCentersLocation, offsetPositionsFilename = defineParameters()
+    params, CSVcolumns = defineParameters()
+    
+    fps, arena_radius_mm, imageScaleLocation, imageScaleColumn, \
+        arenaCentersLocation, arenaCentersColumns, \
+        offsetPositionsFilename = define_imageParameters(exptName)
     
     cwd = os.getcwd() # Current working directory
     
-    folder_path, allCSVfileNames = get_CSV_folder_and_filenames() # Get folder containing CSV files
+    data_path, allCSVfileNames = get_CSV_folder_and_filenames() # Get folder containing CSV files
     print(f'\n\n All {len(allCSVfileNames)} CSV files starting with "results": ')
     print(allCSVfileNames)
     
@@ -123,14 +178,14 @@ def main():
     
     # initialize a list of dictionaries for datasets
     datasets = [{} for j in range(N_datasets)]
-    os.chdir(folder_path)
+    os.chdir(data_path)
 
     # For each dataset, get general properties and load all position data
     for j, CSVfileName in enumerate(allCSVfileNames):
         datasets[j]["CSVfilename"] = CSVfileName
         datasets[j]["dataset_name"] = get_dataset_name(CSVfileName)
         datasets[j]["image_scale"] = float(get_imageScale(datasets[j]["dataset_name"], 
-                                                    imageScaleLocation))
+                                                    imageScaleLocation, imageScaleColumn))
         # Load all the position information as a numpy array
         print('Loading dataset: ', datasets[j]["dataset_name"])
         datasets[j]["all_data"], datasets[j]["frameArray"] = \
@@ -144,6 +199,7 @@ def main():
         # Get arena center, subtracting image position offset
         datasets[j]["arena_center"] = get_ArenaCenter(datasets[j]["dataset_name"], 
                                                     arenaCentersLocation,
+                                                    arenaCentersColumns, 
                                                     offsetPositionsFilename)
         # Estimate center location of Arena
         # datasets[j]["arena_center"] = estimate_arena_center(datasets[j]["all_data"],
@@ -383,7 +439,8 @@ def main():
 
     # Write pickle file containing all datasets
     if pickleFileName != '':
-        list_for_pickle = [datasets, CSVcolumns, fps, arena_radius_mm, params]
+        list_for_pickle = [datasets, CSVcolumns, fps, arena_radius_mm, 
+                           params]
         pickleFileName = pickleFileName + '.pickle'
         print(f'\nWriting pickle file: {pickleFileName}\n')
         with open(pickleFileName, 'wb') as handle:

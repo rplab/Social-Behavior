@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified Jan. 4, 2024 -- Raghu Parthasarathy
+Last modified Jan. 31, 2024 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -13,7 +13,7 @@ Description
 Module containing functions to get lists of files to load, 
 load data, assess proximity to the edge, assess bad frames, etc.
 link_weighted(): re-do fish IDs (track linkage)
-
+repair_double_length_fish() : split fish that are 2L in length into two fish
 """
 
 import numpy as np
@@ -29,30 +29,30 @@ def get_CSV_folder_and_filenames():
 
     Returns:
         A tuple containing
-        - folder_path : the folder path containing CSV files
+        - data_path : the folder path containing CSV files
         - allCSVfileNames : all CSV Files with names starting with 'results'
     
     """
     
-    folder_path = input("Enter the folder path for CSV files, or leave empty for cwd: ")
+    data_path = input("Enter the folder for CSV files, or leave empty for cwd: ")
     
-    if folder_path=='':
-        folder_path = os.getcwd() # Current working directory
+    if data_path=='':
+        data_path = os.getcwd() # Current working directory
         
     # Validate the folder path
-    while not os.path.isdir(folder_path):
-        print("Invalid folder path. Please try again.")
-        folder_path = input("Enter the folder path: ")
+    while not os.path.isdir(data_path):
+        print("Invalid data path. Please try again.")
+        data_path = input("Enter the folder path: ")
 
-    print("Selected folder path: ", folder_path)
+    print("Selected folder path: ", data_path)
     
     # Make a list of all relevant CSV files in the folder
     allCSVfileNames = []
-    for filename in os.listdir(folder_path):
+    for filename in os.listdir(data_path):
         if (filename.endswith('.csv') and filename.startswith('results')):
             allCSVfileNames.append(filename)
 
-    return folder_path, allCSVfileNames
+    return data_path, allCSVfileNames
 
     
 def load_data(CSVfileName, N_columns):
@@ -224,7 +224,8 @@ def combine_events(events):
     return combined_events_and_durations
 
 
-def get_ArenaCenter(dataset_name, arenaCentersFilename, offsetPositionsFilename):
+def get_ArenaCenter(dataset_name, arenaCentersFilename, 
+                    arenaCentersColumns, offsetPositionsFilename):
     """ 
     Extract the x,y positions of the Arena centers from the 
     arenaCentersFilename CSV -- previously tabulated.
@@ -232,36 +233,20 @@ def get_ArenaCenter(dataset_name, arenaCentersFilename, offsetPositionsFilename)
     offsetPositionsFilename
 
     Inputs:
-        
+        dataset_name :
+        arenaCentersFilename: csv file name with arena centers 
+            (and one header row). If None, estimate centers from well
+            offsets
+        arenaCentersColumns
+        offsetPositionsFilename : csv file name with well offset positions
     Returns:
-        tuple of x, y positions
+        arenaCenterCorrected: tuple of x, y positions of arena Center
     Returns none if no rows match the input dataset_name, 
         and error if >1 match
         
-    Code partially from GPT3-5 (openAI), for center positions
-    Then I crudely duplicate it for offset positions
     """
-    matching_rows = []
 
-    with open(arenaCentersFilename, 'r') as file:
-        reader = csv.reader(file)
-        header = next(reader)  # Skip the header row
-
-        for row in reader:
-            # remove "_light" and "_dark" to allow 5b datasets
-            mod_dataset_name = dataset_name.replace('_light', '')
-            mod_dataset_name = mod_dataset_name.replace('_dark', '')
-            if mod_dataset_name == row[0].replace('SocPref_', ''):
-                matching_rows.append(row)
-
-        if len(matching_rows) == 0:
-            arenaCenterUncorrected = None
-        elif len(matching_rows) > 1:
-            raise ValueError("get_ArenaCenter: Multiple rows contain the input dataset_name string")
-        else:
-            arenaCenterUncorrected = np.array((matching_rows[0][5], 
-                                               matching_rows[0][6])).astype(float)
-            
+    # Find the row of this dataset in the well offset data file
     matching_offset_rows = []
     with open(offsetPositionsFilename, 'r') as file:
         reader = csv.reader(file)
@@ -274,17 +259,48 @@ def get_ArenaCenter(dataset_name, arenaCentersFilename, offsetPositionsFilename)
             thisRow0 = thisRow0.replace('_ALL', '')
             if mod_dataset_name == thisRow0:
                 matching_offset_rows.append(row)
+        arenaOffset = np.array((matching_offset_rows[0][1], 
+                                matching_offset_rows[0][2])).astype(float)
 
-        if len(matching_offset_rows) == 0:
-            arenaOffset = None
-            return None
-        elif len(matching_offset_rows) > 1:
-            raise ValueError("get_ArenaCenter: Multiple rows contain the input dataset_name string")
+    if len(matching_offset_rows) == 0:
+        # No matching rows in the offset file were found.
+        arenaOffset = None
+        raise ValueError("get_ArenaCenter: No rows contain the input dataset_name string")
+    elif len(matching_offset_rows) > 1:
+        raise ValueError("get_ArenaCenter: Multiple rows contain the input dataset_name string")
+    else:
+        # There's offset data, now load or estimate arena center
+        if arenaCentersFilename != None:
+            # Find the uncorrected arena positions
+            matching_rows = []
+            with open(arenaCentersFilename, 'r') as file:
+                reader = csv.reader(file)
+                header = next(reader)  # Skip the header row
+        
+                for row in reader:
+                    # remove "_light" and "_dark" to allow 5b datasets
+                    mod_dataset_name = dataset_name.replace('_light', '')
+                    mod_dataset_name = mod_dataset_name.replace('_dark', '')
+                    if mod_dataset_name == row[0].replace('SocPref_', ''):
+                        matching_rows.append(row)
+        
+                if len(matching_rows) == 0:
+                    arenaCenterUncorrected = None
+                elif len(matching_rows) > 1:
+                    arenaCenterUncorrected = None
+                    raise ValueError("get_ArenaCenter: Multiple rows contain the input dataset_name string")
+                else:
+                    arenaCenterUncorrected = np.array((matching_rows[0][arenaCentersColumns[0]], 
+                                                       matching_rows[0][arenaCentersColumns[1]])).astype(float)
+                    arenaCenterCorrected = arenaCenterUncorrected - arenaOffset
         else:
-            arenaOffset = np.array((matching_offset_rows[0][1], matching_offset_rows[0][2])).astype(float)
-    
-    if (arenaCenterUncorrected is not None) and (arenaOffset is not None):
-        return arenaCenterUncorrected - arenaOffset
+             # Estimate arena positions based on well offset positions
+             arenaCenterCorrected = np.array((matching_offset_rows[0][3], 
+                                    matching_offset_rows[0][4]), 
+                                             dtype=float)/2.0
+
+    if arenaOffset is not None:
+        return arenaCenterCorrected
     else:
         return None
         
@@ -318,15 +334,17 @@ def get_edge_frames(dataset, params, arena_radius_mm, xcol=3, ycol=4):
     near_edge_frames = dataset["frameArray"][np.where(near_edge)]
     return near_edge_frames
 
-def get_imageScale(dataset_name, imageScaleFilename):
+def get_imageScale(dataset_name, imageScaleLocation, imageScaleColumn):
     """ 
     Extract the image scale (um/px) from 
-    imageScaleFilename CSV -- previously tabulated
+    imageScaleFilename CSV 
 
     Inputs:
         dataset_name : name of dataset
-        imageScaleFilename : name of CSV file containing image scale 
-                             information
+        imageScaleLocation : Path and filename of CSV file containing 
+                             image scale information
+    imageScaleColumn : column (0-index) with image scale
+
     Returns:
         image scale (um/px)
     Returns none if no rows match the input dataset_name, 
@@ -336,7 +354,7 @@ def get_imageScale(dataset_name, imageScaleFilename):
     """
     matching_rows = []
 
-    with open(imageScaleFilename, 'r') as file:
+    with open(imageScaleLocation, 'r') as file:
         reader = csv.reader(file)
         header = next(reader)  # Skip the header row
 
@@ -353,7 +371,7 @@ def get_imageScale(dataset_name, imageScaleFilename):
             # print(dataset_name, ' in rows: ', matching_rows[:][0])
             raise ValueError("get_imageScale: Multiple rows contain the input dataset_name string")
         else:
-            return matching_rows[0][4]
+            return matching_rows[0][imageScaleColumn]
 
 
 def estimate_arena_center(alldata, xcol=3, ycol=4):
@@ -586,6 +604,32 @@ def mark_behavior_frames_Excel(markFrames_workbook, dataset, key_list):
                 sheet1.write(f'{ascii_uppercase[j+1]}{dataset[k]["combine_frames"][0,run_idx]+duration_idx+1}', 
                          "X".center(17))
 
+def calc_distances_matrix(pos_current, pos_previous):
+    """
+    "Distances matrix" is the sum of inter-body distances between
+    # each fish in one frame and each fish in another frame.
+
+    Parameters
+    ----------
+    pos_current : numpy array; x and y body positions of each
+                  fish in the "current" frame Shape: (Npos, Nfish, 2 (x and y))
+    pos_previous :  numpy array; x and y body positions of each
+                  fish in the "previous" frame Shape: (Npos, Nfish, 2 (x and y))
+
+    Returns
+    -------
+    distances_matrix : matrix of the sum of interbody distances
+            for fish j in current frame to fish k in the previous frame
+
+    """
+            
+    # Avoiding loop using NumPy broadcasting and vectorized operations 
+    # (From ChatGPT 3.5; tested in temp_testlinks.py)
+    distances_matrix = np.sum(np.linalg.norm(pos_current[:, :, np.newaxis, :] 
+                                             - pos_previous[:, np.newaxis, :, :], 
+                                             axis=-1), axis=0)
+    return distances_matrix
+
 
 
 def link_weighted(pos_input, CSVcolumns, tol=0.001):
@@ -593,7 +637,7 @@ def link_weighted(pos_input, CSVcolumns, tol=0.001):
     Re-do fish IDs (track linkage) based on whole-body distances
        and other weighted measures.
     Assesses bad tracking (zeros in track data), redundantly with
-       get_bad_bodyTrack_frames etc., but simple and self-contained
+       get_bad_bodyTrack_frames, etc., but simple and self-contained
     Allow frame gap of bad tracking
 
     Author:   Raghuveer Parthasarathy
@@ -643,21 +687,21 @@ def link_weighted(pos_input, CSVcolumns, tol=0.001):
     IDs = np.tile(np.arange(Nfish), (Nframes, 1))    
     # IDs after re-linking; initialize to same
     newIDs = IDs.copy()
-
+    
+    # Keep track of last index with good body tracking of all fish
+    last_good_index = 0
     # Iterate over frames starting from the second frame
     for j in range(1, Nframes):
         if np.all(good_track_body[j-1,:]) and np.all(good_track_body[j,:]):
-            # "Distances matrix" is the sum of inter-body distances between
-            # each fish in frame j and each fish in frame j-1.
-            # j and frame j-1.
-            pos_j = np.stack([body_x[j, :, :], body_y[j, :, :]], axis=-1)  # Shape: (Npos, Nfish, 2 (x and y))
-            pos_j_minus_1 = np.stack([body_x[j-1, :, :], body_y[j-1, :, :]], axis=-1)  # Shape: (Npos, Nfish, 2)
-            # Avoiding loop using NumPy broadcasting and vectorized operations 
-            # (From ChatGPT 3.5; tested in temp_testlinks.py)
-            distances_matrix = np.sum(np.linalg.norm(pos_j[:, :, np.newaxis, :] 
-                                                     - pos_j_minus_1[:, np.newaxis, :, :], 
-                                                     axis=-1), axis=0)
+            # Link between the current frame and the previous frame
+            pos_current = np.stack([body_x[j, :, :], body_y[j, :, :]], axis=-1)  # Shape: (Npos, Nfish, 2 (x and y))
+            pos_previous = np.stack([body_x[j-1, :, :], body_y[j-1, :, :]], axis=-1)  # Shape: (Npos, Nfish, 2)
             
+            # Get distances_matrix, the sum of inter-body distances
+            # between each fish in frame j and each fish in frame j-1
+            distances_matrix = calc_distances_matrix(pos_current, 
+                                                     pos_previous)
+                        
             # Use the distances_matrix for assignment of IDs.
             # Note that this can be generalized to a weighted score 
             # incorporating other factors; calculate a weighted sum of
@@ -667,9 +711,194 @@ def link_weighted(pos_input, CSVcolumns, tol=0.001):
             # Use linear_sum_assignment to find the optimal assignment
             row_indices, col_indices = linear_sum_assignment(distances_matrix)
             newIDs[j, :] = col_indices
+            
+            last_good_index = j # this frame is good
+            
+        elif np.all(good_track_body[j,:]):
+            # Current frame is good, but previous is not
+            # Link between the current frame and last good frame
+            # See comments above
+            pos_current = np.stack([body_x[j, :, :], body_y[j, :, :]], axis=-1)  # Shape: (Npos, Nfish, 2 (x and y))
+            pos_previous = np.stack([body_x[last_good_index, :, :], body_y[last_good_index, :, :]], axis=-1)  # Shape: (Npos, Nfish, 2)
+            distances_matrix = calc_distances_matrix(pos_current, 
+                                                     pos_previous)
+            row_indices, col_indices = linear_sum_assignment(distances_matrix)
+            print(f'j = {j}, gap = {j - last_good_index - 1}')
+            newIDs[j, :] = col_indices
+            
 
     switchIndexes= np.where(np.any(IDs != newIDs, axis=1))[0].flatten()
     print("Frames for switched IDs (==index + 1)\n", switchIndexes+1)
     return IDs, newIDs
         
     
+def repair_disjoint_heads(dataset, CSVcolumns, Dtol=3.0, tol=0.001):
+    """ 
+    Fix tracking data in which a fish has a "disjoint head" -- the head
+    position is far from the body positions.
+    
+    Criteria:
+    (i)  All head and body positions are nonzero
+    (ii) the distance between positions 0 and 1 (head-body) is more than
+         Dtol times the mean distance between positions j and j+1 
+         for j = 1 to 9
+    If these are met, replace position 0 with a point the same distance
+    and orientation from point 1 as point 1 is from point 2 (i.e. linear
+    extrapolation).
+    
+    Redundant code with get_bad_bodyTrack_frames(), for determining 
+       nonzero position data
+       
+    Inputs:
+        dataset : dataset dictionary. Note "all_data" contains all position
+                  data, and has shape (Nframes x data columns x 2 fish)
+        CSVcolumns: information on what the columns of dataset["all_data"] are
+        Dtol : tolerance for head-body separation, default 3x mean
+               separation distance between other body positions
+        tol : tolerance for "zero" (bad tracking), pixels
+        
+    Output:
+        dataset_repaired : overwrites ["all_data"] with repaired head positions
+    """
+    
+    Npositions = CSVcolumns["body_Ncolumns"]
+    # .copy() to avoid repairing in place
+    # x and y are shape Nframes x Npositions x Nfish
+    x = dataset["all_data"][:,CSVcolumns["body_column_x_start"] : 
+                            (CSVcolumns["body_column_x_start"]+Npositions),:].copy()
+    y = dataset["all_data"][:,CSVcolumns["body_column_y_start"] :
+                            (CSVcolumns["body_column_y_start"]+Npositions),:].copy()
+    angles = dataset["all_data"][:, CSVcolumns["angle_data_column"], :].copy()
+
+    # True if all x, y are nonzero; shape Nframes x Nfish
+    good_bodyTrack = np.logical_and(np.all(np.abs(x)>tol, axis=1), 
+                                    np.all(np.abs(y)>tol, axis=1))
+    
+    # Look at distance between head and body, compare to body-body distances
+    dx = np.diff(x, axis=1)
+    dy = np.diff(y, axis=1)
+    dr_01 = np.sqrt(dx[:,0,:]**2 + dy[:,0,:]**2) # head-body distance
+    dr_body = np.sqrt(dx[:,1:,:]**2 + dy[:,1:,:]**2)
+    mean_dr_body = np.mean(dr_body,axis=1)
+    bad_01_distance = dr_01 > Dtol*mean_dr_body # disjoint head; Nframes x Nfish
+    # Identify frames with large head-body distance but good (nonzero) tracking
+    # Will make a separate array for each fish, for readability
+    Nfish = good_bodyTrack.shape[1]
+    for j in range(Nfish):
+        disjoint_idx = np.where(np.logical_and(good_bodyTrack[:,j], 
+                                               bad_01_distance[:,j]))[0]
+        # disjoint_head_idx = np.array(dataset["frameArray"][badidx])
+        # print(disjoint_idx)
+        # print(x[2108,0,j])
+        x[disjoint_idx,0,j] = 1.25*x[disjoint_idx,1,j] - 0.25*x[disjoint_idx,2,j]
+        y[disjoint_idx,0,j] = 1.25*y[disjoint_idx,1,j] - 0.25*y[disjoint_idx,2,j]
+        # print(x[2108,0,j])
+        angles[disjoint_idx,j] = np.arctan2(y[disjoint_idx,1,j]- y[disjoint_idx,2,j], 
+                                            x[disjoint_idx,1,j]- x[disjoint_idx,2,j])
+
+    # Repair
+    dataset_repaired = dataset.copy()
+    dataset_repaired["all_data"][:,CSVcolumns["body_column_x_start"] : 
+                        (CSVcolumns["body_column_x_start"]+Npositions),:] = x
+    dataset_repaired["all_data"][:,CSVcolumns["body_column_y_start"] :
+                        (CSVcolumns["body_column_y_start"]+Npositions),:] = y
+    dataset_repaired["all_data"][:, CSVcolumns["angle_data_column"], :] = angles
+    
+    return dataset_repaired
+
+def repair_double_length_fish(dataset, CSVcolumns, 
+                              lengthFactor = [1.5, 2.5], tol=0.001):
+    """ 
+    Fix tracking data in which there is only one identified fish, with the 
+    10 body positions spanning two actual fish and overall length 
+    roughly twice the actual single fish length.
+    Replace one fish with the first 5 positions, interpolated to 10 pts
+    and the other with the second 5, interpolated along with the heading 
+    angle
+    
+    Inputs:
+        dataset : dataset dictionary. Note "all_data" contains all position
+                  data, and has shape (Nframes x data columns x 2 fish)
+                  Note that dataset["fish_length_array"] 
+                     contains fish lengths (px)
+        CSVcolumns: information on what the columns of dataset["all_data"] are
+        lengthFactor : a list with two values; 
+                       split fish into two if length is between these
+                       factors of median fish length
+        tol : tolerance for "zero" (bad tracking), pixels
+        
+    Output:
+        dataset_repaired : overwrites ["all_data"] with repaired head 
+        positions
+    """
+    
+    # median fish length (px) for each fish; take average across fish
+    mean_fish_length = np.mean(np.median(dataset["fish_length_array"], axis=0))
+    print('mean fish length: ', mean_fish_length)
+    
+    # .copy() to avoid repairing in place
+    Npositions = CSVcolumns["body_Ncolumns"]
+    x = dataset["all_data"][:,CSVcolumns["body_column_x_start"] : 
+                            (CSVcolumns["body_column_x_start"]+Npositions),:].copy()
+    y = dataset["all_data"][:,CSVcolumns["body_column_y_start"] :
+                            (CSVcolumns["body_column_y_start"]+Npositions),:].copy()
+    
+    # True if all x, y are zero; shape Nframes x Nfish
+    good_bodyTrack = np.logical_and(np.all(np.abs(x)>tol, axis=1), 
+                                    np.all(np.abs(y)>tol, axis=1))
+    # Indices of frames in which  only one fish was tracked 
+    rows_with_one_tracked = np.where(np.sum(good_bodyTrack, axis=1) == 1)[0]
+    print('Frame indexes with one fish \n', rows_with_one_tracked)
+    # Column indices (i.e. fish) where True values exist
+    oneFish_indices = np.argmax(good_bodyTrack[rows_with_one_tracked,:], axis=1)
+    print('One fish indices\n', oneFish_indices)
+    # Calculate length ratios
+    lengthRatios = dataset["fish_length_array"][rows_with_one_tracked, 
+                                                oneFish_indices] / mean_fish_length
+    # Find frame indices where length ratios meet the condition
+    doubleLength_indices = rows_with_one_tracked[np.logical_and(lengthFactor[0] < lengthRatios, 
+                             lengthRatios < lengthFactor[1])]
+
+    # Column indices (i.e. fish) where True values exist, only for these
+    # frames. Using same variable name
+    oneFish_indices = np.argmax(good_bodyTrack[doubleLength_indices,:], axis=1)
+
+    # Repair
+    # Note that it doesn't matter which ID is which, since we'll re-link later
+    dataset_repaired = dataset.copy()
+    midPosition = int(np.floor(Npositions/2.0))  # 5 for usual 10 body positions
+    interpIndices = np.linspace(0, Npositions-1, num=midPosition).astype(int) 
+    for j, frameIdx in enumerate(doubleLength_indices):
+        print('Double length Frame Idx: ', frameIdx)
+        # one fish from the first 5 positions.
+        x_first = x[frameIdx,0:midPosition,oneFish_indices[j]]
+        y_first = y[frameIdx,0:midPosition,oneFish_indices[j]]
+        # print('Frame Index: ', frameIdx)
+        print('which fish: ', oneFish_indices[j])
+        print(x_first)
+        print(y_first)
+        # print(np.arange(0,midPosition))
+        x0_new = np.interp(np.arange(0,Npositions), interpIndices, x_first)
+        y0_new = np.interp(np.arange(0,Npositions), interpIndices, y_first)
+        angles0_new = np.arctan2(y0_new[0]- y0_new[2], x0_new[0]- x0_new[2])
+        
+        # the other fish from the last 5 positions.
+        x_last = x[frameIdx,midPosition:, oneFish_indices[j]]
+        y_last = y[frameIdx,midPosition:, oneFish_indices[j]]
+        x1_new = np.interp(np.arange(0,Npositions), interpIndices, x_last)
+        y1_new = np.interp(np.arange(0,Npositions), interpIndices, y_last)
+        angles1_new = np.arctan2(y1_new[0]- y1_new[2], x1_new[0]- x1_new[2])
+
+        dataset_repaired["all_data"][frameIdx,CSVcolumns["body_column_x_start"] : 
+                            (CSVcolumns["body_column_x_start"]+Npositions),0] = x0_new
+        dataset_repaired["all_data"][frameIdx,CSVcolumns["body_column_y_start"] :
+                            (CSVcolumns["body_column_y_start"]+Npositions),0] = y0_new
+        dataset_repaired["all_data"][frameIdx,CSVcolumns["body_column_x_start"] : 
+                            (CSVcolumns["body_column_x_start"]+Npositions),1] = x1_new
+        dataset_repaired["all_data"][frameIdx,CSVcolumns["body_column_y_start"] :
+                            (CSVcolumns["body_column_y_start"]+Npositions),1] = y1_new
+        dataset_repaired["all_data"][:, CSVcolumns["angle_data_column"], 0] = angles0_new
+        dataset_repaired["all_data"][:, CSVcolumns["angle_data_column"], 1] = angles1_new
+    
+    return dataset_repaired
+        
