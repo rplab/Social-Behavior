@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified Jan. 31, 2024 -- Raghu Parthasarathy
+Last modified March 3, 2024 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -366,7 +366,8 @@ def get_imageScale(dataset_name, imageScaleLocation, imageScaleColumn):
                 matching_rows.append(row)
 
         if len(matching_rows) == 0:
-            return None
+            print('Modified dataset name: ', mod_dataset_name)
+            raise ValueError("get_imageScale: No row found with the input dataset_name string")
         elif len(matching_rows) > 1:
             # print(dataset_name, ' in rows: ', matching_rows[:][0])
             raise ValueError("get_imageScale: Multiple rows contain the input dataset_name string")
@@ -584,7 +585,11 @@ def mark_behavior_frames_Excel(markFrames_workbook, dataset, key_list):
     Returns:
         N/A
     """
-    sheet1 = markFrames_workbook.add_worksheet(dataset["dataset_name"])
+    
+    # Annoyingly, Excel won't allow a worksheet name > 31 characters!
+    sheet_name = dataset["dataset_name"]
+    sheet_name = sheet_name[-31:]
+    sheet1 = markFrames_workbook.add_worksheet(sheet_name)
     ascii_uppercase = list(map(chr, range(65, 91)))
     
     # Headers 

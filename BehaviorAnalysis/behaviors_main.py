@@ -133,8 +133,143 @@ def define_imageParameters(exptName):
         return fps, arena_radius_mm, imageScaleLocation, imageScaleColumn, \
             arenaCentersLocation, arenaCentersColumns, offsetPositionsFilename
 
+    elif exptName == 'Solitary_Cohoused_March2024':
+        # Image scale, to be read from file
+        imageScalePathName = 'C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior/CSV files and outputs/TwoWeekOld_Solitary_CoHoused_1_3-2-2024'
+        imageScaleFilename = 'SocDef_Solitary_AnalysisRaghu.csv'
+        imageScaleLocation = os.path.join(imageScalePathName, 
+                                          imageScaleFilename)
+        imageScaleColumn  = 4 # column (0-indexed) with image scale
+        
+        # Arena center locations
+        arenaCentersLocation = None # estimate from well offset positions
+        arenaCentersColumns = None
+        
+        # filename of CSV file *in each data folder* with image offset filename
+        offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
+        
+        return fps, arena_radius_mm, imageScaleLocation, imageScaleColumn, \
+            arenaCentersLocation, arenaCentersColumns, offsetPositionsFilename
+
     else:
         raise ValueError("define_imageParameters: Bad experiment set")
+
+
+
+def extract_behaviors(dataset, params, CSVcolumns, fps): 
+    """
+    Calls functions to identify frames corresponding to each two-fish
+    behavioral motif.
+    
+    Inputs:
+        dataset : dictionary, with keys like "all_data" containing all 
+                    position data
+        params : parameters for behavior criteria
+        CSVcolumns : CSV column parameters
+        fps : frames per second. From defineParameters; same for all datasets
+    Outputs:
+        arrays of all frames in which the various behaviors are found:
+            perpendicular_noneSee, perpendicular_oneSees, 
+            perpendicular_bothSee, contact_any, contact_head_body, 
+            contact_larger_fish_head, contact_smaller_fish_head,
+            contact_inferred, tail_rubbing_frames
+
+    """
+    
+    # Timer
+    t1_start = perf_counter()
+
+    # Arrays of head, body positions; angles. 
+    # Last dimension = fish (so arrays are Nframes x {1 or 2}, Nfish==2)
+    pos_data = dataset["all_data"][:,CSVcolumns["pos_data_column_x"]:CSVcolumns["pos_data_column_y"]+1, :]
+        # pos_data is Nframes x 2 (x and y positions) x 2 (Nfish) array of head positions
+    angle_data = dataset["all_data"][:,CSVcolumns["angle_data_column"], :]
+    # body_x and _y are the body positions, each of size Nframes x 10 x 2 (fish)
+    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+        
+    Nframes = np.shape(pos_data)[0] 
+
+    # REMOVE CIRCLING
+    # t1_1 = perf_counter()
+    # print(f'   t1_1 start circling analysis: {t1_1 - t1_start:.2f} seconds')
+    # # Circling 
+    # circling_wfs = get_circling_frames(pos_data, dataset["inter-fish_distance"], 
+    #                                angle_data, Nframes, params["circle_windowsize"], 
+    #                                params["circle_fit_threshold"], 
+    #                                params["cos_theta_AP_threshold"], 
+    #                                params["cos_theta_tangent_threshold"], 
+    #                                params["motion_threshold"], 
+    #                                params["circle_distance_threshold"])
+    
+    t1_2 = perf_counter()
+    print(f'   t1_2 start 90degree analysis: {t1_2 - t1_start:.2f} seconds')
+    # 90-degrees 
+    perp_maxHeadDist_px = params["perp_maxHeadDist_mm"]*1000/dataset["image_scale"]
+    orientation_dict = get_90_deg_frames(pos_data, angle_data, 
+                                         Nframes, params["perp_windowsize"], 
+                                         params["cos_theta_90_thresh"], 
+                                         perp_maxHeadDist_px,
+                                         params["cosSeeingAngle"], 
+                                         dataset["fish_length_array"])
+    perpendicular_noneSee = orientation_dict["noneSee"]
+    perpendicular_oneSees = orientation_dict["oneSees"]
+    perpendicular_bothSee = orientation_dict["bothSee"]
+    perpendicular_larger_fish_sees = orientation_dict["larger_fish_sees"]
+    perpendicular_smaller_fish_sees = orientation_dict["smaller_fish_sees"]
+ 
+    t1_3 = perf_counter()
+    print(f'   t1_3 start contact analysis: {t1_3 - t1_start:.2f} seconds')
+    # Any contact, or head-body contact
+    contact_distance_threshold_px = params["contact_distance_threshold_mm"]*1000/dataset["image_scale"]
+    contact_inferred_distance_threshold_px = params["contact_inferred_distance_threshold_mm"]*1000/dataset["image_scale"]
+    contact_dict = get_contact_frames(body_x, body_y,  
+                                contact_distance_threshold_px, 
+                                dataset["fish_length_array"])
+    contact_any = contact_dict["any_contact"]
+    contact_head_body = contact_dict["head-body"]
+    contact_larger_fish_head = contact_dict["larger_fish_head_contact"]
+    contact_smaller_fish_head = contact_dict["smaller_fish_head_contact"]
+    contact_inferred_frames = get_inferred_contact_frames(dataset,
+                        params["contact_inferred_window"],                                  
+                        contact_inferred_distance_threshold_px)
+
+    t1_4 = perf_counter()
+    print(f'   t1_4 start tail-rubbing analysis: {t1_4 - t1_start:.2f} seconds')
+    # Tail-rubbing
+    tailrub_maxHeadDist_px = params["tailrub_maxHeadDist_mm"]*1000/dataset["image_scale"]
+    tailrub_maxTailDist_px = params["tailrub_maxTailDist_mm"]*1000/dataset["image_scale"]
+    tail_rubbing_frames = get_tail_rubbing_frames(body_x, body_y, 
+                                          dataset["inter-fish_distance"], 
+                                          angle_data, 
+                                          params["tail_rub_ws"], 
+                                          tailrub_maxTailDist_px, 
+                                          params["cos_theta_antipar"], 
+                                          tailrub_maxHeadDist_px)
+
+    t1_5 = perf_counter()
+    print(f'   t1_5 start approaching / fleeing analysis: {t1_5 - t1_start:.2f} seconds')
+    # Approaching or fleeing
+    speed_threshold_px_frame = params["approach_speed_threshold_mm_second"]\
+                                     /dataset["image_scale"]/fps*1000
+    (approaching_frames, fleeing_frames) = get_approach_flee_frames(dataset, 
+                                                CSVcolumns, 
+                                                speed_threshold_px_frame = speed_threshold_px_frame,
+                                                min_frame_duration = params["approach_min_frame_duration"],
+                                                cos_angle_thresh = params["approach_cos_angle_thresh"])
+
+
+    t1_end = perf_counter()
+    print(f'   t1_end end analysis: {t1_end - t1_start:.2f} seconds')
+
+    # removed "circling_wfs," from the list
+
+    return perpendicular_noneSee, perpendicular_oneSees, \
+        perpendicular_bothSee, perpendicular_larger_fish_sees, \
+        perpendicular_smaller_fish_sees, \
+        contact_any, contact_head_body, contact_larger_fish_head, \
+        contact_smaller_fish_head, contact_inferred_frames, \
+        tail_rubbing_frames, approaching_frames, fleeing_frames
 
     
     
@@ -144,17 +279,14 @@ def main():
     and behavior extraction functions for all CSV files in a set 
     """
     
-    exptNameList = ['TwoWeek2023', 'CA2024']
+    exptNameList = ['TwoWeek2023', 'CA2024', 'Solitary_Cohoused_March2024']
     
     # Ask the user to indicate the experiment name, constrained 
-    exptName = input("Choose a value for exptName (options: {}): ".format(', '.join(exptNameList)))
+    exptName = input("\n\nChoose a value for exptName (options: {}): ".format(', '.join(exptNameList)))
     # Check if the user's choice is in the list
     while exptName not in exptNameList:
         print("Invalid choice. Choose a value of exptName from the list.")
         exptName = input("Choose a value for exptName (options: {}): ".format(', '.join(exptNameList)))
-
-
-    exptName = 'CA2024'  # for loading image parameters
     
     showAllPositions = False
     
@@ -532,123 +664,6 @@ def main():
         # Return to original directory
         os.chdir(cwd)
     
-
-
-def extract_behaviors(dataset, params, CSVcolumns, fps): 
-    """
-    Calls functions to identify frames corresponding to each two-fish
-    behavioral motif.
-    
-    Inputs:
-        dataset : dictionary, with keys like "all_data" containing all 
-                    position data
-        params : parameters for behavior criteria
-        CSVcolumns : CSV column parameters
-        fps : frames per second. From defineParameters; same for all datasets
-    Outputs:
-        arrays of all frames in which the various behaviors are found:
-            perpendicular_noneSee, perpendicular_oneSees, 
-            perpendicular_bothSee, contact_any, contact_head_body, 
-            contact_larger_fish_head, contact_smaller_fish_head,
-            contact_inferred, tail_rubbing_frames
-
-    """
-    
-    # Timer
-    t1_start = perf_counter()
-
-    # Arrays of head, body positions; angles. 
-    # Last dimension = fish (so arrays are Nframes x {1 or 2}, Nfish==2)
-    pos_data = dataset["all_data"][:,CSVcolumns["pos_data_column_x"]:CSVcolumns["pos_data_column_y"]+1, :]
-        # pos_data is Nframes x 2 (x and y positions) x 2 (Nfish) array of head positions
-    angle_data = dataset["all_data"][:,CSVcolumns["angle_data_column"], :]
-    # body_x and _y are the body positions, each of size Nframes x 10 x 2 (fish)
-    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
-    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
-        
-    Nframes = np.shape(pos_data)[0] 
-
-    # REMOVE CIRCLING
-    # t1_1 = perf_counter()
-    # print(f'   t1_1 start circling analysis: {t1_1 - t1_start:.2f} seconds')
-    # # Circling 
-    # circling_wfs = get_circling_frames(pos_data, dataset["inter-fish_distance"], 
-    #                                angle_data, Nframes, params["circle_windowsize"], 
-    #                                params["circle_fit_threshold"], 
-    #                                params["cos_theta_AP_threshold"], 
-    #                                params["cos_theta_tangent_threshold"], 
-    #                                params["motion_threshold"], 
-    #                                params["circle_distance_threshold"])
-    
-    t1_2 = perf_counter()
-    print(f'   t1_2 start 90degree analysis: {t1_2 - t1_start:.2f} seconds')
-    # 90-degrees 
-    perp_maxHeadDist_px = params["perp_maxHeadDist_mm"]*1000/dataset["image_scale"]
-    orientation_dict = get_90_deg_frames(pos_data, angle_data, 
-                                         Nframes, params["perp_windowsize"], 
-                                         params["cos_theta_90_thresh"], 
-                                         perp_maxHeadDist_px,
-                                         params["cosSeeingAngle"], 
-                                         dataset["fish_length_array"])
-    perpendicular_noneSee = orientation_dict["noneSee"]
-    perpendicular_oneSees = orientation_dict["oneSees"]
-    perpendicular_bothSee = orientation_dict["bothSee"]
-    perpendicular_larger_fish_sees = orientation_dict["larger_fish_sees"]
-    perpendicular_smaller_fish_sees = orientation_dict["smaller_fish_sees"]
- 
-    t1_3 = perf_counter()
-    print(f'   t1_3 start contact analysis: {t1_3 - t1_start:.2f} seconds')
-    # Any contact, or head-body contact
-    contact_distance_threshold_px = params["contact_distance_threshold_mm"]*1000/dataset["image_scale"]
-    contact_inferred_distance_threshold_px = params["contact_inferred_distance_threshold_mm"]*1000/dataset["image_scale"]
-    contact_dict = get_contact_frames(body_x, body_y,  
-                                contact_distance_threshold_px, 
-                                dataset["fish_length_array"])
-    contact_any = contact_dict["any_contact"]
-    contact_head_body = contact_dict["head-body"]
-    contact_larger_fish_head = contact_dict["larger_fish_head_contact"]
-    contact_smaller_fish_head = contact_dict["smaller_fish_head_contact"]
-    contact_inferred_frames = get_inferred_contact_frames(dataset,
-                        params["contact_inferred_window"],                                  
-                        contact_inferred_distance_threshold_px)
-
-    t1_4 = perf_counter()
-    print(f'   t1_4 start tail-rubbing analysis: {t1_4 - t1_start:.2f} seconds')
-    # Tail-rubbing
-    tailrub_maxHeadDist_px = params["tailrub_maxHeadDist_mm"]*1000/dataset["image_scale"]
-    tailrub_maxTailDist_px = params["tailrub_maxTailDist_mm"]*1000/dataset["image_scale"]
-    tail_rubbing_frames = get_tail_rubbing_frames(body_x, body_y, 
-                                          dataset["inter-fish_distance"], 
-                                          angle_data, 
-                                          params["tail_rub_ws"], 
-                                          tailrub_maxTailDist_px, 
-                                          params["cos_theta_antipar"], 
-                                          tailrub_maxHeadDist_px)
-
-    t1_5 = perf_counter()
-    print(f'   t1_5 start approaching / fleeing analysis: {t1_5 - t1_start:.2f} seconds')
-    # Approaching or fleeing
-    speed_threshold_px_frame = params["approach_speed_threshold_mm_second"]\
-                                     /dataset["image_scale"]/fps*1000
-    (approaching_frames, fleeing_frames) = get_approach_flee_frames(dataset, 
-                                                CSVcolumns, 
-                                                speed_threshold_px_frame = speed_threshold_px_frame,
-                                                min_frame_duration = params["approach_min_frame_duration"],
-                                                cos_angle_thresh = params["approach_cos_angle_thresh"])
-
-
-    t1_end = perf_counter()
-    print(f'   t1_end end analysis: {t1_end - t1_start:.2f} seconds')
-
-    # removed "circling_wfs," from the list
-
-    return perpendicular_noneSee, perpendicular_oneSees, \
-        perpendicular_bothSee, perpendicular_larger_fish_sees, \
-        perpendicular_smaller_fish_sees, \
-        contact_any, contact_head_body, contact_larger_fish_head, \
-        contact_smaller_fish_head, contact_inferred_frames, \
-        tail_rubbing_frames, approaching_frames, fleeing_frames
-
 
 
     

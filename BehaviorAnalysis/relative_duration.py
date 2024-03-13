@@ -30,7 +30,7 @@ def get_mean_std_overRows(rows, colIdx):
     """
     At column colIdx, get all values from rows, calc. mean and std dev
     For mean, std. dev, ignore values that are NaN or Inf
-
+    
     """
     vals = np.array([row[colIdx] for row in rows[1:]]).astype(float)
     OKvals = vals[np.isfinite(vals)]

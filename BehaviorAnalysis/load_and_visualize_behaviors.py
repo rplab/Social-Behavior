@@ -20,7 +20,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import pickle
 
-from toolkit import link_weighted
+from toolkit import link_weighted, repair_disjoint_heads, repair_double_length_fish
 
 def loadAllFromPickle(pickleFileName = None):
     """
@@ -275,8 +275,8 @@ if __name__ == '__main__':
         if datasets[j]["dataset_name"]==whichDataset:
             chosenSet = datasets[j]
     
-    startFrame = 876
-    endFrame = 884
+    startFrame = 2105
+    endFrame = 2112
     visualize_fish(chosenSet, CSVcolumns, 
                    startFrame=startFrame, endFrame=endFrame) # 7430, 7490
     
@@ -287,6 +287,53 @@ if __name__ == '__main__':
     # endFrame = wrongID_body[0] + frameRange
     # visualize_fish(chosenSet, CSVcolumns, 
     #                startFrame=startFrame, endFrame=endFrame) 
+
+    print('Here 0')
+    print('Angle 2107 1:', chosenSet["all_data"][2107,5,1])
+    # Fix disjoint heads
+    fix_disjoint_heads = True
+    if fix_disjoint_heads:
+        chosenSet = repair_disjoint_heads(chosenSet, CSVcolumns, 
+                              Dtol=3.0, tol=0.001)
+    # body_column_x_start=6
+    # body_column_y_start=16
+    # body_Ncolumns=10
+    # print('Here')
+    # print(chosenSet["all_data"][2107,body_column_x_start:(body_column_x_start+body_Ncolumns),1])
+    # print(chosenSet["all_data"][2107,5,1])
+
+    # Fix double length
+    body_column_x_start=6
+    body_column_y_start=16
+    body_Ncolumns=10
+    idx_to_plot = 2106
+    print('Here before double length fix')
+    print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0])
+    print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1])
+    plt.figure()
+    plt.plot(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0],
+               -chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),0], 
+               color='olivedrab', marker='x')
+    plt.plot(0.25+chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1],
+               0.25-chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),1], 
+               color='magenta', marker='x')
+    fix_double_length = True
+    if fix_double_length:
+        lengthFactor = [1.5, 2.5]
+        chosenSet = repair_double_length_fish(chosenSet, CSVcolumns, 
+                              lengthFactor = lengthFactor, tol=0.001)
+    print('Here after double length fix')
+    print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0])
+    print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1])
+    print(chosenSet["all_data"][idx_to_plot,5,0])
+    print(chosenSet["all_data"][idx_to_plot,5,1])
+    plt.plot(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0],
+               -chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),0], 
+               color='limegreen', marker='o')
+    plt.plot(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1],
+               -chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),1], 
+               color='hotpink', marker='o')
+
 
     # Fix IDs
     IDs, newIDs = link_weighted(chosenSet["all_data"], CSVcolumns)
@@ -299,4 +346,20 @@ if __name__ == '__main__':
             n_bothApproachFrames[j] = how_many_both_approaching_frames(datasets[j])
         print(f'\n\nAverage n_bothApproachFrames: {np.mean(n_bothApproachFrames):.1f}')
         
+    body_column_x_start=6
+    body_column_y_start=16
+    body_Ncolumns=10
+    dx = np.abs(np.diff(chosenSet["all_data"][:,body_column_x_start:(body_column_x_start+body_Ncolumns),1], axis=1))
+    d0 = np.median(dx, axis=0)[0]
+    d1 = np.median(dx, axis=0)[1]
+    print('dx: ', d0, d1)
+
+    startFrame = 2105
+    endFrame = 2112
+    visualize_fish(chosenSet, CSVcolumns, 
+                   startFrame=startFrame, endFrame=endFrame) 
+    print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0])
+    print(chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),0])
+    print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1])
+    print(chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),1])
     

@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Wed Sep  6 13:38:21 2023
-Last modified on Dec. 21, 2023
+Last modified on March 1, 2024
 
 Description
 -----------
@@ -95,9 +95,11 @@ behav_corr, behavior_key_list = calcDeltaFramesEvents(datasets)
             behav_corr_j[bA] = {"allDeltaFrames": np.array([])}
             for bB in behavior_key_list:
                 behav_corr_j[bA][bB] = {"deltaFrames": np.array([])}
+
         # Calculate frame delays and append to each deltaFrames list
         for behavior_A in behavior_key_list:
             bA_frames = datasets[j][behavior_A]["combine_frames"][0]
+                        
             for behavior_B in behavior_key_list:
                 # For each dataset, note each event and calculate the delay between
                 # this and other events of both the same and different behaviors
@@ -264,7 +266,8 @@ def calcBehavCorrAllSets(behav_corr, behavior_key_list, binCenters):
 
 
 def plot_behaviorCorrelation(behav_corr_allSets, binCenters, 
-                             behavior_key_list, behaviorA, behaviorB=''):
+                             behavior_key_list, behaviorA, behaviorB='',
+                             fps = 1.0):
     """ 
     Plot Behavior B likelihood following/preceding Behavior A
     Can plot a single A-B pair, or all B for a given A
@@ -279,48 +282,63 @@ def plot_behaviorCorrelation(behav_corr_allSets, binCenters,
                    one pair. Leave B empty ('') to skip plotting
                    a single A-B pair, and only plot all pairs
     behavior_key_list : list of behaviors to plot. (Can be a subset of all)
+    fps : frames per second (probably 25, but default to 1)
     """
 
     # Just one AB pair    
     if not behaviorB=='':
         plt.figure()
-        plt.plot(binCenters, behav_corr_allSets['normAcrossBehavior'][behaviorA][behaviorB],
+        plt.plot(binCenters/fps, behav_corr_allSets['normAcrossBehavior'][behaviorA][behaviorB],
                  color='darkturquoise')
         meanCorr = np.mean(behav_corr_allSets['normAcrossBehavior'][behaviorA][behaviorB])
-        plt.plot(binCenters, meanCorr*np.ones(binCenters.shape), 
+        plt.plot(binCenters/fps, meanCorr*np.ones(binCenters.shape), 
                  linestyle='dashed', color='turquoise')
-        plt.xlabel('Delta Frames')
-        plt.ylabel('Relative likelihood')
+        plt.xlabel('$\Delta$t (s)', fontsize=20)
+        plt.ylabel('Relative likelihood', fontsize=20)
         plt.title(f'{behaviorA} then {behaviorB}; norm. across behaviors.')
+        plt.xticks(fontsize=14)
+        plt.yticks(fontsize=14)
         
         plt.figure()
-        plt.plot(binCenters, behav_corr_allSets['normAcrossTime'][behaviorA][behaviorB],
+        plt.plot(binCenters/fps, behav_corr_allSets['normAcrossTime'][behaviorA][behaviorB],
                  color='darkorange')
         meanCorr = np.mean(behav_corr_allSets['normAcrossTime'][behaviorA][behaviorB])
-        plt.plot(binCenters, meanCorr*np.ones(binCenters.shape), 
+        plt.plot(binCenters/fps, meanCorr*np.ones(binCenters.shape), 
                  linestyle='dashed', color='gold')
-        plt.xlabel('Delta Frames')
-        plt.ylabel('Relative likelihood; norm. across time')
+        plt.xlabel('$\Delta$t (s)', fontsize=20)
+        plt.ylabel('Relative likelihood; norm. across time', fontsize=20)
         plt.title(f'{behaviorA} then {behaviorB}; norm. across time.')
+        plt.xticks(fontsize=14)
+        plt.yticks(fontsize=14)
     
     # All pairs
-    plt.figure(figsize=(7, 6), dpi=100)
+    plt.figure(figsize=(8, 6))
     for bB in behavior_key_list:
-        plt.plot(binCenters, behav_corr_allSets['normAcrossBehavior'][behaviorA][bB], 
-                 label=bB)
-    plt.xlabel('Delta Frames')
-    plt.ylabel('Relative likelihood')
+        plt.plot(binCenters/fps, behav_corr_allSets['normAcrossBehavior'][behaviorA][bB], 
+                 label=bB, linewidth=2.0)
+    plt.xlabel('$\Delta$t (s)', fontsize=16)
+    plt.ylabel('Relative likelihood', fontsize=16)
     plt.title(f'{behaviorA} then each behavior; norm. across behaviors')
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
     plt.legend()
 
-    plt.figure(figsize=(7, 6), dpi=100)
+    plt.figure(figsize=(8, 6))
     for bB in behavior_key_list:
-        plt.plot(binCenters, behav_corr_allSets['normAcrossTime'][behaviorA][bB], 
-                 label=bB)
-    plt.xlabel('Delta Frames')
-    plt.ylabel('Relative likelihood')
+        plt.plot(binCenters/fps, behav_corr_allSets['normAcrossTime'][behaviorA][bB], 
+                 label=bB, linewidth=2.0)
+    plt.xlabel('$\Delta$t (s)', fontsize=16)
+    plt.ylabel('Relative likelihood', fontsize=16)
     plt.title(f'{behaviorA} then each behavior; norm. across time')
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
     plt.legend()
+    # For export, Mar. 1, 2024
+    plt.plot(np.array([0.0, 0.0]), np.array([0.0, 0.06]), linestyle=':', 
+             color='gray')
+    plt.ylim((0.0, 0.06))
+    plt.xlim((-1.0, 1.0))
+    plt.savefig('behavior_correlations_raw.eps', dpi=300)
 
    
 def length_difference_correlation(CSVfilename = '', behavior_to_plot=''):
