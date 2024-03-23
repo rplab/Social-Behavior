@@ -6,8 +6,8 @@
 # Created By  : Estelle Trieu 
 # Re-written by : Raghuveer Parthasarathy (2023)
 # Created Date: 9/19/2022
-# version ='2.0' Raghuveer Parthasarathy
-# last modified: Raghuveer Parthasarathy, November 26, 2023
+# version ='2.0' Raghuveer Parthasarathy -- May-June 2023; see notes.
+# last modified: Raghuveer Parthasarathy, March 22, 2023
 # ---------------------------------------------------------------------------
 """
 
@@ -102,6 +102,7 @@ def define_imageParameters(exptName):
         imageScaleLocation = os.path.join(imageScalePathName, 
                                           imageScaleFilename)
         imageScaleColumn  = 4 # column (0-indexed) with image scale
+        imageScaleDataset_appendColumn = None # need to use this column also to match dataset name
         
         # Arena center locations
         arenaCentersPathName = 'C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior'
@@ -122,6 +123,7 @@ def define_imageParameters(exptName):
         imageScaleLocation = os.path.join(imageScalePathName, 
                                           imageScaleFilename)
         imageScaleColumn  = 4 # column (0-indexed) with image scale
+        imageScaleDataset_appendColumn = None # need to use this column also to match dataset name
         
         # Arena center locations
         arenaCentersLocation = None # estimate from well offset positions
@@ -140,6 +142,7 @@ def define_imageParameters(exptName):
         imageScaleLocation = os.path.join(imageScalePathName, 
                                           imageScaleFilename)
         imageScaleColumn  = 4 # column (0-indexed) with image scale
+        imageScaleDataset_appendColumn = None # need to use this column also to match dataset name
         
         # Arena center locations
         arenaCentersLocation = None # estimate from well offset positions
@@ -149,6 +152,27 @@ def define_imageParameters(exptName):
         offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
         
         return fps, arena_radius_mm, imageScaleLocation, imageScaleColumn, \
+            imageScaleDataset_appendColumn, \
+            arenaCentersLocation, arenaCentersColumns, offsetPositionsFilename
+
+    elif exptName == 'Shank3_Feb2024':
+        # Image scale, to be read from file
+        imageScalePathName = 'C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior/CSV files and outputs/2 week old - pairs with shank3 mutations'
+        imageScaleFilename = 'SocDef_Shank3_AnalysisRaghu.csv'
+        imageScaleLocation = os.path.join(imageScalePathName, 
+                                          imageScaleFilename)
+        imageScaleColumn  = 4 # column (0-indexed) with image scale
+        imageScaleDataset_appendColumn = 1 # need to use this column also to match dataset name
+        
+        # Arena center locations
+        arenaCentersLocation = None # estimate from well offset positions
+        arenaCentersColumns = None
+        
+        # filename of CSV file *in each data folder* with image offset filename
+        offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
+        
+        return fps, arena_radius_mm, imageScaleLocation, imageScaleColumn, \
+            imageScaleDataset_appendColumn, \
             arenaCentersLocation, arenaCentersColumns, offsetPositionsFilename
 
     else:
@@ -279,7 +303,8 @@ def main():
     and behavior extraction functions for all CSV files in a set 
     """
     
-    exptNameList = ['TwoWeek2023', 'CA2024', 'Solitary_Cohoused_March2024']
+    exptNameList = ['TwoWeek2023', 'CA2024', 'Solitary_Cohoused_March2024', 
+                    'Shank3_Feb2024']
     
     # Ask the user to indicate the experiment name, constrained 
     exptName = input("\n\nChoose a value for exptName (options: {}): ".format(', '.join(exptNameList)))
@@ -293,6 +318,7 @@ def main():
     params, CSVcolumns = defineParameters()
     
     fps, arena_radius_mm, imageScaleLocation, imageScaleColumn, \
+        imageScaleDataset_appendColumn, \
         arenaCentersLocation, arenaCentersColumns, \
         offsetPositionsFilename = define_imageParameters(exptName)
     
@@ -317,7 +343,9 @@ def main():
         datasets[j]["CSVfilename"] = CSVfileName
         datasets[j]["dataset_name"] = get_dataset_name(CSVfileName)
         datasets[j]["image_scale"] = float(get_imageScale(datasets[j]["dataset_name"], 
-                                                    imageScaleLocation, imageScaleColumn))
+                                                    imageScaleLocation, 
+                                                    imageScaleColumn, 
+                                                    imageScaleDataset_appendColumn))
         # Load all the position information as a numpy array
         print('Loading dataset: ', datasets[j]["dataset_name"])
         datasets[j]["all_data"], datasets[j]["frameArray"] = \

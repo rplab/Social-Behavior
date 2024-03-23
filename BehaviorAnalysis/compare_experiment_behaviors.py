@@ -252,10 +252,17 @@ def ratio_with_sim_uncertainty(x, sigx, y, sigy, n_samples=10000):
 if __name__ == '__main__':
     
     
-    # Choose one of these datasets by uncommenting
-    # exptName = 'TwoWeekLightDark2023'
-    # exptName = 'CholicAcid_Jan2024'
-    exptName = 'Solitary_Cohoused_March2024'
+    exptNameList = ['TwoWeekLightDark2023', 'CholicAcid_Jan2024', 
+                    'Solitary_Cohoused_March2024', 
+                    'Shank3_Feb2024']
+    
+    # Ask the user to indicate the experiment name, constrained 
+    exptName = input("\n\nChoose a value for exptName (options: {}): ".format(', '.join(exptNameList)))
+    # Check if the user's choice is in the list
+    while exptName not in exptNameList:
+        print("Invalid choice. Choose a value of exptName from the list.")
+        exptName = input("Choose a value for exptName (options: {}): ".format(', '.join(exptNameList)))
+
     
     print('\n\nExperiment being plotted: ', exptName)
 
@@ -290,6 +297,15 @@ if __name__ == '__main__':
         dataLabel1 = '(1) Co-housed'
         dataLabel2 = '(2) Solitary'
 
+    if exptName == 'Shank3_Feb2024':
+        print('\nShank3, Genotypes 1 and 2 2024 \n')
+        path1 = r"C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - pairs with shank3 mutations\Genotype 1"
+        file1 = r"behavior_relDuration_G1.csv"
+        path2 = r"C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - pairs with shank3 mutations\Genotype 2"
+        file2 = r"behavior_relDuration_G2.csv"
+        dataLabel1 = 'Genotype 1'
+        dataLabel2 = 'Genotype 2'
+
     file_path1 = os.path.join(path1, file1)
     file_path2 = os.path.join(path2, file2)
 
@@ -305,22 +321,19 @@ if __name__ == '__main__':
                        "Mean Inter-fish dist (px)", "Angle XCorr mean"]
     
     # exclude more columns
-    exclude_more = True
+    exclude_more = False
     if exclude_more:
-        exclude_columns.extend(['90deg-largerSees', '90deg-smallerSees',
-                                'Contact (Larger fish head-body)', 
-                                'Contact (Smaller fish head-body)',
+        exclude_columns.extend(['90deg-None', 
                                 'Contact (inferred)', 
-                                'Cbend Fish0', 'Cbend Fish1',
-                                'Fish0 Flees', 'Fish1 Flees'])
+                                'Jbend Fish0', 'Jbend Fish1', 
+                                'Fish0 Flees', 'Fish1 Flees',
+                                'Fish0 Approaches', 'Fish1 Approaches'])
     exclude_more2 = True
     if exclude_more2:
-        exclude_columns.extend(['90deg-None', 
-                                '90deg-largerSees', '90deg-smallerSees',
+        exclude_columns.extend(['90deg-largerSees', '90deg-smallerSees',
+                                'Cbend Fish0', 'Cbend Fish1',
                                 'Contact (Larger fish head-body)', 
-                                'Contact (Smaller fish head-body)', 
-                                'Jbend Fish0', 'Jbend Fish1', 
-                                'Fish0 Approaches', 'Fish1 Approaches'])
+                                'Contact (Smaller fish head-body)'])
     print('Columns excluded: ', exclude_columns)
     
     # Exclude specified columns

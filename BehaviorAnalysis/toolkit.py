@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified March 3, 2024 -- Raghu Parthasarathy
+Last modified March 22, 2024 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -229,16 +229,18 @@ def get_ArenaCenter(dataset_name, arenaCentersFilename,
     """ 
     Extract the x,y positions of the Arena centers from the 
     arenaCentersFilename CSV -- previously tabulated.
-    Image offsets also previously tabulated, first and second columns of
-    offsetPositionsFilename
+    Image offsets also previously tabulated, "arenaCentersColumns" 
+         columns of offsetPositionsFilename
 
     Inputs:
         dataset_name :
         arenaCentersFilename: csv file name with arena centers 
             (and one header row). If None, estimate centers from well
             offsets
-        arenaCentersColumns
+        arenaCentersColumns : columns containing image offsets
         offsetPositionsFilename : csv file name with well offset positions
+    Note that we don't need imageScaleDataset_appendColumn : column to append to match dataset names
+    
     Returns:
         arenaCenterCorrected: tuple of x, y positions of arena Center
     Returns none if no rows match the input dataset_name, 
@@ -248,20 +250,20 @@ def get_ArenaCenter(dataset_name, arenaCentersFilename,
 
     # Find the row of this dataset in the well offset data file
     matching_offset_rows = []
+    # remove "_light" and "_dark" from dataset names to allow 5b datasets
+    dataset_name_remove = ['results_', 'SocDef_', '_light', '_dark']
+
+    # Modifications to row_array[0]
+    row_remove = ['results_', 'SocPref_', '_ALL', 'SocDef_']
+    
     with open(offsetPositionsFilename, 'r') as file:
         reader = csv.reader(file)
-
+        
         for row in reader:
-            # remove "_light" and "_dark" to allow 5b datasets
-            mod_dataset_name = dataset_name.replace('_light', '')
-            mod_dataset_name = mod_dataset_name.replace('_dark', '')
-            thisRow0 = row[0].replace('results_SocPref_', '')
-            thisRow0 = thisRow0.replace('_ALL', '')
-            if mod_dataset_name == thisRow0:
+            if match_dataset_name(dataset_name, row, 
+                                  dataset_name_remove, row_remove)==True:
                 matching_offset_rows.append(row)
-        arenaOffset = np.array((matching_offset_rows[0][1], 
-                                matching_offset_rows[0][2])).astype(float)
-
+                
     if len(matching_offset_rows) == 0:
         # No matching rows in the offset file were found.
         arenaOffset = None
@@ -269,19 +271,23 @@ def get_ArenaCenter(dataset_name, arenaCentersFilename,
     elif len(matching_offset_rows) > 1:
         raise ValueError("get_ArenaCenter: Multiple rows contain the input dataset_name string")
     else:
+        arenaOffset = np.array((matching_offset_rows[0][1], 
+                                matching_offset_rows[0][2])).astype(float)
         # There's offset data, now load or estimate arena center
         if arenaCentersFilename != None:
             # Find the uncorrected arena positions
+        
+            # Modifications to row_array[0]
+            row_remove = ['results_', 'SocPref_', 'SocDef_']
+
             matching_rows = []
             with open(arenaCentersFilename, 'r') as file:
                 reader = csv.reader(file)
-                header = next(reader)  # Skip the header row
+                next(reader)  # Skip the header row
         
                 for row in reader:
-                    # remove "_light" and "_dark" to allow 5b datasets
-                    mod_dataset_name = dataset_name.replace('_light', '')
-                    mod_dataset_name = mod_dataset_name.replace('_dark', '')
-                    if mod_dataset_name == row[0].replace('SocPref_', ''):
+                    if match_dataset_name(dataset_name, row, 
+                                          dataset_name_remove, row_remove)==True:
                         matching_rows.append(row)
         
                 if len(matching_rows) == 0:
@@ -334,7 +340,8 @@ def get_edge_frames(dataset, params, arena_radius_mm, xcol=3, ycol=4):
     near_edge_frames = dataset["frameArray"][np.where(near_edge)]
     return near_edge_frames
 
-def get_imageScale(dataset_name, imageScaleLocation, imageScaleColumn):
+def get_imageScale(dataset_name, imageScaleLocation, imageScaleColumn,
+                   imageScaleDataset_appendColumn):
     """ 
     Extract the image scale (um/px) from 
     imageScaleFilename CSV 
@@ -344,6 +351,7 @@ def get_imageScale(dataset_name, imageScaleLocation, imageScaleColumn):
         imageScaleLocation : Path and filename of CSV file containing 
                              image scale information
     imageScaleColumn : column (0-index) with image scale
+    imageScaleDataset_appendColumn : column to append to match dataset names
 
     Returns:
         image scale (um/px)
@@ -354,27 +362,70 @@ def get_imageScale(dataset_name, imageScaleLocation, imageScaleColumn):
     """
     matching_rows = []
 
+    # remove "_light" and "_dark" from dataset names to allow 5b datasets
+    dataset_name_remove = ['results_', '_light', '_dark']
+
+    # Modifications to row_array[0]
+    # remove "SocPref_"
+    row_remove = ['results_', 'SocPref_']
+
     with open(imageScaleLocation, 'r') as file:
         reader = csv.reader(file)
-        header = next(reader)  # Skip the header row
-
+        next(reader)  # Skip the header row
         for row in reader:
-            # remove "_light" and "_dark" to allow 5b datasets
-            mod_dataset_name = dataset_name.replace('_light', '')
-            mod_dataset_name = mod_dataset_name.replace('_dark', '')
-            if mod_dataset_name == row[0].replace('SocPref_', ''):
+            if match_dataset_name(dataset_name, row, 
+                                  dataset_name_remove, row_remove,
+                                  appendColumn = 
+                                  imageScaleDataset_appendColumn) == True:
                 matching_rows.append(row)
 
-        if len(matching_rows) == 0:
-            print('Modified dataset name: ', mod_dataset_name)
-            raise ValueError("get_imageScale: No row found with the input dataset_name string")
-        elif len(matching_rows) > 1:
-            # print(dataset_name, ' in rows: ', matching_rows[:][0])
-            raise ValueError("get_imageScale: Multiple rows contain the input dataset_name string")
-        else:
-            return matching_rows[0][imageScaleColumn]
+    if len(matching_rows) == 0:
+        print('Dataset name: ', dataset_name)
+        raise ValueError("get_imageScale: No row found with the input dataset_name string")
+    elif len(matching_rows) > 1:
+        # print(dataset_name, ' in rows: ', matching_rows[:][0])
+        raise ValueError("get_imageScale: Multiple rows contain the input dataset_name string")
+    else:
+        return matching_rows[0][imageScaleColumn]
 
 
+def match_dataset_name(dataset_name, row_array, 
+                       dataset_name_remove = [], row_array_remove=[], 
+                       appendColumn = None):
+    """ 
+    Test whether the string row_array[0] (modified by deleting
+         the strings in the list row_array_remove, and possibly
+         appending '_' + row[appendColumn]) matches the string 
+         dataset_name (modified by deleting
+         the strings in the list dataset_name_remove).
+    
+    Return True if dataset_name ad row_array match (given modifications);
+    False otherwise
+    
+    To be used by get_imageScale() and get_ArenaCenter()
+    
+    """
+    
+    # Modifications to dataset_name
+    mod_dataset_name = dataset_name
+    for remove_string in dataset_name_remove:
+        mod_dataset_name = mod_dataset_name.replace(remove_string, '')
+
+    # Modifications to row_array[0]
+    mod_row_array = row_array[0]
+    for remove_string in row_array_remove:
+        mod_row_array = mod_row_array.replace(remove_string, '')
+    
+    # Append another column to row[0], if desired, with underscore
+    if appendColumn != None:
+        mod_row_array = mod_row_array + '_' + row_array[appendColumn]
+    
+    if mod_dataset_name == mod_row_array:
+        return True
+    else:
+        return False
+    
+    
 def estimate_arena_center(alldata, xcol=3, ycol=4):
     """ 
     Estimate the arena center position as the midpoint of the x-y range.
