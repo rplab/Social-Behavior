@@ -1,7 +1,8 @@
 % convert_fishTrackingData_MATtoCSV.m
 %
 % Convert MAT file / structure variables of fish behavior data (position,
-% etc.) to CSV files to be more easily read in Python
+% etc.) to CSV files to be more easily read in Python.
+% Also records well offset positions, videoDataResults.wellPositions{1,1}
 %
 % Number of fish must be 2 (checked)
 %
@@ -26,11 +27,11 @@
 %   MATfilenames : *either* the MAT file name to convert, or a cell array of
 %             strings with the filename of all MAT files to convert.
 %             If empty, get from directory *all* the MAT file names.
-%   wellOffsetPositionCSVfile : CSV filename in which to record well offset
+%   wellOffsetPositionsCSVfile : CSV filename in which to record well offset
 %             positions, videoDataResults.wellPositions{1,1} = 
 %             topLeftX, topLeftY,  lengthX, lengthY (px), saved in that
 %             order.
-%             (For example: wellOffsetPositionsCSVfile.csv)
+%             (For example: wellOffsetPositionsCSVfile.csv -- default)
 %             Note that arena centers are the center coordinates written in
 %                 ArenaCenters_SocPref_3456 minus (topLeftX, topLeftY).
 %             Leave empty to ignore well positions; skip writing a file
@@ -40,10 +41,10 @@
 % April 29, 2022
 % Major changes June 18, 2023 (reading and writing multiple MAT/CSV files, etc.)
 % January 30, 2024: allow MAT files that contain multiple movies' data
-% last modified January 30, 2024
+% last modified April 14, 2024
 
 function convert_fishTrackingData_MATtoCSV(dataDir, MATfilenames, ...
-    makePlots, wellOffsetPositionCSVfile)
+    makePlots, wellOffsetPositionsCSVfile)
 
 %% Inputs
 
@@ -54,8 +55,8 @@ end
 if ~exist('makePlots', 'var') || isempty(makePlots)
     makePlots = false;
 end
-if ~exist('wellOffsetPositionCSVfile', 'var')
-    wellOffsetPositionCSVfile = []; % don't write
+if ~exist('wellOffsetPositionsCSVfile', 'var')
+    wellOffsetPositionsCSVfile = 'wellOffsetPositionsCSVfile.csv';
 end
 
 cd(dataDir)
@@ -128,8 +129,10 @@ for j=1:Nfiles
 
 end
 % Export all well offset positions to CSV, optional
-if ~isempty(wellOffsetPositionCSVfile)
-    write_wellOffsetPositions(wellOffsetPositionCSVfile, wellPositionStringsAll);
+if ~isempty(wellOffsetPositionsCSVfile)
+    write_wellOffsetPositions(wellOffsetPositionsCSVfile, wellPositionStringsAll);
+else
+    disp('Not outputting well offset positions.')
 end
 
 cd(pDir)
@@ -208,50 +211,7 @@ function make_some_plots(fishData)
     end
 end
 
-function wellPositionsString = convertMAT_to_CSV_1(videoDataResults, makePlots)
-% Extract MAT data from a single movie
-%
-% Inputs
-%   MATfilename : string (includes MAT)
-% Outputs
-%   wellPositionsString : string with data file name (without MAT) and 
-%         wellPositions : topLeftX, topLeftY,  lengthX, lengthY (px) [int32]
 
-
-
-    % Number of columns for output CSV file
-    Ncolumns = 26;
-    fishData = zeros(Nframes*Nfish, Ncolumns);
-
-    % CSV has rows of all of fish 1's data followed by fish 2, ...
-    for j=1:Nfish
-        thisFishData = zeros(Nframes, 26);
-        thisFishData(:,1) = repmat(videoDataResults.wellPoissMouv{j}.AnimalNumber, Nframes, 1);
-        thisFishData(:,2) = (1:Nframes)';
-        thisFishData(:,3) = (videoDataResults.wellPoissMouv{j}.TailAngle_Raw)';
-        thisFishData(:,4) = (videoDataResults.wellPoissMouv{j}.HeadX)';
-        thisFishData(:,5) = (videoDataResults.wellPoissMouv{j}.HeadY)';
-        thisFishData(:,6) = (videoDataResults.wellPoissMouv{j}.Heading)';
-        thisFishData(:,7:16) = (videoDataResults.wellPoissMouv{j}.TailX_VideoReferential);
-        thisFishData(:,17:26) = (videoDataResults.wellPoissMouv{j}.TailY_VideoReferential);
-        fishData((j-1)*Nframes+1:j*Nframes, :) = thisFishData;
-    end    
-
-    % well positions
-    tempWP = videoDataResults.wellPositions{1,1};
-    wellPositions = [tempWP.topLeftX tempWP.topLeftY tempWP.lengthX tempWP.lengthY];
-
-    formatSpec = '%s,%.1f,%.1f,%.1f,%.1f\n';
-    wellPositionsString = sprintf(formatSpec, MATfilenameBase, wellPositions);
-
-    %% Exporting to CSV
-
-    dataFileNameOutput = strcat(MATfilenameBase, '.csv');
-    disp('writing CSV')
-    csvwrite(dataFileNameOutput,fishData);
-
-
-end
 
 function Nfish = checkNfish(videoDataResults, NfishExpected)
     Nfish = size(videoDataResults.wellPoissMouv,2);
