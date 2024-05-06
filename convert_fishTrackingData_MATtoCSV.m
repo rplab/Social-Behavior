@@ -45,10 +45,10 @@
 % April 29, 2022
 % Major changes June 18, 2023 (reading and writing multiple MAT/CSV files, etc.)
 % January 30, 2024: allow MAT files that contain multiple movies' data
-% last modified May 6, 2024 (added comment)
+% last modified May 6, 2024 (change order of inputs)
 
 function convert_fishTrackingData_MATtoCSV(dataDir, MATfilenames, ...
-    makePlots, wellOffsetPositionsCSVfile)
+    wellOffsetPositionsCSVfile, makePlots)
 
 %% Inputs
 
