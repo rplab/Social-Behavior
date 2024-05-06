@@ -37,11 +37,15 @@
 %             Leave empty to ignore well positions; skip writing a file
 %   makePlots : make simple plot of some frames' position data; default = false
 %
+% Outputs
+%   None, but writes CSV files. CSV filename same as MAT filename, but
+%      append '_{movie number}' if the MAT file contains multiple movies.
+%
 % Raghuveer Parthasarathy
 % April 29, 2022
 % Major changes June 18, 2023 (reading and writing multiple MAT/CSV files, etc.)
 % January 30, 2024: allow MAT files that contain multiple movies' data
-% last modified April 14, 2024
+% last modified May 6, 2024 (added comment)
 
 function convert_fishTrackingData_MATtoCSV(dataDir, MATfilenames, ...
     makePlots, wellOffsetPositionsCSVfile)

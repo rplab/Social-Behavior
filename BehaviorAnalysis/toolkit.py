@@ -363,11 +363,11 @@ def get_imageScale(dataset_name, imageScaleLocation, imageScaleColumn,
     matching_rows = []
 
     # remove "_light" and "_dark" from dataset names to allow 5b datasets
-    dataset_name_remove = ['results_', '_light', '_dark']
+    dataset_name_remove = ['results_', '_light', '_dark', 'SocDist_']
 
     # Modifications to row_array[0]
     # remove "SocPref_"
-    row_remove = ['results_', 'SocPref_']
+    row_remove = ['results_', 'SocPref_', 'SocDef_Solitary_']
 
     with open(imageScaleLocation, 'r') as file:
         reader = csv.reader(file)

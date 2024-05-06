@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Fri Dec  1 07:27:01 2023
-Last modified on March 13, 2024
+Last modified on May 3, 2024
 
 Description
 -----------
@@ -11,12 +11,17 @@ Description
 Code to read relative durations output for various datasets and plot
 summary stats versus each other.
 
-Plotting code largely from ChatGPT (3.5)!
+See the "Behavior analysis pipeline v2" document, 
+section "Compare experiment sets", for description of the code and process.
 
 Inputs:
+    None.
+    - manually modify main() to specify the path and file names corresponding
+        to each experiment name
+    - run this program
     
 Outputs:
-    
+    - Makes, saves graphs
 
 """
 
@@ -131,7 +136,6 @@ def scatter_plots_with_error_bars(dataframes, mean_sem,
     dataframes : tuple of dataframes 1 and 2
     mean_sem : tuple of tuple of mean and sem of each behavior for dataset 1, 2    file_path2 : path and file for dataset 2 CSV
     dataLabels : tuple of dataLabel1, 2 for labeling plots
-    showTextLabels : if true, text by symbols
     showLegend : if true, show a legend
     outputFileName : filename for figure output, if not None
     
@@ -156,17 +160,23 @@ def scatter_plots_with_error_bars(dataframes, mean_sem,
                                          mean_sem_1[0], mean_sem_1[1])
 
     # Create scatter plots with error bars for each column
-    plt.figure(figsize=(9, 6))
+    plt.figure(figsize=(9, 7))
     for j in range(len(ratios)):
         plt.errorbar(j, ratios[j], 
                      yerr=np.vstack((r_unc_lower[j], r_unc_upper[j])), 
                      label = f"  {df1.columns[j + 1]}", fmt='o', capsize=5,
                      markersize=12)
 
+    plt.xticks(range(len(ratios)), list(df1.columns[1:]), fontsize=14, 
+               rotation=45, ha='right')
+    # ax = plt.gca()
+    # ax.set_xticklabels(list(df1.columns[1:]), fontsize=14, rotation=45)
+    plt.yticks(fontsize=14)
+
     # Set labels and title
-    plt.xlabel("Column Index")
+    # plt.xlabel("Behaviors", fontsize=16)
     plt.ylabel(f"Ratio: {dataLabel_1}/{dataLabel_2}", fontsize=16)
-    plt.title("Ratios of Behavior Durations")
+    plt.title("Ratios of Behavior Durations", fontsize=16)
 
     current_x_limits = plt.xlim()
     # dashed line at ratio = 1
@@ -174,7 +184,8 @@ def scatter_plots_with_error_bars(dataframes, mean_sem,
              color='gray', linewidth=2.0, linestyle='dotted')
 
     # Display the plot
-    plt.legend()
+    if showLegend:
+        plt.legend()
     plt.show()
     
     if outputFileName != None:
@@ -254,7 +265,7 @@ if __name__ == '__main__':
     
     exptNameList = ['TwoWeekLightDark2023', 'CholicAcid_Jan2024', 
                     'Solitary_Cohoused_March2024', 
-                    'Shank3_Feb2024']
+                    'Shank3_Feb2024', 'Infected_housing_March2024']
     
     # Ask the user to indicate the experiment name, constrained 
     exptName = input("\n\nChoose a value for exptName (options: {}): ".format(', '.join(exptNameList)))
@@ -267,23 +278,22 @@ if __name__ == '__main__':
     print('\n\nExperiment being plotted: ', exptName)
 
     # Specify the paths and file names
+    baseDir = r"C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs"
 
-
-    # Set the parent directory and other info
     if exptName == 'TwoWeekLightDark2023':
-        print('\nTwo week old fish, light and dark 2023 \n')
-        path1 = r"C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - pairs"
+        print('\nTwo week old fish, light and dark 2023\n')
+        path1 = baseDir + r"\2 week old - pairs"
         file1 = r"behavior_relDuration_2week_light_26Nov2023.csv"
-        path2 = r"C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - pairs in the dark"
+        path2 = baseDir + r"\2 week old - pairs in the dark"
         file2 = r"behavior_relDuration_2week_dark_26Nov2023.csv"
         dataLabel1 = 'Zebrafish, in light'
         dataLabel2 = 'Zebrafish, in dark'
 
     if exptName == 'CholicAcid_Jan2024':
         print('\nCholic Acid Jan. 2024 \n')
-        path1 = r"C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - pairs - cholic acid\Condition1"
+        path1 = baseDir + r"\2 week old - pairs - cholic acid\Condition1"
         file1 = r"behavior_relDuration_condition1_31Jan2024.csv"
-        path2 = r"C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - pairs - cholic acid\Condition2"
+        path2 = baseDir + r"\2 week old - pairs - cholic acid\Condition2"
         file2 = r"behavior_relDuration_condition2_31Jan2024.csv"
         dataLabel1 = 'Fish, condition 1'
         dataLabel2 = 'Fish, condition 2'
@@ -299,12 +309,24 @@ if __name__ == '__main__':
 
     if exptName == 'Shank3_Feb2024':
         print('\nShank3, Genotypes 1 and 2 2024 \n')
-        path1 = r"C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - pairs with shank3 mutations\Genotype 1"
+        path1 = baseDir + r"\2 week old - pairs with shank3 mutations\Genotype 1"
         file1 = r"behavior_relDuration_G1.csv"
-        path2 = r"C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - pairs with shank3 mutations\Genotype 2"
+        path2 = baseDir + r"\2 week old - pairs with shank3 mutations\Genotype 2"
         file2 = r"behavior_relDuration_G2.csv"
         dataLabel1 = 'Genotype 1'
         dataLabel2 = 'Genotype 2'
+
+    if exptName == 'Infected_housing_March2024':
+        print('\nVibrio infection, Solitary and Co-housed, March 2024\n')
+        # Manually comment out particular subsets
+
+        path1 = baseDir + r"\2 week old - infected versus non-infected, solitary versus co-housed pairs\C2_G1_Infected_coHoused"
+        file1 = r"behavior_relDuration_c2g1.csv"
+        path2 = baseDir + r"\2 week old - infected versus non-infected, solitary versus co-housed pairs\C2_G2_Infected_solitary"
+        file2 = r"behavior_relDuration_c2g2.csv"
+        dataLabel1 = 'C2_G1_Infected_coHoused'
+        dataLabel2 = 'C2_G2_Infected_solitary'
+
 
     file_path1 = os.path.join(path1, file1)
     file_path2 = os.path.join(path2, file2)
@@ -328,7 +350,7 @@ if __name__ == '__main__':
                                 'Jbend Fish0', 'Jbend Fish1', 
                                 'Fish0 Flees', 'Fish1 Flees',
                                 'Fish0 Approaches', 'Fish1 Approaches'])
-    exclude_more2 = True
+    exclude_more2 = False
     if exclude_more2:
         exclude_columns.extend(['90deg-largerSees', '90deg-smallerSees',
                                 'Cbend Fish0', 'Cbend Fish1',
@@ -354,7 +376,9 @@ if __name__ == '__main__':
     # Call the function to create scatter plots with error bars
     # Because uncertainties in mean values are large and asymmetric,
     # use bootstrap resampling (separate function)
-    scatter_plots_with_error_bars((df1, df2), (mean_sem_1, mean_sem_2),
-                                  (dataLabel1, dataLabel2),
-                                  showLegend = True,
+    # Note that I'm plotting set 2/ set 1, to match "y / x" from the earlier 
+    # graph
+    scatter_plots_with_error_bars((df2, df1), (mean_sem_2, mean_sem_1),
+                                  (dataLabel2, dataLabel1),
+                                  showLegend = False,
                                   outputFileName = 'relativeBehaviorRatios.eps')

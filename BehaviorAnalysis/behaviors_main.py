@@ -132,8 +132,6 @@ def define_imageParameters(exptName):
         # filename of CSV file *in each data folder* with image offset filename
         offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
         
-        return fps, arena_radius_mm, imageScaleLocation, imageScaleColumn, \
-            arenaCentersLocation, arenaCentersColumns, offsetPositionsFilename
 
     elif exptName == 'Solitary_Cohoused_March2024':
         # Image scale, to be read from file
@@ -142,7 +140,7 @@ def define_imageParameters(exptName):
         imageScaleLocation = os.path.join(imageScalePathName, 
                                           imageScaleFilename)
         imageScaleColumn  = 4 # column (0-indexed) with image scale
-        imageScaleDataset_appendColumn = None # need to use this column also to match dataset name
+        imageScaleDataset_appendColumn = None # don't need to use this column also to match dataset name
         
         # Arena center locations
         arenaCentersLocation = None # estimate from well offset positions
@@ -151,9 +149,6 @@ def define_imageParameters(exptName):
         # filename of CSV file *in each data folder* with image offset filename
         offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
         
-        return fps, arena_radius_mm, imageScaleLocation, imageScaleColumn, \
-            imageScaleDataset_appendColumn, \
-            arenaCentersLocation, arenaCentersColumns, offsetPositionsFilename
 
     elif exptName == 'Shank3_Feb2024':
         # Image scale, to be read from file
@@ -171,13 +166,29 @@ def define_imageParameters(exptName):
         # filename of CSV file *in each data folder* with image offset filename
         offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
         
-        return fps, arena_radius_mm, imageScaleLocation, imageScaleColumn, \
-            imageScaleDataset_appendColumn, \
-            arenaCentersLocation, arenaCentersColumns, offsetPositionsFilename
 
+    elif exptName == 'Infected_housing_March2024':
+        # Image scale, to be read from file
+        imageScalePathName = 'C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior/CSV files and outputs/2 week old - infected versus non-infected, solitary versus co-housed pairs'
+        imageScaleFilename = 'SocDist_1a_CorrespondingTables.csv'
+        imageScaleLocation = os.path.join(imageScalePathName, 
+                                          imageScaleFilename)
+        imageScaleColumn  = 1 # column (0-indexed) with image scale
+        imageScaleDataset_appendColumn = 2 # don't need to use this column also to match dataset name
+        
+        # Arena center locations
+        arenaCentersLocation = None # estimate from well offset positions
+        arenaCentersColumns = None
+        
+        # filename of CSV file *in each data folder* with image offset filename
+        offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
+        
     else:
         raise ValueError("define_imageParameters: Bad experiment set")
 
+    return fps, arena_radius_mm, imageScaleLocation, imageScaleColumn, \
+        imageScaleDataset_appendColumn, \
+        arenaCentersLocation, arenaCentersColumns, offsetPositionsFilename
 
 
 def extract_behaviors(dataset, params, CSVcolumns, fps): 
@@ -304,7 +315,7 @@ def main():
     """
     
     exptNameList = ['TwoWeek2023', 'CA2024', 'Solitary_Cohoused_March2024', 
-                    'Shank3_Feb2024']
+                    'Shank3_Feb2024', 'Infected_housing_March2024']
     
     # Ask the user to indicate the experiment name, constrained 
     exptName = input("\n\nChoose a value for exptName (options: {}): ".format(', '.join(exptNameList)))
