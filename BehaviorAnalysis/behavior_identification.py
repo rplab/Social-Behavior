@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified Nov. 25, 2023 -- Raghu Parthasarathy
+Last modified May 19, 2024 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -160,10 +160,12 @@ def get_90_deg_frames(fish_pos, fish_angle_data, Nframes, window_size,
     dh_vec = fish_pos[:,:,1] - fish_pos[:,:,0]  # also used later, for the connecting vector
     head_separation = np.sqrt(np.sum(dh_vec**2, axis=1))
     head_separation_criterion = (head_separation < perp_maxHeadDist)
-
+    
     # All criteria (and), in each frame
-    all_criteria_frame = np.logical_and(cos_theta_criterion, head_separation_criterion)
-    all_criteria_window = np.zeros(all_criteria_frame.shape, dtype=bool) # initialize to false
+    all_criteria_frame = np.logical_and(cos_theta_criterion, 
+                                        head_separation_criterion)
+    all_criteria_window = np.zeros(all_criteria_frame.shape, 
+                                   dtype=bool) # initialize to false
     # Check that criteria are met through the frame window. 
     # Will loop rather than doing some clever Boolean product of offset arrays
     for j in range(all_criteria_frame.shape[0]-window_size+1):
@@ -172,7 +174,7 @@ def get_90_deg_frames(fish_pos, fish_angle_data, Nframes, window_size,
     # Indexes (frames - 1) where the criteria are met throughout the window
     ninety_degree_idx = np.array(np.where(all_criteria_window==True))[0,:].flatten()
     # Not sure why the [0,:] is needed, but otherwise returns additional zeros.
-
+    
     # For each 90 degree event, determine the orientation type -- whether
     # 0, 1, or both fish are in the forward half-plane of the other
     # Could have done this for all frames and just kept those that met 
@@ -352,14 +354,6 @@ def get_Jbend_frames(dataset, CSVcolumns, JbendThresholds = (0.98, 0.34, 0.70)):
         segment_angles[:, j, :] = np.arctan2(body_y[:,j+1,:]-body_y[:,j,:], 
                           body_x[:,j+1,:]-body_x[:,j,:])
     
-    # Anterior average segment cosine to heading angle
-    cosAngle_anterior = np.zeros((body_x.shape[0], midColumn-1, body_x.shape[2]))
-    for j in range(midColumn-1):
-        # should be able to broadcast this, but here's a loop...
-        cosAngle_anterior[:,j, :] = np.cos(segment_angles[:,j, :] - angle_data)
-    cosAngle_anterior_absmean = np.mean(np.abs(cosAngle_anterior), axis=1)
-    anterior_straight_criterion = cosAngle_anterior_absmean > JbendThresholds[0]
-
     # mean values, repeated to allow subtraction
     mean_x = np.mean(body_x[:,0:midColumn,:], axis=1)
     mean_x = np.swapaxes(np.tile(mean_x, (midColumn, 1, 1)), 0, 1)
@@ -374,6 +368,7 @@ def get_Jbend_frames(dataset, CSVcolumns, JbendThresholds = (0.98, 0.34, 0.70)):
                     axis=1)/(Npts-1)
     Tr = cov_xx + cov_yy
     DetCov = cov_xx*cov_yy - cov_xy**2
+    
     # Two eigenvalues for each frame, each fish
     eig_array = np.zeros((Tr.shape[0], Tr.shape[1], 2))
     eig_array[:,:,0]  = Tr/2.0 + np.sqrt((Tr**2)/4.0 - DetCov)
@@ -381,7 +376,6 @@ def get_Jbend_frames(dataset, CSVcolumns, JbendThresholds = (0.98, 0.34, 0.70)):
     anterior_straight_var = np.max(eig_array, axis=2)/np.sum(eig_array, axis=2)
     anterior_straight_criterion = anterior_straight_var \
         > JbendThresholds[0] # Nframes x Nfish==2 array; Boolean 
-
 
     # Evaluate angle between last pair of points and the heading angle
     cos_angle_last_heading = np.cos(segment_angles[:,-1,:] - angle_data)
@@ -393,8 +387,7 @@ def get_Jbend_frames(dataset, CSVcolumns, JbendThresholds = (0.98, 0.34, 0.70)):
     
     allCriteria = np.all(np.stack((anterior_straight_criterion, 
                            cos_angle_last_criterion, cos_angle_2ndlast_criterion), 
-                           axis=2), axis=2) # for each fish, all criteria must be true
-
+                           axis=2), axis=2) # for each fish, all criteria must be true    
     
     # Dictionary containing J-bend frames for each fish
     Jbend_frames = {0: np.array(np.where(allCriteria[:,0])).flatten() + 1, 

@@ -12,6 +12,9 @@ Description
 Using previously-tabulated behavior events to calculate the probabilities of 
 "transitions" between behaviors. Ignores time information; just sequences.
 
+A behavior can have a transition to more than one other behavior, if more 
+than one other behavior starts during its run or within max_frame_gap afterwards
+
 See "Transition Matrix Notes" document.
 Most code from Claude 3 (AI)
 

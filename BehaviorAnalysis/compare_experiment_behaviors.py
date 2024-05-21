@@ -2,8 +2,8 @@
 # compare_experiment_behaviors.py
 """
 Author:   Raghuveer Parthasarathy
-Created on Fri Dec  1 07:27:01 2023
-Last modified on May 3, 2024
+Created on Fri Dec. 1, 2023
+Last modified on May 6, 2024
 
 Description
 -----------
@@ -175,7 +175,7 @@ def scatter_plots_with_error_bars(dataframes, mean_sem,
 
     # Set labels and title
     # plt.xlabel("Behaviors", fontsize=16)
-    plt.ylabel(f"Ratio: {dataLabel_1}/{dataLabel_2}", fontsize=16)
+    plt.ylabel(f"Ratio: {dataLabel_1} / {dataLabel_2}", fontsize=16)
     plt.title("Ratios of Behavior Durations", fontsize=16)
 
     current_x_limits = plt.xlim()
@@ -265,7 +265,8 @@ if __name__ == '__main__':
     
     exptNameList = ['TwoWeekLightDark2023', 'CholicAcid_Jan2024', 
                     'Solitary_Cohoused_March2024', 
-                    'Shank3_Feb2024', 'Infected_housing_March2024']
+                    'Shank3_Feb2024', 'Infected_housing_March2024', 
+                    'XGF_May2024', 'Infected_May2023', 'TwoWeekLight2023_TimeFlip']
     
     # Ask the user to indicate the experiment name, constrained 
     exptName = input("\n\nChoose a value for exptName (options: {}): ".format(', '.join(exptNameList)))
@@ -308,26 +309,80 @@ if __name__ == '__main__':
         dataLabel2 = '(2) Solitary'
 
     if exptName == 'Shank3_Feb2024':
-        print('\nShank3, Genotypes 1 and 2 2024 \n')
+        print('\nShank3, Genotypes 1 and 2 2024\n')
         path1 = baseDir + r"\2 week old - pairs with shank3 mutations\Genotype 1"
         file1 = r"behavior_relDuration_G1.csv"
-        path2 = baseDir + r"\2 week old - pairs with shank3 mutations\Genotype 2"
-        file2 = r"behavior_relDuration_G2.csv"
-        dataLabel1 = 'Genotype 1'
-        dataLabel2 = 'Genotype 2'
+        #path2 = baseDir + r"\2 week old - pairs with shank3 mutations\Genotype 2"
+        #file2 = r"behavior_relDuration_G2.csv"
+        path2 = baseDir + r"\2 week old - pairs with shank3 mutations\Genotype 3"
+        file2 = r"behavior_relDuration_G3.csv"
+        dataLabel1 = 'Genotype 1 WT'
+        # dataLabel2 = 'Genotype 2 Shank3a/b'
+        dataLabel2 = 'Mixed Genotypes'
 
     if exptName == 'Infected_housing_March2024':
         print('\nVibrio infection, Solitary and Co-housed, March 2024\n')
-        # Manually comment out particular subsets
+        # Manually indicate particular subsets (input)
+        subExptNameList = ['C1_G1 + C1_G2', 'C2_G1 + C2_G2']
+        
+        # Ask the user to indicate the sub-experiment name, constrained 
+        subExptName = input("\n\nChoose a value for the sub-expt (options: {}): ".format(', '.join(subExptNameList)))
+        # Check if the user's choice is in the list
+        while subExptName not in subExptNameList:
+            print("Invalid choice. Choose a value from the list.")
+            subExptName = input("\n\nChoose a value for the sub-expt (options: {}): ".format(', '.join(exptNameList)))
 
-        path1 = baseDir + r"\2 week old - infected versus non-infected, solitary versus co-housed pairs\C2_G1_Infected_coHoused"
-        file1 = r"behavior_relDuration_c2g1.csv"
-        path2 = baseDir + r"\2 week old - infected versus non-infected, solitary versus co-housed pairs\C2_G2_Infected_solitary"
-        file2 = r"behavior_relDuration_c2g2.csv"
-        dataLabel1 = 'C2_G1_Infected_coHoused'
-        dataLabel2 = 'C2_G2_Infected_solitary'
+        if subExptName == 'C1_G1 + C1_G2':
+            path1 = baseDir + r"\2 week old - infected versus non-infected, solitary versus co-housed pairs" \
+                + r"\C1_G1_nonInfect_coHoused"
+            file1 = r"behavior_relDuration_c1g1.csv"
+            path2 = baseDir + r"\2 week old - infected versus non-infected, solitary versus co-housed pairs" \
+                + r"\C1_G2_nonInfect_solitary"
+            file2 = r"behavior_relDuration_c1g2.csv"
+            dataLabel1 = 'C1_G1_nonInfected_coHoused'
+            dataLabel2 = 'C1_G2_nonInfected_solitary'
 
+        if subExptName == 'C2_G1 + C2_G2':
+            path1 = baseDir + r"\2 week old - infected versus non-infected, solitary versus co-housed pairs" \
+                + r"\C2_G1_Infected_coHoused"
+            file1 = r"behavior_relDuration_c2g1.csv"
+            path2 = baseDir + r"\2 week old - infected versus non-infected, solitary versus co-housed pairs" \
+                + r"\C2_G2_Infected_solitary"
+            file2 = r"behavior_relDuration_c2g2.csv"
+            dataLabel1 = 'C2_G1_Infected_coHoused'
+            dataLabel2 = 'C2_G2_Infected_solitary'
 
+    if exptName == 'XGF_May2024':
+        print('\nCVZ and XGF, May 2024\n')
+        path1 = baseDir + r"\2 week old - conventionalized versus ex-germ-free fish\XGF_filteredCSVs_1"
+        file1 = r"behavior_relDuration_g1.csv"
+        path2 = baseDir + r"\2 week old - conventionalized versus ex-germ-free fish\XGF_filteredCSVs_2"
+        file2 = r"behavior_relDuration_g2.csv"
+        dataLabel1 = 'CVZ'
+        dataLabel2 = 'XGF'
+        
+    if exptName == 'Infected_May2023':
+        print('\nVibrio Infected and non-Infected\n')
+        path1 = baseDir + r"\2 week old - infected versus non-infected pairs\infected_nonInfected_1"
+        file1 = r"behavior_relDuration_g1.csv"
+        path2 = baseDir + r"\2 week old - infected versus non-infected pairs\infected_nonInfected_2"
+        file2 = r"behavior_relDuration_g2.csv"
+        # path2 = baseDir + r"\2 week old - infected versus non-infected pairs\infected_nonInfected_3"
+        # file2 = r"behavior_relDuration_g3.csv"
+        dataLabel1 = 'Non-Infected'
+        dataLabel2 = 'Infected WT Vibrio'
+        # dataLabel2 = 'Infected dACD Vibrio'
+        
+        
+    if exptName == 'TwoWeekLight2023_TimeFlip':
+        print('\nTwoWeekLight 2023, and Fish1 Time Flipped\n')
+        path1 = baseDir + r"\2 week old - pairs"
+        file1 = r"behavior_relDuration_2week_light_26Nov2023.csv"
+        path2 = baseDir + r"\2 week old - Fish1 FLIPPED in TIME"
+        file2 = r"behavior_relDuration_TimeFlipped.csv"
+        dataLabel1 = 'In light'
+        dataLabel2 = 'In light; *F1 time flipped*'
+        
     file_path1 = os.path.join(path1, file1)
     file_path2 = os.path.join(path2, file2)
 
@@ -345,12 +400,10 @@ if __name__ == '__main__':
     # exclude more columns
     exclude_more = False
     if exclude_more:
-        exclude_columns.extend(['90deg-None', 
-                                'Contact (inferred)', 
-                                'Jbend Fish0', 'Jbend Fish1', 
+        exclude_columns.extend(['Jbend Fish0', 'Jbend Fish1', 
                                 'Fish0 Flees', 'Fish1 Flees',
                                 'Fish0 Approaches', 'Fish1 Approaches'])
-    exclude_more2 = False
+    exclude_more2 = True
     if exclude_more2:
         exclude_columns.extend(['90deg-largerSees', '90deg-smallerSees',
                                 'Cbend Fish0', 'Cbend Fish1',
@@ -371,7 +424,7 @@ if __name__ == '__main__':
                     (dataLabel1, dataLabel2),
                     logPlot = True, showTextLabels = False, 
                     showLegend = True,
-                    outputFileName = 'relativeBehaviorPlot.eps')
+                    outputFileName = exptName + '_relBehaviorPlot.eps')
     
     # Call the function to create scatter plots with error bars
     # Because uncertainties in mean values are large and asymmetric,
@@ -381,4 +434,5 @@ if __name__ == '__main__':
     scatter_plots_with_error_bars((df2, df1), (mean_sem_2, mean_sem_1),
                                   (dataLabel2, dataLabel1),
                                   showLegend = False,
-                                  outputFileName = 'relativeBehaviorRatios.eps')
+                                  outputFileName = exptName + \
+                                      '_relBehaviorRatios.eps')

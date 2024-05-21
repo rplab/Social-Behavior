@@ -275,8 +275,8 @@ if __name__ == '__main__':
         if datasets[j]["dataset_name"]==whichDataset:
             chosenSet = datasets[j]
     
-    startFrame = 2105
-    endFrame = 2112
+    startFrame = 180
+    endFrame = 211
     visualize_fish(chosenSet, CSVcolumns, 
                    startFrame=startFrame, endFrame=endFrame) # 7430, 7490
     

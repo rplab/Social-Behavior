@@ -251,6 +251,7 @@ def get_ArenaCenter(dataset_name, arenaCentersFilename,
     # Find the row of this dataset in the well offset data file
     matching_offset_rows = []
     # remove "_light" and "_dark" from dataset names to allow 5b datasets
+    # Remove other strings
     dataset_name_remove = ['results_', 'SocDef_', '_light', '_dark']
 
     # Modifications to row_array[0]
@@ -363,11 +364,11 @@ def get_imageScale(dataset_name, imageScaleLocation, imageScaleColumn,
     matching_rows = []
 
     # remove "_light" and "_dark" from dataset names to allow 5b datasets
-    dataset_name_remove = ['results_', '_light', '_dark', 'SocDist_']
+    dataset_name_remove = ['results_', '_light', '_dark', 'SocDist_', 'SocDef_']
 
     # Modifications to row_array[0]
     # remove "SocPref_"
-    row_remove = ['results_', 'SocPref_', 'SocDef_Solitary_']
+    row_remove = ['results_', 'SocPref_', 'SocDef_Solitary_', 'SocDef_', 'SocDist_']
 
     with open(imageScaleLocation, 'r') as file:
         reader = csv.reader(file)
@@ -419,7 +420,9 @@ def match_dataset_name(dataset_name, row_array,
     # Append another column to row[0], if desired, with underscore
     if appendColumn != None:
         mod_row_array = mod_row_array + '_' + row_array[appendColumn]
-    
+
+    # print('mod_row_array: ', mod_row_array)
+    # print(mod_dataset_name)
     if mod_dataset_name == mod_row_array:
         return True
     else:

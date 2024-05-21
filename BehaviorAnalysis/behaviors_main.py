@@ -89,7 +89,7 @@ def define_imageParameters(exptName):
     Write options for different experiments, done with different parameters
     
     Input: 
-        exptName = one of 'TwoWeek2023', 'CA2024'
+        exptName = one of various possibilities
     """
 
     fps = 25.0  # frames per second
@@ -114,8 +114,9 @@ def define_imageParameters(exptName):
         offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
         
         return fps, arena_radius_mm, imageScaleLocation, imageScaleColumn, \
+            imageScaleDataset_appendColumn, \
             arenaCentersLocation, arenaCentersColumns, offsetPositionsFilename
-
+    
     elif exptName == 'CA2024':
         # Image scale, to be read from file
         imageScalePathName = 'C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior/CSV files and outputs/2 week old - pairs - cholic acid'
@@ -174,7 +175,7 @@ def define_imageParameters(exptName):
         imageScaleLocation = os.path.join(imageScalePathName, 
                                           imageScaleFilename)
         imageScaleColumn  = 1 # column (0-indexed) with image scale
-        imageScaleDataset_appendColumn = 2 # don't need to use this column also to match dataset name
+        imageScaleDataset_appendColumn = 2 
         
         # Arena center locations
         arenaCentersLocation = None # estimate from well offset positions
@@ -183,6 +184,38 @@ def define_imageParameters(exptName):
         # filename of CSV file *in each data folder* with image offset filename
         offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
         
+    elif exptName == 'XGF_May2024':
+        # Image scale, to be read from file
+        imageScalePathName = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - conventionalized versus ex-germ-free fish'
+        imageScaleFilename = 'SocDef_XGF_AnalysisRaghu_Filtered_mod.csv'
+        imageScaleLocation = os.path.join(imageScalePathName, 
+                                          imageScaleFilename)
+        imageScaleColumn  = 4 # column (0-indexed) with image scale
+        imageScaleDataset_appendColumn = 1 
+        
+        # Arena center locations
+        arenaCentersLocation = None # estimate from well offset positions
+        arenaCentersColumns = None
+        
+        # filename of CSV file *in each data folder* with image offset filename
+        offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
+
+    elif exptName == 'Infected_May2024':
+        # Image scale, to be read from file
+        imageScalePathName = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - infected versus non-infected pairs'
+        imageScaleFilename = 'SocDist_2a_RaghuAnalysis_mod.csv'
+        imageScaleLocation = os.path.join(imageScalePathName, 
+                                          imageScaleFilename)
+        imageScaleColumn  = 5 # column (0-indexed) with image scale
+        imageScaleDataset_appendColumn = 1 
+        
+        # Arena center locations
+        arenaCentersLocation = None # estimate from well offset positions
+        arenaCentersColumns = None
+        
+        # filename of CSV file *in each data folder* with image offset filename
+        offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
+
     else:
         raise ValueError("define_imageParameters: Bad experiment set")
 
@@ -315,7 +348,8 @@ def main():
     """
     
     exptNameList = ['TwoWeek2023', 'CA2024', 'Solitary_Cohoused_March2024', 
-                    'Shank3_Feb2024', 'Infected_housing_March2024']
+                    'Shank3_Feb2024', 'Infected_housing_March2024', 
+                    'XGF_May2024', 'Infected_May2024']
     
     # Ask the user to indicate the experiment name, constrained 
     exptName = input("\n\nChoose a value for exptName (options: {}): ".format(', '.join(exptNameList)))
