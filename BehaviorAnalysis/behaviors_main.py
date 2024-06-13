@@ -3,228 +3,41 @@
 # behaviors_main.py
 """
 #----------------------------------------------------------------------------
-# Created By  : Estelle Trieu 
+# Raghuveer Parthasarathy (2023)
+# Created By  : Estelle Trieu 9/19/2022
 # Re-written by : Raghuveer Parthasarathy (2023)
-# Created Date: 9/19/2022
-# version ='2.0' Raghuveer Parthasarathy -- May-June 2023; see notes.
-# last modified: Raghuveer Parthasarathy, March 22, 2023
+# version ='2.0' Raghuveer Parthasarathy -- begun May 2023; see notes.
+# last modified: Raghuveer Parthasarathy, June 11, 2024
 # ---------------------------------------------------------------------------
 """
 
 import csv
 import os
 import numpy as np
-import xlsxwriter
 from time import perf_counter
 import pickle
+import yaml
 from toolkit import get_CSV_folder_and_filenames, load_data, \
     get_dataset_name, make_frames_dictionary, remove_frames, \
         combine_events, get_ArenaCenter, get_edge_frames, get_imageScale, \
         estimate_arena_center, get_interfish_distance, \
-        get_fish_lengths, get_bad_headTrack_frames, get_bad_bodyTrack_frames, \
-        plotAllPositions, write_behavior_txt_file, mark_behavior_frames_Excel
+        get_fish_lengths, get_fish_speeds, \
+        get_bad_headTrack_frames, get_bad_bodyTrack_frames, \
+        plotAllPositions, write_output_files, write_pickle_file, \
+        write_behavior_txt_file, mark_behavior_frames_Excel
 from behavior_identification import get_contact_frames, \
     get_inferred_contact_frames, get_90_deg_frames, \
     get_tail_rubbing_frames, get_Cbend_frames, get_Jbend_frames, \
-    calcOrientationXCorr, get_approach_flee_frames
+    calcOrientationXCorr, get_approach_flee_frames, \
+    get_relative_orientation
 
 import matplotlib.pyplot as plt
 from scipy.stats import skew
 
 # ---------------------------------------------------------------------------
 
-def defineParameters():
-    """ 
-    Defines parameters for behavior identification, 
-    identifies columns of trajectory CSV files
-    """
 
-    params = {
-        "arena_edge_threshold_mm" : 5,
-        "circle_windowsize" : 25,
-        "circle_fit_threshold" : 0.25,
-        "circle_distance_threshold": 240,
-        "cos_theta_AP_threshold" : -0.7,
-        "cos_theta_tangent_threshold" : 0.34,
-        "motion_threshold" : 2.0,
-        "cos_theta_90_thresh" : 0.26,
-        "cosSeeingAngle" : 0.5,
-        "perp_windowsize" : 2,
-        "perp_maxHeadDist_mm" : 17.0,
-        "contact_distance_threshold_mm" : 2.5,
-        "contact_inferred_distance_threshold_mm" : 3.5,
-        "contact_inferred_window" : 3,
-        "tail_rub_ws" : 2,
-        "tailrub_maxTailDist_mm" : 2.0,
-        "tailrub_maxHeadDist_mm": 12.5,
-        "cos_theta_antipar": -0.8,
-        "Cbend_threshold" : 2/np.pi, 
-        "Jbend_rAP" : 0.98,
-        "Jbend_cosThetaN" : 0.34,
-        "Jbend_cosThetaNm1" : 0.7,
-        "angle_xcorr_windowsize" : 25,
-        "approach_speed_threshold_mm_second" : 20,
-        "approach_cos_angle_thresh" : 0.5,
-        "approach_min_frame_duration" : (2,2)
-    }
-    
-    # Specify columns of the CSV files with fish trajectory information
-    CSVcolumns = {    
-        "N_columns" : 26, # total number of columns in CSV file
-        "pos_data_column_x" : 3, # head position x column (first col == 0)
-        "pos_data_column_y" : 4, # head position y column (first col == 0)
-        "angle_data_column" : 5, # angle (radians) column (first col == 0)
-        "body_column_x_start" : 6, # starting column for body x positions (first==0)
-        "body_column_y_start" : 16, # starting column for body x positions (first==0)
-        "body_Ncolumns" : 10 # number of body datapoints
-    }
-    
-    return  params, CSVcolumns
-
-def define_imageParameters(exptName):
-    """
-    Defines parameters related to imaging, such as filenames
-    with arena coordinates, frame rate, arena radius.
-    
-    Write options for different experiments, done with different parameters
-    
-    Input: 
-        exptName = one of various possibilities
-    """
-
-    fps = 25.0  # frames per second
-    arena_radius_mm = 25.0  # arena radius, mm
-
-    if exptName == 'TwoWeek2023':
-        # Image scale, to be read from file
-        imageScalePathName = 'C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior'
-        imageScaleFilename = 'ArenaCenters_SocPref_3456.csv'
-        imageScaleLocation = os.path.join(imageScalePathName, 
-                                          imageScaleFilename)
-        imageScaleColumn  = 4 # column (0-indexed) with image scale
-        imageScaleDataset_appendColumn = None # need to use this column also to match dataset name
-        
-        # Arena center locations
-        arenaCentersPathName = 'C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior'
-        arenaCentersFilename = 'ArenaCenters_SocPref_3456.csv'
-        arenaCentersLocation = os.path.join(arenaCentersPathName, arenaCentersFilename)
-        arenaCentersColumns = (5,6) # columns (0-indexed) with x,y arena centers
-        
-        # filename of CSV file *in each data folder* with image offset filename
-        offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
-        
-        return fps, arena_radius_mm, imageScaleLocation, imageScaleColumn, \
-            imageScaleDataset_appendColumn, \
-            arenaCentersLocation, arenaCentersColumns, offsetPositionsFilename
-    
-    elif exptName == 'CA2024':
-        # Image scale, to be read from file
-        imageScalePathName = 'C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior/CSV files and outputs/2 week old - pairs - cholic acid'
-        imageScaleFilename = 'ImageScale_SocPrefBA_3b_all.csv'
-        imageScaleLocation = os.path.join(imageScalePathName, 
-                                          imageScaleFilename)
-        imageScaleColumn  = 4 # column (0-indexed) with image scale
-        imageScaleDataset_appendColumn = None # need to use this column also to match dataset name
-        
-        # Arena center locations
-        arenaCentersLocation = None # estimate from well offset positions
-        arenaCentersColumns = None
-        
-        # filename of CSV file *in each data folder* with image offset filename
-        offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
-        
-
-    elif exptName == 'Solitary_Cohoused_March2024':
-        # Image scale, to be read from file
-        imageScalePathName = 'C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior/CSV files and outputs/TwoWeekOld_Solitary_CoHoused_1_3-2-2024'
-        imageScaleFilename = 'SocDef_Solitary_AnalysisRaghu.csv'
-        imageScaleLocation = os.path.join(imageScalePathName, 
-                                          imageScaleFilename)
-        imageScaleColumn  = 4 # column (0-indexed) with image scale
-        imageScaleDataset_appendColumn = None # don't need to use this column also to match dataset name
-        
-        # Arena center locations
-        arenaCentersLocation = None # estimate from well offset positions
-        arenaCentersColumns = None
-        
-        # filename of CSV file *in each data folder* with image offset filename
-        offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
-        
-
-    elif exptName == 'Shank3_Feb2024':
-        # Image scale, to be read from file
-        imageScalePathName = 'C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior/CSV files and outputs/2 week old - pairs with shank3 mutations'
-        imageScaleFilename = 'SocDef_Shank3_AnalysisRaghu.csv'
-        imageScaleLocation = os.path.join(imageScalePathName, 
-                                          imageScaleFilename)
-        imageScaleColumn  = 4 # column (0-indexed) with image scale
-        imageScaleDataset_appendColumn = 1 # need to use this column also to match dataset name
-        
-        # Arena center locations
-        arenaCentersLocation = None # estimate from well offset positions
-        arenaCentersColumns = None
-        
-        # filename of CSV file *in each data folder* with image offset filename
-        offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
-        
-
-    elif exptName == 'Infected_housing_March2024':
-        # Image scale, to be read from file
-        imageScalePathName = 'C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior/CSV files and outputs/2 week old - infected versus non-infected, solitary versus co-housed pairs'
-        imageScaleFilename = 'SocDist_1a_CorrespondingTables.csv'
-        imageScaleLocation = os.path.join(imageScalePathName, 
-                                          imageScaleFilename)
-        imageScaleColumn  = 1 # column (0-indexed) with image scale
-        imageScaleDataset_appendColumn = 2 
-        
-        # Arena center locations
-        arenaCentersLocation = None # estimate from well offset positions
-        arenaCentersColumns = None
-        
-        # filename of CSV file *in each data folder* with image offset filename
-        offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
-        
-    elif exptName == 'XGF_May2024':
-        # Image scale, to be read from file
-        imageScalePathName = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - conventionalized versus ex-germ-free fish'
-        imageScaleFilename = 'SocDef_XGF_AnalysisRaghu_Filtered_mod.csv'
-        imageScaleLocation = os.path.join(imageScalePathName, 
-                                          imageScaleFilename)
-        imageScaleColumn  = 4 # column (0-indexed) with image scale
-        imageScaleDataset_appendColumn = 1 
-        
-        # Arena center locations
-        arenaCentersLocation = None # estimate from well offset positions
-        arenaCentersColumns = None
-        
-        # filename of CSV file *in each data folder* with image offset filename
-        offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
-
-    elif exptName == 'Infected_May2024':
-        # Image scale, to be read from file
-        imageScalePathName = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - infected versus non-infected pairs'
-        imageScaleFilename = 'SocDist_2a_RaghuAnalysis_mod.csv'
-        imageScaleLocation = os.path.join(imageScalePathName, 
-                                          imageScaleFilename)
-        imageScaleColumn  = 5 # column (0-indexed) with image scale
-        imageScaleDataset_appendColumn = 1 
-        
-        # Arena center locations
-        arenaCentersLocation = None # estimate from well offset positions
-        arenaCentersColumns = None
-        
-        # filename of CSV file *in each data folder* with image offset filename
-        offsetPositionsFilename = 'wellOffsetPositionsCSVfile.csv'
-
-    else:
-        raise ValueError("define_imageParameters: Bad experiment set")
-
-    return fps, arena_radius_mm, imageScaleLocation, imageScaleColumn, \
-        imageScaleDataset_appendColumn, \
-        arenaCentersLocation, arenaCentersColumns, offsetPositionsFilename
-
-
-def extract_behaviors(dataset, params, CSVcolumns, fps): 
+def extract_behaviors(dataset, params, CSVcolumns): 
     """
     Calls functions to identify frames corresponding to each two-fish
     behavioral motif.
@@ -234,7 +47,6 @@ def extract_behaviors(dataset, params, CSVcolumns, fps):
                     position data
         params : parameters for behavior criteria
         CSVcolumns : CSV column parameters
-        fps : frames per second. From defineParameters; same for all datasets
     Outputs:
         arrays of all frames in which the various behaviors are found:
             perpendicular_noneSee, perpendicular_oneSees, 
@@ -249,32 +61,20 @@ def extract_behaviors(dataset, params, CSVcolumns, fps):
 
     # Arrays of head, body positions; angles. 
     # Last dimension = fish (so arrays are Nframes x {1 or 2}, Nfish==2)
-    pos_data = dataset["all_data"][:,CSVcolumns["pos_data_column_x"]:CSVcolumns["pos_data_column_y"]+1, :]
-        # pos_data is Nframes x 2 (x and y positions) x 2 (Nfish) array of head positions
+    head_pos_data = dataset["all_data"][:,CSVcolumns["head_column_x"]:CSVcolumns["head_column_y"]+1, :]
+        # head_pos_data is Nframes x 2 (x and y positions) x 2 (Nfish) array of head positions
     angle_data = dataset["all_data"][:,CSVcolumns["angle_data_column"], :]
     # body_x and _y are the body positions, each of size Nframes x 10 x 2 (fish)
     body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
     body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
         
-    Nframes = np.shape(pos_data)[0] 
+    Nframes = np.shape(head_pos_data)[0] 
 
-    # REMOVE CIRCLING
-    # t1_1 = perf_counter()
-    # print(f'   t1_1 start circling analysis: {t1_1 - t1_start:.2f} seconds')
-    # # Circling 
-    # circling_wfs = get_circling_frames(pos_data, dataset["inter-fish_distance"], 
-    #                                angle_data, Nframes, params["circle_windowsize"], 
-    #                                params["circle_fit_threshold"], 
-    #                                params["cos_theta_AP_threshold"], 
-    #                                params["cos_theta_tangent_threshold"], 
-    #                                params["motion_threshold"], 
-    #                                params["circle_distance_threshold"])
-    
     t1_2 = perf_counter()
     print(f'   t1_2 start 90degree analysis: {t1_2 - t1_start:.2f} seconds')
     # 90-degrees 
     perp_maxHeadDist_px = params["perp_maxHeadDist_mm"]*1000/dataset["image_scale"]
-    orientation_dict = get_90_deg_frames(pos_data, angle_data, 
+    orientation_dict = get_90_deg_frames(head_pos_data, angle_data, 
                                          Nframes, params["perp_windowsize"], 
                                          params["cos_theta_90_thresh"], 
                                          perp_maxHeadDist_px,
@@ -289,10 +89,9 @@ def extract_behaviors(dataset, params, CSVcolumns, fps):
     t1_3 = perf_counter()
     print(f'   t1_3 start contact analysis: {t1_3 - t1_start:.2f} seconds')
     # Any contact, or head-body contact
-    contact_distance_threshold_px = params["contact_distance_threshold_mm"]*1000/dataset["image_scale"]
     contact_inferred_distance_threshold_px = params["contact_inferred_distance_threshold_mm"]*1000/dataset["image_scale"]
-    contact_dict = get_contact_frames(body_x, body_y,  
-                                contact_distance_threshold_px, 
+    contact_dict = get_contact_frames(body_x, body_y, dataset["closest_distance_mm"],
+                                params["contact_inferred_distance_threshold_mm"], 
                                 dataset["fish_length_array"])
     contact_any = contact_dict["any_contact"]
     contact_head_body = contact_dict["head-body"]
@@ -305,24 +104,21 @@ def extract_behaviors(dataset, params, CSVcolumns, fps):
     t1_4 = perf_counter()
     print(f'   t1_4 start tail-rubbing analysis: {t1_4 - t1_start:.2f} seconds')
     # Tail-rubbing
-    tailrub_maxHeadDist_px = params["tailrub_maxHeadDist_mm"]*1000/dataset["image_scale"]
     tailrub_maxTailDist_px = params["tailrub_maxTailDist_mm"]*1000/dataset["image_scale"]
     tail_rubbing_frames = get_tail_rubbing_frames(body_x, body_y, 
-                                          dataset["inter-fish_distance"], 
+                                          dataset["head_head_distance_mm"], 
                                           angle_data, 
                                           params["tail_rub_ws"], 
                                           tailrub_maxTailDist_px, 
                                           params["cos_theta_antipar"], 
-                                          tailrub_maxHeadDist_px)
+                                          params["tailrub_maxHeadDist_mm"])
 
     t1_5 = perf_counter()
     print(f'   t1_5 start approaching / fleeing analysis: {t1_5 - t1_start:.2f} seconds')
     # Approaching or fleeing
-    speed_threshold_px_frame = params["approach_speed_threshold_mm_second"]\
-                                     /dataset["image_scale"]/fps*1000
     (approaching_frames, fleeing_frames) = get_approach_flee_frames(dataset, 
                                                 CSVcolumns, 
-                                                speed_threshold_px_frame = speed_threshold_px_frame,
+                                                speed_threshold_mm_s = params["approach_speed_threshold_mm_second"],
                                                 min_frame_duration = params["approach_min_frame_duration"],
                                                 cos_angle_thresh = params["approach_cos_angle_thresh"])
 
@@ -340,6 +136,45 @@ def extract_behaviors(dataset, params, CSVcolumns, fps):
         tail_rubbing_frames, approaching_frames, fleeing_frames
 
     
+def load_expt_config(config_path, config_file):
+    """ 
+    Loads the experimental configuration file
+    Asks user for the experiment being examined
+    Inputs:
+        config_path, config_file: path and file name of the yaml config file
+    Outputs:
+        expt_config : dictionary of configuration information
+    """
+    with open(os.path.join(config_path, config_file), 'r') as f:
+        all_config = yaml.safe_load(f)
+    all_expt_names = list(all_config.keys())
+    print('\n\nALl experiments: ')
+    for j, key in enumerate(all_expt_names):
+        print(f'  {j}: {key}')
+    expt_choice = input('Select experiment (name string or number): ')
+    # Note that we're not checking if the choice is valid, i.e. if in 
+    # all_expt_names (if a string) or if in 0...len(all_expt_names) (if 
+    # a string that can be converted to an integer.)
+    try:
+        # Is the input string just an integer?
+        expt_config = all_config[all_expt_names[int(expt_choice)]]
+    except:
+        expt_config = all_config[all_expt_names[expt_choice]]
+    expt_config['imageScaleLocation'] = os.path.join(expt_config['imageScalePathName'], 
+                                                     expt_config['imageScaleFilename'])
+
+    if ("arenaCentersFilename" in expt_config.keys()):
+        if expt_config['arenaCentersFilename'] != None:
+            expt_config['arenaCentersLocation'] = os.path.join(expt_config['arenaCentersPathName'], 
+                                                           expt_config['arenaCentersFilename'])
+        else:
+            expt_config['arenaCentersLocation'] = None
+    else:
+        expt_config['arenaCentersLocation'] = None
+    
+    return expt_config
+    
+    
     
 def main():
     """
@@ -347,29 +182,29 @@ def main():
     and behavior extraction functions for all CSV files in a set 
     """
     
-    exptNameList = ['TwoWeek2023', 'CA2024', 'Solitary_Cohoused_March2024', 
-                    'Shank3_Feb2024', 'Infected_housing_March2024', 
-                    'XGF_May2024', 'Infected_May2024']
-    
-    # Ask the user to indicate the experiment name, constrained 
-    exptName = input("\n\nChoose a value for exptName (options: {}): ".format(', '.join(exptNameList)))
-    # Check if the user's choice is in the list
-    while exptName not in exptNameList:
-        print("Invalid choice. Choose a value of exptName from the list.")
-        exptName = input("Choose a value for exptName (options: {}): ".format(', '.join(exptNameList)))
-    
-    showAllPositions = False
-    
-    params, CSVcolumns = defineParameters()
-    
-    fps, arena_radius_mm, imageScaleLocation, imageScaleColumn, \
-        imageScaleDataset_appendColumn, \
-        arenaCentersLocation, arenaCentersColumns, \
-        offsetPositionsFilename = define_imageParameters(exptName)
-    
     cwd = os.getcwd() # Current working directory
+
+    # Load experiment configuration file
+    config_path = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs'
+    config_file = 'all_expt_configs.yaml'
+    expt_config = load_expt_config(config_path, config_file)
     
-    data_path, allCSVfileNames = get_CSV_folder_and_filenames() # Get folder containing CSV files
+    # Get CSV column info from configuration file
+    CSVinfo_path = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs'
+    CSVinfo_file = 'CSVcolumns.yaml'
+    with open(os.path.join(CSVinfo_path, CSVinfo_file), 'r') as f:
+        all_CSV = yaml.safe_load(f)
+    CSVcolumns = all_CSV['CSVcolumns']
+
+    # Get behavior analysis parameter info from configuration file
+    params_path = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs'
+    params_file = 'analysis_parameters.yaml'
+    with open(os.path.join(params_path, params_file), 'r') as f:
+        all_param = yaml.safe_load(f)
+    params = all_param['params']
+    
+    # Get folder containing CSV files, and all "results" CSV filenames
+    data_path, allCSVfileNames = get_CSV_folder_and_filenames(expt_config) 
     print(f'\n\n All {len(allCSVfileNames)} CSV files starting with "results": ')
     print(allCSVfileNames)
     
@@ -378,19 +213,30 @@ def main():
     
     # Number of datasets
     N_datasets = len(allCSVfileNames)
-    
+        
     # initialize a list of dictionaries for datasets
     datasets = [{} for j in range(N_datasets)]
     os.chdir(data_path)
+
+    # For display    
+    showAllPositions = False
 
     # For each dataset, get general properties and load all position data
     for j, CSVfileName in enumerate(allCSVfileNames):
         datasets[j]["CSVfilename"] = CSVfileName
         datasets[j]["dataset_name"] = get_dataset_name(CSVfileName)
         datasets[j]["image_scale"] = float(get_imageScale(datasets[j]["dataset_name"], 
-                                                    imageScaleLocation, 
-                                                    imageScaleColumn, 
-                                                    imageScaleDataset_appendColumn))
+                                                    expt_config))
+        datasets[j]["fps"] = expt_config["fps"]
+        
+        # Get arena center, subtracting image position offset
+        datasets[j]["arena_center"] = get_ArenaCenter(datasets[j]["dataset_name"], 
+                                                      expt_config)
+        # Estimate center location of Arena
+        # datasets[j]["arena_center"] = estimate_arena_center(datasets[j]["all_data"],
+        #                                                    CSVcolumns["head_column_x"],
+        #                                                    CSVcolumns["head_column_y"])
+
         # Load all the position information as a numpy array
         print('Loading dataset: ', datasets[j]["dataset_name"])
         datasets[j]["all_data"], datasets[j]["frameArray"] = \
@@ -398,23 +244,13 @@ def main():
         datasets[j]["Nframes"] = len(datasets[j]["frameArray"])
         print('   ', 'Number of frames: ', datasets[j]["Nframes"] )
         datasets[j]["total_time_seconds"] = (np.max(datasets[j]["frameArray"]) - \
-            np.min(datasets[j]["frameArray"]) + 1.0) / fps
+            np.min(datasets[j]["frameArray"]) + 1.0) / datasets[j]["fps"]
         print('   ', 'Total duration: ', datasets[j]["total_time_seconds"], 'seconds')
         
-        # Get arena center, subtracting image position offset
-        datasets[j]["arena_center"] = get_ArenaCenter(datasets[j]["dataset_name"], 
-                                                    arenaCentersLocation,
-                                                    arenaCentersColumns, 
-                                                    offsetPositionsFilename)
-        # Estimate center location of Arena
-        # datasets[j]["arena_center"] = estimate_arena_center(datasets[j]["all_data"],
-        #                                                    CSVcolumns["pos_data_column_x"],
-        #                                                    CSVcolumns["pos_data_column_y"])
-    
-        # Show all head positions, and arena center, and dish edge. 
+        # (Optional) Show all head positions, and arena center, and dish edge. 
         #    (& close threshold)
         if showAllPositions:
-            plotAllPositions(datasets[j], CSVcolumns, arena_radius_mm, 
+            plotAllPositions(datasets[j], CSVcolumns, expt_config['arena_radius_mm'], 
                              params["arena_edge_threshold_mm"])
 
     # For each dataset, identify close-to-edge and bad-tracking frames
@@ -423,21 +259,20 @@ def main():
         # Identify frames in which one or both fish are too close to the edge
         # First keep as an array, then convert into a dictionary that includes
         #    durations of edge events, etc.
-        edge_frames = get_edge_frames(datasets[j], params, 
-                                                     arena_radius_mm, 
-                                                     CSVcolumns["pos_data_column_x"],
-                                                     CSVcolumns["pos_data_column_y"])
+        # Also keep Nframes x Nfish=2 array of distance to edge, mm
+        edge_frames, datasets[j]["d_to_edge_mm"] \
+            = get_edge_frames(datasets[j], params, expt_config['arena_radius_mm'], 
+                                      CSVcolumns["head_column_x"],
+                                      CSVcolumns["head_column_y"])
         
         datasets[j]["edge_frames"] = make_frames_dictionary(edge_frames, ())
-        
-        # print(datasets[j]["edge_frames"])
         print('   Number of edge frames: ', len(datasets[j]["edge_frames"]["raw_frames"]))
         
         # Identify frames in which tracking is bad; separately consider head, body
         # Note that body is the most general of these -- use this for criteria
         bad_headTrack_frames = get_bad_headTrack_frames(datasets[j], params, 
-                                     CSVcolumns["pos_data_column_x"],
-                                     CSVcolumns["pos_data_column_y"], 0.001)
+                                     CSVcolumns["head_column_x"],
+                                     CSVcolumns["head_column_y"], 0.001)
         datasets[j]["bad_headTrack_frames"] = make_frames_dictionary(bad_headTrack_frames, ())
         print('   Number of bad head tracking frames: ', len(datasets[j]["bad_headTrack_frames"]["raw_frames"]))
         bad_bodyTrack_frames = get_bad_bodyTrack_frames(datasets[j], params, 
@@ -449,7 +284,7 @@ def main():
 
 
     # For each dataset, characterizations that involve single fish
-    # (e.g. length, bending)
+    # (e.g. length, bending, speed)
     for j in range(N_datasets):
         print('Single-fish characterizations for Dataset: ', 
                   datasets[j]["dataset_name"])
@@ -458,6 +293,13 @@ def main():
         datasets[j]["fish_length_array"] = \
             get_fish_lengths(datasets[j]["all_data"], CSVcolumns)
             
+        # Get the speed of each fish in each frame (frame-to-frame
+        # displacement of head position, um/s); 0 for first frame
+        # Nframes x 2 array
+        datasets[j]["speed_array_mm_s"] = \
+            get_fish_speeds(datasets[j]["all_data"], CSVcolumns, 
+                            datasets[j]["image_scale"], expt_config['fps'])
+
         # Frames with C-bends and J-bends; each is a dictionary with two 
         # keys, one for each fish, each containing a numpy array of frames
         Cbend_frames_each = get_Cbend_frames(datasets[j], CSVcolumns, 
@@ -494,16 +336,22 @@ def main():
         datasets[j]["Jbend_any"] = make_frames_dictionary(Jbend_frames_any,
                                       (datasets[j]["edge_frames"]["raw_frames"],
                                        datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
-        
             
-    # For each dataset, identify inter-fish distance and
+    # For each dataset, measure inter-fish distance (head-head and
+    # closest points) in each frame, and calculate a
     # sliding window cross-correlation of heading angles
     for j in range(N_datasets):
 
         # Get the inter-fish distance (distance between head positions) in 
-        # each frame (Nframes x 1 array)
-        datasets[j]["inter-fish_distance"] = \
-            get_interfish_distance(datasets[j]["all_data"], CSVcolumns)
+        # each frame (Nframes x 1 array). Units = mm
+        datasets[j]["head_head_distance_mm"], datasets[j]["closest_distance_mm"] = \
+            get_interfish_distance(datasets[j]["all_data"], CSVcolumns,
+                                   datasets[j]["image_scale"])
+        
+        # Relative orientation of fish (angle between heading and
+        # connecting vector). Nframes x Nfish==2 array; radians
+        datasets[j]["relative_orientation"] = \
+            get_relative_orientation(datasets[j], CSVcolumns)   
         
         # Get the sliding window cross-correlation of heading angles
         datasets[j]["xcorr_array"] = \
@@ -516,21 +364,24 @@ def main():
     # the mean fish length, 
     # the mean and std. absolute difference in fish length, 
     for j in range(N_datasets):
-        print('Removing bad frames from stats for length, distance for Dataset: ', 
+        print('Removing bad frames from stats for length, distance, for Dataset: ', 
               datasets[j]["dataset_name"])
         goodIdx = np.where(np.in1d(datasets[j]["frameArray"], 
                                    datasets[j]["bad_bodyTrack_frames"]["raw_frames"], 
                                    invert=True))[0]
         goodLengthArray = datasets[j]["fish_length_array"][goodIdx]
-        goodDistanceArray = datasets[j]["inter-fish_distance"][goodIdx]
+        goodHHDistanceArray = datasets[j]["head_head_distance_mm"][goodIdx]
+        goodClosestDistanceArray = datasets[j]["closest_distance_mm"][goodIdx]
         datasets[j]["fish_length_mean"] = np.mean(goodLengthArray)
         datasets[j]["fish_length_Delta_mean"] = np.mean(np.abs(np.diff(goodLengthArray, 1)))
         datasets[j]["fish_length_Delta_std"] = np.std(np.abs(np.diff(goodLengthArray, 1)))
-        datasets[j]["inter-fish_distance_mean"] = np.mean(goodDistanceArray)
+        datasets[j]["head_head_distance_mm_mean"] = np.mean(goodHHDistanceArray)
+        datasets[j]["closest_distance_mm_mean"] = np.mean(goodClosestDistanceArray)
         print(f'   Mean fish length: {datasets[j]["fish_length_mean"]:.2f} px')
         print('   Mean +/- std. of difference in fish length: ', 
               f'{datasets[j]["fish_length_Delta_mean"]:.2f} +/- {datasets[j]["fish_length_Delta_std"]:.2f}px')
-        print(f'   Mean inter-fish distance {datasets[j]["inter-fish_distance_mean"]:.2f} px')
+        print(f'   Mean head-to-head distance {datasets[j]["head_head_distance_mm_mean"]:.2f} mm')
+        print(f'   Mean closest distance {datasets[j]["closest_distance_mm_mean"]:.2f} px')
     
     # For each dataset, exclude bad tracking frames from the calculation
     # of the mean angle-heading cross-correlation
@@ -576,7 +427,7 @@ def main():
                     contact_larger_fish_head, contact_smaller_fish_head, \
                     contact_inferred_frames, tail_rubbing_frames, \
                     approaching_frames, fleeing_frames \
-                    = extract_behaviors(datasets[j], params, CSVcolumns, fps)
+                    = extract_behaviors(datasets[j], params, CSVcolumns)
             # removed "circling_frames," from the list
             
             # For each behavior, a dictionary containing frames, 
@@ -621,6 +472,7 @@ def main():
             datasets[j]["tail_rubbing"] = make_frames_dictionary(tail_rubbing_frames,
                                           (datasets[j]["edge_frames"]["raw_frames"],
                                            datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+
             # For approaching and fleeing, again a dictionary of frames,
             # for each fish. approaching_Fish0 means Fish0 is approaching Fish 1
             datasets[j]["approaching_Fish0"] = make_frames_dictionary(approaching_frames[0],
@@ -636,109 +488,18 @@ def main():
                                           (datasets[j]["edge_frames"]["raw_frames"],
                                            datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
 
-
-            # delete "circling"
-            # datasets[j]["circling"] = make_frames_dictionary(circling_frames,
-            #                               (datasets[j]["edge_frames"]["raw_frames"],
-            #                                datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
-
-    # Write pickle file containing all datasets
+    # Write pickle file containing all datasets (optional)
     if pickleFileName != '':
-        list_for_pickle = [datasets, CSVcolumns, fps, arena_radius_mm, 
-                           params]
-        pickleFileName = pickleFileName + '.pickle'
-        print(f'\nWriting pickle file: {pickleFileName}\n')
-        with open(pickleFileName, 'wb') as handle:
-            pickle.dump(list_for_pickle, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        list_for_pickle = [datasets, CSVcolumns, expt_config, params]
+        write_pickle_file(list_for_pickle, data_path, 
+                          params['output_subFolder'], pickleFileName)
     
+    # Write the output files (CSV, Excel)
+    write_output_files(params, data_path, datasets)
     
-    # Write to individual text files, individual Excel sheets, and summary CSV file
-    allDatasets_markFrames_ExcelFile = 'behaviors_in_each_frame.xlsx'
-    markFrames_workbook = xlsxwriter.Workbook(allDatasets_markFrames_ExcelFile)  
-    allDatasetsCSVfileName = 'behavior_count.csv' 
-    print('File for collecting all behavior counts: ', allDatasetsCSVfileName)
-    with open(allDatasetsCSVfileName, "w", newline='') as results_file:
-        # behaviors (events) to write
-        key_list = ["perpendicular_noneSee", 
-                    "perpendicular_oneSees", "perpendicular_bothSee", 
-                    "perpendicular_larger_fish_sees", 
-                    "perpendicular_smaller_fish_sees", 
-                    "contact_any", "contact_head_body", 
-                    "contact_larger_fish_head", "contact_smaller_fish_head", 
-                    "contact_inferred", "tail_rubbing", 
-                    "Cbend_Fish0", "Cbend_Fish1", "Jbend_Fish0", "Jbend_Fish1",
-                    "approaching_Fish0", "approaching_Fish1", 
-                    "fleeing_Fish0", "fleeing_Fish1", 
-                    "edge_frames", "bad_bodyTrack_frames"]
-        # removed "circling"
-        
-        # For summary file
-        writer=csv.writer(results_file, delimiter=',')
-        writer.writerow(['Dataset', 'Total Time (s)', 
-                         'Mean difference in fish lengths (px)', 
-                         'Mean Inter-fish dist (px)', 
-                         'Angle XCorr mean', 
-                         # 'Angle XCorr std dev', 
-                         # 'Angle XCorr skew', 
-                         '90deg-None N_Events', 
-                         '90deg-One N_Events', '90deg-Both N_Events', 
-                         '90deg-largerSees N_events', '90deg-smallerSees N_events', 
-                         'Contact (any) N_Events', 
-                         'Contact (head-body) N_Events', 
-                         'Contact (Larger fish head-body) N_Events', 
-                         'Contact (Smaller fish head-body) N_Events', 
-                         'Contact (inferred) N_events', 'Tail-Rub N_Events', 
-                         'Cbend Fish0 N_Events', 'Cbend Fish1 N_Events',
-                         'Jbend Fish0 N_Events', 'Jbend Fish1 N_Events',
-                         'Fish0 Approaches N_Events', 'Fish1 Approaches N_Events',
-                         'Fish0 Flees N_Events', 'Fish1 Flees N_Events',
-                         'Dish edge N_Events', 'Bad tracking N_events', 
-                         '90deg-None Duration', 
-                         '90deg-One Duration', '90deg-Both Duration', 
-                         '90deg-largerSees Duration', '90deg-smallerSees Duration', 
-                         'Contact (any) Duration', 
-                         'Contact (head-body) Duration', 
-                         'Contact (Larger fish head-body) Duration', 
-                         'Contact (Smaller fish head-body) Duration', 
-                         'Contact (inferred) Duration', 'Tail-Rub Duration', 
-                         'Cbend Fish0 Duration', 'Cbend Fish1 Duration', 
-                         'Jbend Fish0 Duration', 'Jbend Fish1 Duration', 
-                         'Fish0 Approaches Duration', 'Fish1 Approaches Duration',
-                         'Fish0 Flees Duration', 'Fish1 Flees Duration',
-                         'Dish edge Duration', 'Bad Tracking Duration'])
-        # removed 'Circling N_Events', 'Circling Duration', 
-        
-        for j in range(N_datasets):
-            
-            # Write for this dataset: summary in text file
-            write_behavior_txt_file(datasets[j], key_list)
-
-            # Write for this dataset: sheet in Excel marking all frames with behaviors
-            mark_behavior_frames_Excel(markFrames_workbook, datasets[j], 
-                                       key_list)
-
-            # Append information to the CSV describing all datasets
-            writer = csv.writer(results_file)
-            list_to_write = [datasets[j]["dataset_name"]]
-            list_to_write.append(datasets[j]["total_time_seconds"])
-            list_to_write.append(datasets[j]["fish_length_Delta_mean"])
-            list_to_write.append(datasets[j]["inter-fish_distance_mean"])
-            list_to_write.append(datasets[j]["AngleXCorr_mean"])
-            # list_to_write.append(datasets[j]["AngleXCorr_std"])
-            # list_to_write.append(datasets[j]["AngleXCorr_skew"])
-            for k in key_list:
-                list_to_write.append(datasets[j][k]["combine_frames"].shape[1])
-            for k in key_list:
-                list_to_write.append(datasets[j][k]["total_duration"])
-            writer.writerow(list_to_write)                 
-        
-        # Close the Excel file
-        markFrames_workbook.close() 
-        # Return to original directory
-        os.chdir(cwd)
+    # Return to original directory
+    os.chdir(cwd)
     
-
-
     
 if __name__ == '__main__':
     main()

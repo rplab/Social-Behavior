@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Jul 10 18:09:34 2023
-Last modified on Dec. 4, 2023
+Last modified on June 1, 2024
 
 Description
 -----------
@@ -16,7 +16,7 @@ Contains the functions
 """
 
 import numpy as np
-import matplotlib
+import matplotlib  # should replace this by just matplotlib.colormaps
 import matplotlib.pyplot as plt
 import pickle
 
@@ -34,8 +34,7 @@ def loadAllFromPickle(pickleFileName = None):
     -------
     datasets : all datasets in the Pickle file
     CSVcolumns : see behaviors_main()
-    fps : frames per second  
-    arena_radius_mm : arena radius, mm; see behaviors_main()
+    expt_config : contains fps, arena_radius_mm, etc.
     params : analysis parameters; see behaviors_main()
     """
     
@@ -53,11 +52,12 @@ def loadAllFromPickle(pickleFileName = None):
     # Assign variables
     datasets = b[0]
     CSVcolumns = b[1]
-    fps = b[2]    
-    arena_radius_mm = b[3]
-    params = b[4]
+    expt_config = b[2]
+    # fps = b[2]    
+    # arena_radius_mm = b[3]
+    params = b[3]
     
-    return datasets, CSVcolumns, fps, arena_radius_mm, params
+    return datasets, CSVcolumns, expt_config, params
 
 
 def visualize_fish(dataset, CSVcolumns, startFrame, endFrame):
@@ -262,7 +262,7 @@ if __name__ == '__main__':
     pickleFileNameBase  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs'
     pickleFileName = pickleFileNameBase + r'\temp\temp.pickle'    
     
-    datasets, CSVcolumns, fps, arena_radius_mm, params = \
+    datasets, CSVcolumns, expt_config, params = \
         loadAllFromPickle(pickleFileName = pickleFileName) # or None
     
     print('\nAll dataset names:')

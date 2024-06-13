@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified March 22, 2024 -- Raghu Parthasarathy
+Last modified June 11, 2024
 
 Description
 -----------
@@ -21,12 +21,18 @@ import csv
 import os
 import matplotlib.pyplot as plt
 from scipy.optimize import linear_sum_assignment
+import pickle
+import xlsxwriter
 
-def get_CSV_folder_and_filenames():
+
+def get_CSV_folder_and_filenames(expt_config):
     """
     Asks user for the folder path containing CSV files; returns this
     and a list of all CSV files whose names start with "results"
 
+    Inputs:
+        expt_config : dictionary containing dataPath (or None to ask user)
+                        as well as subExpt info (optional)
     Returns:
         A tuple containing
         - data_path : the folder path containing CSV files
@@ -34,14 +40,29 @@ def get_CSV_folder_and_filenames():
     
     """
     
-    data_path = input("Enter the folder for CSV files, or leave empty for cwd: ")
-    
-    if data_path=='':
-        data_path = os.getcwd() # Current working directory
+    if expt_config['dataPath'] == None:
+        data_path = input("Enter the folder for CSV files, or leave empty for cwd: ")
+        if data_path=='':
+            data_path = os.getcwd() # Current working directory
+    else:
+        # Load path from config file
+        if ('subExpts' in expt_config.keys()):
+            main_data_path = expt_config['dataPath']
+            print('\nSub-Experiments:')
+            for j, subExpt in enumerate(expt_config['subExpts']):
+                print(f'  {j}: {subExpt}')
+            subExpt_choice = input('Select sub-experiment (string or number): ')
+            try:
+                subExptPath = expt_config['subExpts'][int(subExpt_choice)]
+            except:
+                subExptPath = expt_config['subExpts'][subExpt_choice]
+            data_path = os.path.join(main_data_path, subExptPath)
+        else:
+            data_path = expt_config['dataPath']
         
     # Validate the folder path
     while not os.path.isdir(data_path):
-        print("Invalid data path. Please try again.")
+        print("Invalid data path. Please try again (manual entry).")
         data_path = input("Enter the folder path: ")
 
     print("Selected folder path: ", data_path)
@@ -223,94 +244,6 @@ def combine_events(events):
     combined_events_and_durations = np.stack((events[idx_keep], durations))
     return combined_events_and_durations
 
-
-def get_ArenaCenter(dataset_name, arenaCentersFilename, 
-                    arenaCentersColumns, offsetPositionsFilename):
-    """ 
-    Extract the x,y positions of the Arena centers from the 
-    arenaCentersFilename CSV -- previously tabulated.
-    Image offsets also previously tabulated, "arenaCentersColumns" 
-         columns of offsetPositionsFilename
-
-    Inputs:
-        dataset_name :
-        arenaCentersFilename: csv file name with arena centers 
-            (and one header row). If None, estimate centers from well
-            offsets
-        arenaCentersColumns : columns containing image offsets
-        offsetPositionsFilename : csv file name with well offset positions
-    Note that we don't need imageScaleDataset_appendColumn : column to append to match dataset names
-    
-    Returns:
-        arenaCenterCorrected: tuple of x, y positions of arena Center
-    Returns none if no rows match the input dataset_name, 
-        and error if >1 match
-        
-    """
-
-    # Find the row of this dataset in the well offset data file
-    matching_offset_rows = []
-    # remove "_light" and "_dark" from dataset names to allow 5b datasets
-    # Remove other strings
-    dataset_name_remove = ['results_', 'SocDef_', '_light', '_dark']
-
-    # Modifications to row_array[0]
-    row_remove = ['results_', 'SocPref_', '_ALL', 'SocDef_']
-    
-    with open(offsetPositionsFilename, 'r') as file:
-        reader = csv.reader(file)
-        
-        for row in reader:
-            if match_dataset_name(dataset_name, row, 
-                                  dataset_name_remove, row_remove)==True:
-                matching_offset_rows.append(row)
-                
-    if len(matching_offset_rows) == 0:
-        # No matching rows in the offset file were found.
-        arenaOffset = None
-        raise ValueError("get_ArenaCenter: No rows contain the input dataset_name string")
-    elif len(matching_offset_rows) > 1:
-        raise ValueError("get_ArenaCenter: Multiple rows contain the input dataset_name string")
-    else:
-        arenaOffset = np.array((matching_offset_rows[0][1], 
-                                matching_offset_rows[0][2])).astype(float)
-        # There's offset data, now load or estimate arena center
-        if arenaCentersFilename != None:
-            # Find the uncorrected arena positions
-        
-            # Modifications to row_array[0]
-            row_remove = ['results_', 'SocPref_', 'SocDef_']
-
-            matching_rows = []
-            with open(arenaCentersFilename, 'r') as file:
-                reader = csv.reader(file)
-                next(reader)  # Skip the header row
-        
-                for row in reader:
-                    if match_dataset_name(dataset_name, row, 
-                                          dataset_name_remove, row_remove)==True:
-                        matching_rows.append(row)
-        
-                if len(matching_rows) == 0:
-                    arenaCenterUncorrected = None
-                elif len(matching_rows) > 1:
-                    arenaCenterUncorrected = None
-                    raise ValueError("get_ArenaCenter: Multiple rows contain the input dataset_name string")
-                else:
-                    arenaCenterUncorrected = np.array((matching_rows[0][arenaCentersColumns[0]], 
-                                                       matching_rows[0][arenaCentersColumns[1]])).astype(float)
-                    arenaCenterCorrected = arenaCenterUncorrected - arenaOffset
-        else:
-             # Estimate arena positions based on well offset positions
-             arenaCenterCorrected = np.array((matching_offset_rows[0][3], 
-                                    matching_offset_rows[0][4]), 
-                                             dtype=float)/2.0
-
-    if arenaOffset is not None:
-        return arenaCenterCorrected
-    else:
-        return None
-        
     
 def get_edge_frames(dataset, params, arena_radius_mm, xcol=3, ycol=4):
     """ 
@@ -327,32 +260,119 @@ def get_edge_frames(dataset, params, arena_radius_mm, xcol=3, ycol=4):
         
     Output:
         near_edge_frames : array of frame numbers (not index numbers!)
+        d_to_edge_mm : r_edge - r_fish, Nframes x 2 fish array, mm
     """
     x = dataset["all_data"][:,xcol,:]
     y = dataset["all_data"][:,ycol,:]
     dx = x - dataset["arena_center"][0]
     dy = y - dataset["arena_center"][1]
     dr = np.sqrt(dx**2 + dy**2)
+    # r_edge - r_fish, Nframes x 2 fish array, units = mm:
+    d_to_edge_mm = arena_radius_mm - dr*dataset["image_scale"]/1000.0
     # True if close to edge
-    near_edge = (arena_radius_mm*1000/dataset["image_scale"] - dr) < \
-        params["arena_edge_threshold_mm"]*1000/dataset["image_scale"]
+    near_edge = d_to_edge_mm < params["arena_edge_threshold_mm"]
     near_edge = np.any(near_edge, axis=1)
 
     near_edge_frames = dataset["frameArray"][np.where(near_edge)]
-    return near_edge_frames
+    
+    return near_edge_frames, d_to_edge_mm
 
-def get_imageScale(dataset_name, imageScaleLocation, imageScaleColumn,
-                   imageScaleDataset_appendColumn):
+def get_ArenaCenter(dataset_name, expt_config):
     """ 
-    Extract the image scale (um/px) from 
-    imageScaleFilename CSV 
+    Extract the x,y positions of the Arena centers from the 
+    arenaCentersFilename CSV -- previously tabulated.
+    Image offsets also previously tabulated, "arenaCentersColumns" 
+         columns of offsetPositionsFilename
+    Uses first column in the arenaCenters file to match to dataset name
+
+    Inputs:
+        dataset_name :
+        expt_config : configuration dictionary. Contains:
+            arenaCentersFilename: csv file name with arena centers 
+                (and one header row). If None, estimate centers from well
+                offsets
+            arenaCentersColumns : columns containing image offsets
+            offsetPositionsFilename : csv file name with well offset positions
+            datasetRemoveStrings: strings to remove from file and dataset names
+    
+    Returns:
+        arenaCenterCorrected: tuple of x, y positions of arena Center
+    Returns none if no rows match the input dataset_name, 
+        and error if >1 match
+        
+    """
+    datasetColumns = [0] # First column only for matching dataset names.
+    
+    # Find the row of this dataset in the well offset data file
+    matching_offset_rows = []
+    with open(expt_config['offsetPositionsFilename'], 'r') as file:
+        reader = csv.reader(file)
+        for row in reader:
+            if match_dataset_name(dataset_name, row, 
+                                  removeStrings = expt_config['datasetRemoveStrings'],
+                                  datasetColumns = datasetColumns)==True:
+                matching_offset_rows.append(row)
+                
+    if len(matching_offset_rows) == 0:
+        # No matching rows in the offset file were found.
+        arenaOffset = None
+        print(f"\nFilename: {expt_config['offsetPositionsFilename']}")
+        raise ValueError(f"get_ArenaCenter: No rows contain the input dataset_name: {dataset_name}")
+    elif len(matching_offset_rows) > 1:
+        raise ValueError("get_ArenaCenter: Multiple rows contain the input dataset_name string")
+    else:
+        arenaOffset = np.array((matching_offset_rows[0][1], 
+                                matching_offset_rows[0][2])).astype(float)
+        # There's offset data, now load or estimate arena center
+        if expt_config['arenaCentersLocation'] != None:
+            # Find the uncorrected arena positions
+            matching_rows = []
+            with open(expt_config['arenaCentersLocation'], 'r') as file:
+                reader = csv.reader(file)
+                next(reader)  # Skip the header row
+                for row in reader:
+                    if match_dataset_name(dataset_name, row, 
+                                          removeStrings = expt_config['datasetRemoveStrings'],
+                                          datasetColumns = datasetColumns)==True:
+                        matching_rows.append(row)
+        
+                if len(matching_rows) == 0:
+                    arenaCenterUncorrected = None
+                elif len(matching_rows) > 1:
+                    arenaCenterUncorrected = None
+                    raise ValueError("get_ArenaCenter: Multiple rows contain the input dataset_name string")
+                else:
+                    arenaCenterUncorrected = np.array((matching_rows[0][expt_config['arenaCentersColumns'][0]], 
+                                                       matching_rows[0][expt_config['arenaCentersColumns'][1]])).astype(float)
+                    arenaCenterCorrected = arenaCenterUncorrected - arenaOffset
+        else:
+             # Estimate arena positions based on well offset positions
+             arenaCenterCorrected = np.array((matching_offset_rows[0][3], 
+                                    matching_offset_rows[0][4]), 
+                                             dtype=float)/2.0
+
+    if arenaOffset is not None:
+        return arenaCenterCorrected
+    else:
+        return None
+        
+
+
+def get_imageScale(dataset_name, expt_config):
+    """ 
+    Extract the image scale (um/px) from the config file (same for all datasets
+    in this experiment) or from the imageScaleFilename CSV 
 
     Inputs:
         dataset_name : name of dataset
-        imageScaleLocation : Path and filename of CSV file containing 
+        expt_config : dictionary that contains as keys
+            imageScale : image scale, um/px
+            OR
+            imageScaleLocation : Path and filename of CSV file containing 
                              image scale information
-    imageScaleColumn : column (0-index) with image scale
-    imageScaleDataset_appendColumn : column to append to match dataset names
+            imageScaleColumn : column (0-index) with image scale
+            datasetColumns: columns to concatenate to match dataset name .
+            datasetRemoveStrings: strings to remove from file and dataset names
 
     Returns:
         image scale (um/px)
@@ -361,44 +381,40 @@ def get_imageScale(dataset_name, imageScaleLocation, imageScaleColumn,
         
     Code partially from GPT3-5 (openAI)
     """
-    matching_rows = []
-
-    # remove "_light" and "_dark" from dataset names to allow 5b datasets
-    dataset_name_remove = ['results_', '_light', '_dark', 'SocDist_', 'SocDef_']
-
-    # Modifications to row_array[0]
-    # remove "SocPref_"
-    row_remove = ['results_', 'SocPref_', 'SocDef_Solitary_', 'SocDef_', 'SocDist_']
-
-    with open(imageScaleLocation, 'r') as file:
-        reader = csv.reader(file)
-        next(reader)  # Skip the header row
-        for row in reader:
-            if match_dataset_name(dataset_name, row, 
-                                  dataset_name_remove, row_remove,
-                                  appendColumn = 
-                                  imageScaleDataset_appendColumn) == True:
-                matching_rows.append(row)
-
-    if len(matching_rows) == 0:
-        print('Dataset name: ', dataset_name)
-        raise ValueError("get_imageScale: No row found with the input dataset_name string")
-    elif len(matching_rows) > 1:
-        # print(dataset_name, ' in rows: ', matching_rows[:][0])
-        raise ValueError("get_imageScale: Multiple rows contain the input dataset_name string")
+    
+    if ("imageScale" in expt_config.keys()):
+        if expt_config['imageScale'] != None:
+            return expt_config['imageScale']
     else:
-        return matching_rows[0][imageScaleColumn]
-
+        # Read from CSV file
+        matching_rows = []
+        with open(expt_config['imageScaleLocation'], 'r') as file:
+            reader = csv.reader(file)
+            next(reader)  # Skip the header row
+            for row in reader:
+                if match_dataset_name(dataset_name, row, 
+                                      removeStrings = expt_config['datasetRemoveStrings'],
+                                      datasetColumns = expt_config['datasetColumns']) \
+                        == True:
+                    matching_rows.append(row)
+    
+        if len(matching_rows) == 0:
+            print('Dataset name: ', dataset_name)
+            raise ValueError("get_imageScale: No row found with the input dataset_name string")
+        elif len(matching_rows) > 1:
+            # print(dataset_name, ' in rows: ', matching_rows[:][0])
+            raise ValueError("get_imageScale: Multiple rows contain the input dataset_name string")
+        else:
+            return matching_rows[0][expt_config['imageScaleColumn']]
+        
 
 def match_dataset_name(dataset_name, row_array, 
-                       dataset_name_remove = [], row_array_remove=[], 
-                       appendColumn = None):
+                       removeStrings = [], datasetColumns = [0]):
     """ 
-    Test whether the string row_array[0] (modified by deleting
-         the strings in the list row_array_remove, and possibly
-         appending '_' + row[appendColumn]) matches the string 
-         dataset_name (modified by deleting
-         the strings in the list dataset_name_remove).
+    Test whether the string formed from the datasetColumns columns of 
+         row_array[] (appending '_') between columns) matches the string 
+         dataset_name, modifying both strings by deleting
+         the strings in the list removeStrings).
     
     Return True if dataset_name ad row_array match (given modifications);
     False otherwise
@@ -409,20 +425,22 @@ def match_dataset_name(dataset_name, row_array,
     
     # Modifications to dataset_name
     mod_dataset_name = dataset_name
-    for remove_string in dataset_name_remove:
+    for remove_string in removeStrings:
         mod_dataset_name = mod_dataset_name.replace(remove_string, '')
-
-    # Modifications to row_array[0]
-    mod_row_array = row_array[0]
-    for remove_string in row_array_remove:
-        mod_row_array = mod_row_array.replace(remove_string, '')
-    
+        
     # Append another column to row[0], if desired, with underscore
-    if appendColumn != None:
-        mod_row_array = mod_row_array + '_' + row_array[appendColumn]
+    mod_row_array = row_array[datasetColumns[0]]
+    for j in range(1, len(datasetColumns)):
+        mod_row_array = mod_row_array + '_' + row_array[datasetColumns[j]]
 
-    # print('mod_row_array: ', mod_row_array)
-    # print(mod_dataset_name)
+    #print('mod_row_array, initial: ', mod_row_array)
+    # Modifications to row_array
+    for remove_string in removeStrings:
+        mod_row_array = mod_row_array.replace(remove_string, '')
+        #print('  - mod_row_array: ', mod_row_array)
+    
+    #print('mod_dataset_name: ', mod_dataset_name)
+    #print('mod_row_array: ', mod_row_array)
     if mod_dataset_name == mod_row_array:
         return True
     else:
@@ -451,23 +469,39 @@ def estimate_arena_center(alldata, xcol=3, ycol=4):
 
 
 
-def get_interfish_distance(all_data, CSVcolumns):
+def get_interfish_distance(all_data, CSVcolumns, image_scale):
     """
-    Get the inter-fish distance (distance between head positions)
+    Get the inter-fish distance (calculated both as the distance 
+        between head positions and as the closest distance)
         in each frame 
     Input:
         all_data : all position data, from dataset["all_data"]
         CSVcolumns
+        image_scale : scale, um/px; from dataset["image_scale"]
     Output
-        interfish_distance : Nframes x 1 array
+        head_head_distance_mm : head-head distance (mm), Nframes x 1 array 
+        closest_distance_mm : closest distance (mm), Nframes x 1 array
     """
     
-    x = all_data[:,CSVcolumns["pos_data_column_x"],:] # x, both fish
-    y = all_data[:,CSVcolumns["pos_data_column_y"],:] # y, both fish
-    dx = np.diff(x)
-    dy = np.diff(y)
-    interfish_distance = np.sqrt(dx**2 + dy**2)
-    return interfish_distance
+    # head-head distance
+    head_x = all_data[:,CSVcolumns["head_column_x"],:] # x, both fish
+    head_y = all_data[:,CSVcolumns["head_column_y"],:] # y, both fish
+    dx = np.diff(head_x)
+    dy = np.diff(head_y)
+    # distance, mm
+    head_head_distance_mm = (np.sqrt(dx**2 + dy**2))*image_scale/1000.0
+    
+    # body-body distance, for all pairs of points
+    body_x = all_data[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = all_data[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+    closest_distance_mm = np.zeros((body_x.shape[0],1))
+    for idx in range(body_x.shape[0]):
+        d0 = np.subtract.outer(body_x[idx,:,0], body_x[idx,:,1]) # all pairs of subtracted x positions
+        d1 = np.subtract.outer(body_y[idx,:,0], body_y[idx,:,1]) # all pairs of subtracted y positions
+        d = np.sqrt(d0**2 + d1**2) # Euclidean distance matrix, all points
+        closest_distance_mm[idx] = np.min(d)*image_scale/1000.0 # mm
+    
+    return head_head_distance_mm, closest_distance_mm
         
 def get_fish_lengths(all_data, CSVcolumns):
     """
@@ -476,7 +510,7 @@ def get_fish_lengths(all_data, CSVcolumns):
         all_data : all position data, from dataset["all_data"]
         CSVcolumns
     Output
-        fish_lengths : Nframes x 2 array
+        fish_lengths : (px) Nframes x 2 array
     """
     xstart = int(CSVcolumns["body_column_x_start"])
     xend =int(CSVcolumns["body_column_x_start"])+int(CSVcolumns["body_Ncolumns"])
@@ -488,6 +522,28 @@ def get_fish_lengths(all_data, CSVcolumns):
     fish_lengths = np.sum(dr,axis=1)
     return fish_lengths
             
+def get_fish_speeds(all_data, CSVcolumns, image_scale, fps):
+    """
+    Get the speed of each fish in each frame (frame-to-frame
+        displacement of head position)
+    Input:
+        all_data : all position data, from dataset["all_data"]
+        CSVcolumns
+        image_scale : scale, um/px; from dataset["image_scale"]
+        fps : frames/second, from expt_config
+    Output
+        speed_array_mm_s  : (mm/s) Nframes x 2 array
+    """
+    head_x = all_data[:,CSVcolumns["head_column_x"],:] # x, both fish
+    head_y = all_data[:,CSVcolumns["head_column_y"],:] # y, both fish
+    # Frame-to-frame speed, px/frame
+    dr = np.sqrt((head_x[1:,:] - head_x[:-1,:])**2 + 
+                    (head_y[1:,:] - head_y[:-1,:])**2)
+    speed_array_mm_s = dr*image_scale*fps/1000.0
+    # to make Nframes x Nfish==2 set as 0 for frame 1
+    speed_array_mm_s = np.append(speed_array_mm_s, np.zeros((1, 2)), axis=0)
+
+    return speed_array_mm_s
 
 def get_bad_headTrack_frames(dataset, params, xcol=3, ycol=4, tol=0.001):
     """ 
@@ -577,10 +633,10 @@ def plotAllPositions(dataset, CSVcolumns, arena_radius_mm,
     
     """
     plt.figure()
-    plt.scatter(dataset["all_data"][:,CSVcolumns["pos_data_column_x"],0].flatten(), 
-                dataset["all_data"][:,CSVcolumns["pos_data_column_y"],0].flatten(), color='m', marker='x')
-    plt.scatter(dataset["all_data"][:,CSVcolumns["pos_data_column_x"],1].flatten(), 
-                dataset["all_data"][:,CSVcolumns["pos_data_column_y"],1].flatten(), color='darkturquoise', marker='x')
+    plt.scatter(dataset["all_data"][:,CSVcolumns["head_column_x"],0].flatten(), 
+                dataset["all_data"][:,CSVcolumns["head_column_y"],0].flatten(), color='m', marker='x')
+    plt.scatter(dataset["all_data"][:,CSVcolumns["head_column_x"],1].flatten(), 
+                dataset["all_data"][:,CSVcolumns["head_column_y"],1].flatten(), color='darkturquoise', marker='x')
     plt.scatter(dataset["arena_center"][0], dataset["arena_center"][1], 
                 color='red', s=100, marker='o')
     Npts = 360
@@ -599,12 +655,155 @@ def plotAllPositions(dataset, CSVcolumns, arena_radius_mm,
     plt.axis('equal')
 
 
+def write_pickle_file(list_for_pickle, data_path, outputFolderName, pickleFileName):
+    """
+    Write Pickle file in the analysis folder
+    
+
+    Parameters
+    ----------
+    list_for_pickle : list of datasets to save in the Pickle file
+    data_path : CSV data path
+    outputFolderName : output path, should be params['output_subFolder']
+    pickleFileName : string, filename -- will append .pickle
+
+    Returns
+    -------
+    None.
+
+    """
+    pickle_folder = os.path.join(data_path, outputFolderName)
+    
+    # Create output directory, if it doesn't exist
+    pickle_folder = os.path.join(data_path, outputFolderName)
+    if not os.path.exists(pickle_folder):
+        os.makedirs(pickle_folder)
+
+    pickleFileName = pickleFileName + '.pickle'
+    print(f'\nWriting pickle file: {pickleFileName}\n')
+    with open(os.path.join(pickle_folder, pickleFileName), 'wb') as handle:
+        pickle.dump(list_for_pickle, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+    
+def write_output_files(params, data_path, datasets):
+    """
+    Write the output files and sheets (several) for all datasets
+    Inputs:
+        params : analysis parameters; we use the output file pathinfo
+        data_path : path containing CSV input files
+        datasets : all dataset and analysis info
+        N_datasets : number of datasets
+        
+    Outputs:
+        None (file outputs)
+    """
+    
+    N_datasets = len(datasets)
+    
+    # Create output directory, if it doesn't exist
+    output_path = os.path.join(data_path, params['output_subFolder'])
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
+    
+    # Write to individual text files, individual Excel sheets, 
+    # and summary CSV file
+
+    # behaviors (events) to write
+    key_list = ["perpendicular_noneSee", 
+                "perpendicular_oneSees", "perpendicular_bothSee", 
+                "perpendicular_larger_fish_sees", 
+                "perpendicular_smaller_fish_sees", 
+                "contact_any", "contact_head_body", 
+                "contact_larger_fish_head", "contact_smaller_fish_head", 
+                "contact_inferred", "tail_rubbing", 
+                "Cbend_Fish0", "Cbend_Fish1", "Jbend_Fish0", "Jbend_Fish1",
+                "approaching_Fish0", "approaching_Fish1", 
+                "fleeing_Fish0", "fleeing_Fish1", 
+                "edge_frames", "bad_bodyTrack_frames"]
+    # removed "circling"
+    
+    # Excel workbok
+    markFrames_workbook = xlsxwriter.Workbook(os.path.join(output_path, 
+                                                           params['allDatasets_markFrames_ExcelFile']))
+    print('File for collecting all behavior counts: ', params['allDatasetsCSVfileName'])
+    with open(os.path.join(output_path, params['allDatasetsCSVfileName']), 
+              "w", newline='') as results_file:
+        
+        # For summary file of behaviors
+        writer=csv.writer(results_file, delimiter=',')
+        writer.writerow(['Dataset', 'Total Time (s)', 
+                         'Mean difference in fish lengths (px)', 
+                         'Mean Inter-fish dist (px)', 
+                         'Angle XCorr mean', 
+                         # 'Angle XCorr std dev', 
+                         # 'Angle XCorr skew', 
+                         '90deg-None N_Events', 
+                         '90deg-One N_Events', '90deg-Both N_Events', 
+                         '90deg-largerSees N_events', '90deg-smallerSees N_events', 
+                         'Contact (any) N_Events', 
+                         'Contact (head-body) N_Events', 
+                         'Contact (Larger fish head-body) N_Events', 
+                         'Contact (Smaller fish head-body) N_Events', 
+                         'Contact (inferred) N_events', 'Tail-Rub N_Events', 
+                         'Cbend Fish0 N_Events', 'Cbend Fish1 N_Events',
+                         'Jbend Fish0 N_Events', 'Jbend Fish1 N_Events',
+                         'Fish0 Approaches N_Events', 'Fish1 Approaches N_Events',
+                         'Fish0 Flees N_Events', 'Fish1 Flees N_Events',
+                         'Dish edge N_Events', 'Bad tracking N_events', 
+                         '90deg-None Duration', 
+                         '90deg-One Duration', '90deg-Both Duration', 
+                         '90deg-largerSees Duration', '90deg-smallerSees Duration', 
+                         'Contact (any) Duration', 
+                         'Contact (head-body) Duration', 
+                         'Contact (Larger fish head-body) Duration', 
+                         'Contact (Smaller fish head-body) Duration', 
+                         'Contact (inferred) Duration', 'Tail-Rub Duration', 
+                         'Cbend Fish0 Duration', 'Cbend Fish1 Duration', 
+                         'Jbend Fish0 Duration', 'Jbend Fish1 Duration', 
+                         'Fish0 Approaches Duration', 'Fish1 Approaches Duration',
+                         'Fish0 Flees Duration', 'Fish1 Flees Duration',
+                         'Dish edge Duration', 'Bad Tracking Duration'])
+        # removed 'Circling N_Events', 'Circling Duration', 
+        
+        # Go to analysis folder
+        os.chdir(output_path)
+        for j in range(N_datasets):
+            
+            # Write for this dataset: summary in text file
+            write_behavior_txt_file(datasets[j], key_list)
+            
+            # Write for this dataset: frame-by-frame "basic measurements"
+            write_basicMeasurements_txt_file(datasets[j])
+
+            # Write for this dataset: sheet in Excel marking all frames with behaviors
+            mark_behavior_frames_Excel(markFrames_workbook, datasets[j], 
+                                       key_list)
+
+            # Append information to the CSV describing all datasets
+            writer = csv.writer(results_file)
+            list_to_write = [datasets[j]["dataset_name"]]
+            list_to_write.append(datasets[j]["total_time_seconds"])
+            list_to_write.append(datasets[j]["fish_length_Delta_mean"])
+            list_to_write.append(datasets[j]["head_head_distance_mm_mean"])
+            list_to_write.append(datasets[j]["AngleXCorr_mean"])
+            # list_to_write.append(datasets[j]["AngleXCorr_std"])
+            # list_to_write.append(datasets[j]["AngleXCorr_skew"])
+            for k in key_list:
+                list_to_write.append(datasets[j][k]["combine_frames"].shape[1])
+            for k in key_list:
+                list_to_write.append(datasets[j][k]["total_duration"])
+            writer.writerow(list_to_write)                 
+        
+    # Close the Excel file
+    markFrames_workbook.close() 
+        
 
 def write_behavior_txt_file(dataset, key_list):
     """
     Creates a txt file of the relevant window frames and event durations
-    for a set of social behaviors in a given single dataset
-    Output text file name: dataset_name + .txt
+    for a set of social behaviors in a given *single dataset*
+    Output text file name: dataset_name + .txt, one per dataset,
+    in Analysis output folder
 
     Args:
         dataset : dictionary with all dataset info
@@ -615,10 +814,13 @@ def write_behavior_txt_file(dataset, key_list):
     """
     with open(f"{dataset['dataset_name']}.txt", "w") as results_file:
         results_file.write(f"{dataset['dataset_name']}\n")
+        results_file.write(f"   Image scale (um/px): {dataset['image_scale']:.1f}\n")
+        results_file.write(f"   frames per second: {dataset['fps']:.1f}\n")
         results_file.write(f"   Duration: {dataset['total_time_seconds']:.1f} s\n")
         results_file.write(f"   Mean length: {dataset['fish_length_mean']:.2f} px\n")
         results_file.write(f"   Mean difference in length: {dataset['fish_length_Delta_mean']:.2f} px\n")
-        results_file.write(f"   Mean inter-fish distance: {dataset['inter-fish_distance_mean']:.2f} px\n")
+        results_file.write(f"   Mean head-to-head distance: {dataset['head_head_distance_mm_mean']:.2f} mm\n")
+        results_file.write(f"   Mean closest distance: {dataset['closest_distance_mm_mean']:.2f} mm\n")
         for k in key_list:
             outString = f'{k} N_events: {dataset[k]["combine_frames"].shape[1]}\n' + \
                     f'{k} Total N_frames: {dataset[k]["total_duration"]}\n' + \
@@ -626,6 +828,69 @@ def write_behavior_txt_file(dataset, key_list):
                     f'{k} durations: {dataset[k]["combine_frames"][1,:]}\n'
             results_file.write(outString)
 
+def write_basicMeasurements_txt_file(dataset):
+    """
+    Creates a txt file of "basic" speed and distance measurements
+    a given *single dataset* at each frame.
+    Rows = Frames
+    Columns = 
+    •	Head-to-head distance (mm) ["head_head_distance_mm"]
+    •	Closest inter-fish distance (mm) ["closest_distance_mm"]
+    •	Speed of each fish (mm/s); frame-to-frame speed, recorded as 0 for the first frame. ["speed_array_mm_s"]
+    •	Distance to edge, each fish (mm); ["d_to_edge_mm"]
+    •	Edge flag (1 or 0) ["edge_frames"]
+    •	Bad track (1 or 0) ["bad_bodyTrack_frames"]
+
+    Caution: 
+        Number of fish hard-coded as 2
+        Key names hard coded!
+        
+    Output text file name: dataset_name + _basicMeasurements.txt, 
+    one per dataset, in Analysis output folder
+
+    Args:
+        dataset : dictionary with all dataset info
+        key_list_basic : list of dictionary keys corresponding 
+                         to each measurement to write (some 
+                         are for multiple fish)
+
+    Returns:
+        N/A
+    """
+    Nframes = len(dataset["head_head_distance_mm"]) # number of frames
+    frames = np.arange(1, Nframes+1)
+    EdgeFlag = np.zeros((Nframes,),dtype=int)
+    EdgeFlagIdx = dataset["edge_frames"]['raw_frames'] - 1
+    EdgeFlag[EdgeFlagIdx] = 1
+    BadTrackFlag = np.zeros((Nframes,),dtype=int)
+    BadTrackIdx = dataset["bad_bodyTrack_frames"]['raw_frames'] - 1
+    BadTrackFlag[BadTrackIdx] = 1
+
+
+    # Create a list of rows
+    headers = ["frame", "head_head_distance_mm", "closest_distance_mm",
+               "speed_Fish0", "speed_Fish1", "d_to_edge_Fish0_mm",
+               "d_to_edge_Fish1_mm", "edge flag", "bad tracking"]
+    rows = []
+    
+    for j in range(Nframes):
+        row = ["{:d}".format(frames[j]),
+               "{:.3f}".format(dataset["head_head_distance_mm"][j].item()),
+               "{:.3f}".format(dataset["closest_distance_mm"][j].item()),
+               "{:.3f}".format(dataset["speed_array_mm_s"][j, 0].item()),
+               "{:.3f}".format(dataset["speed_array_mm_s"][j, 1].item()),
+               "{:.3f}".format(dataset["d_to_edge_mm"][j, 0].item()),
+               "{:.3f}".format(dataset["d_to_edge_mm"][j, 1].item()),
+               "{:d}".format(EdgeFlag[j]),
+               "{:d}".format(BadTrackFlag[j])]
+        rows.append(",".join(row))
+    
+    # Write the CSV file
+    with open(f"{dataset['dataset_name']}_basicMeasurements.csv", "w", newline="") as f:
+        f.write(",".join(headers) + "\n")
+        f.write("\n".join(rows))
+    
+    
 def mark_behavior_frames_Excel(markFrames_workbook, dataset, key_list):
     """
     Create and fill in sheet in Excel marking all frames with behaviors

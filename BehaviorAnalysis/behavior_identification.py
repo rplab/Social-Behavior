@@ -23,9 +23,9 @@ import numpy as np
 # from circle_fit_taubin import TaubinSVD
 
 
-
-
-def get_contact_frames(body_x, body_y, contact_distance, fish_length_array):
+def get_contact_frames(body_x, body_y, closest_distance_mm, 
+                       contact_distance_threshold, 
+                       fish_length_array):
     """
     Returns a dictionary of window frames for different 
     contact between two fish: any body positions, or head-body contact
@@ -35,7 +35,8 @@ def get_contact_frames(body_x, body_y, contact_distance, fish_length_array):
     Args:
         body_x (array): a 3D array (Nframes x 10 x 2 fish) of x positions along the 10 body markers.
         body_y (array): a 3D array (Nframes x 10 x 2 fish) of y positions along the 10 body markers.
-        contact_distance: the contact distance threshold, *px*
+        closest_distance_mm (array) : 1D array of closest distance between fish (px)
+        contact_distance_threshold: the contact distance threshold, *px*
         fish_length_array: Nframes x 2 array of fish lengths in each frame
 
     Returns:
@@ -50,11 +51,8 @@ def get_contact_frames(body_x, body_y, contact_distance, fish_length_array):
     for idx in range(body_x.shape[0]):
 
         # Any contact: look at closest element of distance matrix between
-        # body points
-        d0 = np.subtract.outer(body_x[idx,:,0], body_x[idx,:,1]) # all pairs of subtracted x positions
-        d1 = np.subtract.outer(body_y[idx,:,0], body_y[idx,:,1]) # all pairs of subtracted y positions
-        d = np.sqrt(d0**2 + d1**2) # Euclidean distance matrix, all points
-        if np.min(d) < contact_distance:
+        # body points, previously calculated
+        if closest_distance_mm[idx] < contact_distance_threshold:
             contact_dict["any_contact"].append(idx+1)
             
         # Head-body contact
@@ -62,8 +60,8 @@ def get_contact_frames(body_x, body_y, contact_distance, fish_length_array):
                                 (body_y[idx,0,0] - body_y[idx,:,1])**2)
         d_head2_body1 = np.sqrt((body_x[idx,0,1] - body_x[idx,:,0])**2 + 
                                 (body_y[idx,0,1] - body_y[idx,:,0])**2)
-        fish1_hb_contact = np.min(d_head1_body2) < contact_distance
-        fish2_hb_contact = np.min(d_head2_body1) < contact_distance
+        fish1_hb_contact = np.min(d_head1_body2) < contact_distance_threshold
+        fish2_hb_contact = np.min(d_head2_body1) < contact_distance_threshold
         
         if fish1_hb_contact or fish2_hb_contact:
             contact_dict["head-body"].append(idx+1)
@@ -79,7 +77,7 @@ def get_contact_frames(body_x, body_y, contact_distance, fish_length_array):
     return contact_dict
 
 
-def get_inferred_contact_frames(dataset, frameWindow, contact_dist):
+def get_inferred_contact_frames(dataset, frameWindow, contact_dist_mm):
     """
     Returns an array of frames corresponding to inferred contact, in which
     tracking is bad (zeros values) but inter-fish distance was decreasing
@@ -87,9 +85,10 @@ def get_inferred_contact_frames(dataset, frameWindow, contact_dist):
     before the bad tracking.
     
     Args:
-        dataset : dictionary with all dataset info
+        dataset : dictionary with all dataset info, including head-head
+                  distance (mm)
         frameWindow : number of preceding frames to examine
-        contact_dist: the contact distance threshold, *px*
+        contact_dist_mm: the contact distance threshold, *mm*
 
     Returns:
         inf_contact_frames: 1D of array of frames with inferred contact. 
@@ -106,17 +105,18 @@ def get_inferred_contact_frames(dataset, frameWindow, contact_dist):
                    not(np.any(np.isin(precedingFrames, dataset["bad_bodyTrack_frames"]["raw_frames"])))
         if okFrames:
             # note need to switch order in np.isin()
-            this_distance = np.array(dataset["inter-fish_distance"]\
+            this_distance = np.array(dataset["head_head_distance_mm"]\
                                      [np.where(np.isin(dataset["frameArray"], precedingFrames))])
             # Check decreasing, and check that last element is within threshold
-            if (this_distance[-1]<contact_dist) and np.all(this_distance[:-1] >= this_distance[1:]):
+            if (this_distance[-1]<contact_dist_mm) and \
+                    np.all(this_distance[:-1] >= this_distance[1:]):
                 inf_contact_frames.append(precedingFrames[-1])
 
     return inf_contact_frames
 
 
 
-def get_90_deg_frames(fish_pos, fish_angle_data, Nframes, window_size, 
+def get_90_deg_frames(fish_head_pos, fish_angle_data, Nframes, window_size, 
                       cos_theta_90_thresh, perp_maxHeadDist, cosSeeingAngle, 
                       fish_length_array):
     """
@@ -125,7 +125,7 @@ def get_90_deg_frames(fish_pos, fish_angle_data, Nframes, window_size,
        orientation events that span some window (parameter window_size).
 
     Args:
-        fish_pos (array): a 3D array of (x, y) head positions for both fish.
+        fish_head_pos (array): a 3D array of (x, y) head positions for both fish.
                           Nframes x 2 [x, y] x 2 fish 
         fish1_angle_data (array): a 2D array of angles; Nframes x 2 fish
 
@@ -157,7 +157,7 @@ def get_90_deg_frames(fish_pos, fish_angle_data, Nframes, window_size,
     cos_theta_criterion = (np.abs(cos_theta) < cos_theta_90_thresh)
                 
     # head-head distance, and distance vector for all frames
-    dh_vec = fish_pos[:,:,1] - fish_pos[:,:,0]  # also used later, for the connecting vector
+    dh_vec = fish_head_pos[:,:,1] - fish_head_pos[:,:,0]  # also used later, for the connecting vector
     head_separation = np.sqrt(np.sum(dh_vec**2, axis=1))
     head_separation_criterion = (head_separation < perp_maxHeadDist)
     
@@ -213,7 +213,7 @@ def get_90_deg_frames(fish_pos, fish_angle_data, Nframes, window_size,
 
 def get_tail_rubbing_frames(body_x, body_y, head_separation,
                         fish_angle_data, window_size, tailRub_maxTailDist, 
-                        cos_theta_antipar, tailRub_maxHeadDist ): 
+                        cos_theta_antipar, tailRub_maxHeadDist): 
     """
     Returns an array of tail-rubbing window frames.
 
@@ -223,14 +223,15 @@ def get_tail_rubbing_frames(body_x, body_y, head_separation,
         body_y (array): a 3D array of y positions along the 10 body markers, 
                         at each frame. Dimensions [frames, body markers, fish]
         head_separation (array): a 2D array of inter-fish head separations,
-                        previously calculated. 
+                        previously calculated. (mm)
         fish_angle_data (array): a 2D array of angles at each window frame
                                   (dim 0) for each fish (dim 1).
 
         window_size (int): number of frames for which tail-rubbing criterion must be met
         tailRub_maxTailDist (float): tail distance threshold for the two fish. *px*
         cos_theta_antipar (float): antiparallel orientation upper bound for cos(theta) 
-        tailRub_maxHeadDist (float): head distance threshold for the two fish. *px*
+        tailRub_maxHeadDist (float): head distance threshold for the 
+                         two fish. *mm*
 
     Returns:
         tail_rubbing_frames: a 1D array of tail-rubbing window frames
@@ -471,12 +472,11 @@ def calcOrientationXCorr(dataset, CSVcolumns, window_size = 25, makeDiagnosticPl
         plt.xlabel('Frame')
         plt.xlabel('Xcorr')
         # plt.ylim((0, 10))
-
-    
+   
     return xcorr
 
 def get_approach_flee_frames(dataset, CSVcolumns, 
-                           speed_threshold_px_frame = 15, 
+                           speed_threshold_mm_s = 20, 
                            cos_angle_thresh = 0.5,
                            min_frame_duration = (2, 2)):
     """ 
@@ -496,13 +496,15 @@ def get_approach_flee_frames(dataset, CSVcolumns,
           point on the other fish is less than cos_angle_thresh 
           (NOT -cos_angle_thresh -- doesn't have to be moving directly
            away; allow anything not approaching)
+    Note that speed has previously been calculated 
+        (dataset['speed_array_mm_s'], Nframes x Nfish==2 array)
     Inputs:
         dataset: dataset dictionary of all behavior information for a given expt.
         CSVcolumns : information on what the columns of dataset["all_data"] are
         min_frame_duration : number of frames over which condition must be met.
                       Tuple, for Approaching [0] and Fleeing [1]
                       Default (2, 2)
-        speed_threshold_px_frame : speed threshold, px/frame, default 15
+        speed_threshold_mm_s : speed threshold, mm/s, default 20
         cos_angle_thresh : min cosine of angle between heading and 
                       vector to other fish to consider as approaching. 
                       For approaching, cos(angle) must be > cos_angle_thres
@@ -553,12 +555,9 @@ def get_approach_flee_frames(dataset, CSVcolumns,
     
     # frame-to-frame change in distance between fish (px)
     delta_dheadbody = d_head_body[1:,:] - d_head_body[:-1, :]
-             
-    # Frame-to-frame speed, px/frame
-    speed = np.sqrt((body_x[1:,0,:] - body_x[:-1,0,:])**2 + 
-                    (body_y[1:,0,:] - body_y[:-1,0,:])**2)
-    # to make Nframes x Nfish==2 
-    speed = np.append(speed, np.zeros((1, 2)), axis=0)
+    
+    # a redundant variable, but useful for plots
+    speed = dataset['speed_array_mm_s']
     
     # Is the distance decreasing over min_frame_duration[0] frames (from the
     # initial frame)? Is it increasing?
@@ -577,12 +576,12 @@ def get_approach_flee_frames(dataset, CSVcolumns,
     # All the criteria for approaching. (All must be true)
     # Nframes x Nfish==2 array, Boolean. (Could just multiply, but this
     # might be clearer to read)
-    approaching = np.all(np.stack((speed > speed_threshold_px_frame, 
+    approaching = np.all(np.stack((speed > speed_threshold_mm_s, 
                                   cos_angle_head_body > cos_angle_thresh, 
                                   distance_decr_over_window), axis=2),
                          axis=2) 
     # All the criteria for fleeing. (All 
-    fleeing = np.all(np.stack((speed > speed_threshold_px_frame, 
+    fleeing = np.all(np.stack((speed > speed_threshold_mm_s, 
                                   cos_angle_head_body < cos_angle_thresh, 
                                   distance_incr_over_window), axis=2),
                          axis=2) 
@@ -631,145 +630,47 @@ def get_approach_flee_frames(dataset, CSVcolumns,
         plt.ylabel('Approaching (+1), Fleeing (-1)')
         plt.legend()
         plt.xlim(xlimits[0], xlimits[1])
-        
 
     return approaching_frames, fleeing_frames
     
 
-def get_circling_frames(fish_pos, head_separation, fish_angle_data,
-                    Nframes, window_size, circle_fit_threshold, 
-                    cos_theta_AP_threshold, 
-                    cos_theta_tangent_threshold, motion_threshold, 
-                    head_distance_thresh):
+def get_relative_orientation(dataset, CSVcolumns):
+    """ 
+    Calculate the relative orientation of each fish with respect to the
+    head-to-head vector to the other fish.
+    Note that speed has previously been calculated 
+        (dataset['speed_array_mm_s'], Nframes x Nfish==2 array)
+    Inputs:
+        dataset: dataset dictionary of all behavior information for a given expt.
+        CSVcolumns : information on what the columns of dataset["all_data"] are
+    Output : 
+        relative_orientation : numpy array Nframes x Nfish==2 of 
+            relative orientation (phi), radians, for fish 0 and fish 1
     """
-    Returns an array of window frames for circling behavior. Each window
-    frame represents the STARTING window frame for circling within some range 
-    of window frames specified by the parameter window_size. E.g, if 
-    window_size = 10 and a circling window frame is 210, then circling
-    occured from frames 210-219.
+    # All heading angles
+    angle_data = dataset["all_data"][:,CSVcolumns["angle_data_column"], :]
+    # all head positions
+    head_pos_data = dataset["all_data"][:,CSVcolumns["head_column_x"]:CSVcolumns["head_column_y"]+1, :]
+        # head_pos_data is Nframes x 2 (x and y positions) x 2 (Nfish) array of head positions
+
+    # head-head distance, px, and distance vector for all frames
+    dh_vec = head_pos_data[:,:,1] - head_pos_data[:,:,0]  # also used later, for the connecting vector
     
-    Args:
-        fish_pos (array): a 3D array of (x, y) positions for each fish1. 
-                    In dimensions 1 and 2 the Nframes x 2 array has the
-                    form [[x1, y1], [x2, y2], [x3, y3],...].
-                    Dimension 3 = each fish
-        head_separation (array): a 2D array of inter-fish head separations,
-                        previously calculated. 
-        fish_angle_data (array): a 2D array of angles at each window frame
-                                  (dim 0) for each fish (dim 1).
-
-        Nframes (int): Number of frames (typically 15,000.)
-        
-        window_size (int)     : number of frames over which circling is assessed.
-        circle_fit_threshold (float)     : relative RMSE radius threshold for circling.
-        cos_theta_AP_threshold (float)     : antiparallel orientation upper bound for cos(theta) 
-        cos_theta_tangent_threshold (float): the cosine(angle) threshold for tangency to the circle
-        motion_threshold (float): root mean square frame-to-frame displacement threshold
-        head_distance_thresh (int): head distance threshold for the two fish.
-
-    Returns:
-        circling_wf (array): a 1D array of circling window frames.
-    """
-    circling_wf = []
+    v0 = np.stack((np.cos(angle_data[:, 0]), 
+                   np.sin(angle_data[:, 0])), axis=1)
+    v1 = np.stack((np.cos(angle_data[:, 1]), 
+                   np.sin(angle_data[:, 1])), axis=1)
     
-    # Assess head-head distance for all frames
-    # dh_vec = fish2_pos - fish1_pos  
-    # head_separation = np.sqrt(np.sum(dh_vec**2, axis=1))
-    head_separation_criterion = (head_separation < head_distance_thresh)
+    dot_product_0 = np.sum(v0 * dh_vec, axis=1)
+    magnitude_product_0 = np.linalg.norm(v0, axis=1) * np.linalg.norm(dh_vec, axis=1)
+    phi0 = np.arccos(dot_product_0 / magnitude_product_0)
     
-    # To save computation time, we're going to consider only the windows
-    # with starting frames that meet the head-separation criterion
-    # and in which at least one fish is moving.
-    # Head separation criterion:
-    close_fish_idx = np.array(np.where(head_separation_criterion)) # indexes where met
-    # remove starting frames that are within a window-distance from the last frame
-    possible_idx = np.delete(close_fish_idx, np.where(
-                            close_fish_idx  > (Nframes - window_size)))
-
-    # Evaluate whether at least one fish is moving
-    not_moving_idx = []
-    for idx in possible_idx:
-        fish1_dr = np.diff(fish_pos[idx:idx+window_size,:,0], axis=0)
-        fish2_dr = np.diff(fish_pos[idx:idx+window_size,:,1], axis=0)
-        fish1_rms = np.sqrt(np.mean(np.sum(fish1_dr**2, axis=1), axis=0))
-        fish2_rms = np.sqrt(np.mean(np.sum(fish2_dr**2, axis=1), axis=0))
-        # "Not moving" if either fish is not moving
-        if (fish1_rms < motion_threshold) or (fish2_rms < motion_threshold):
-            not_moving_idx.append(idx) 
-    possible_idx = np.setdiff1d(possible_idx, not_moving_idx)
-
-    for idx in possible_idx:
-        # Get head position and angle data for all frames in this window
-        fish1_positions = fish_pos[idx:idx+window_size,:,0]
-        fish2_positions = fish_pos[idx:idx+window_size,:,1]
-        fish1_angles = fish_angle_data[idx:idx+window_size,0]
-        fish2_angles = fish_angle_data[idx:idx+window_size,1]
-
-        # Array of both fish's head positions (x,y) in this frame window; 
-        #   shape 2*window_size x 2
-        head_positions = np.concatenate((fish1_positions, fish2_positions), axis=0)
-        # Fit to a circle
-        taubin_output = TaubinSVD(head_positions)  # output gives (x_c, y_c, r)
-
-        # Goodness of fit to circle
-        # Assess distance between each head position and the best-fit circle
-        dxy = head_positions - taubin_output[0:2] # x, y distance to center
-        dR = np.sqrt(np.sum(dxy**2,1)) # radial distance to center
-        # RMS error: difference beteween dR and R (fit radius)
-        rmse = np.sqrt(np.mean((dR - taubin_output[2])**2))
-        rmse_criterion = rmse < (circle_fit_threshold * taubin_output[2])
-        
-        # Head separation, for all frames in the window
-        dh_window = head_separation[idx:idx+window_size]
-        head_separation_window = np.sqrt(np.sum(dh_window**2, axis=1))
-        head_separation_window_criterion = \
-            (head_separation_window < head_distance_thresh).all()
-        
-        # Should be antiparallel, so cos(theta) < threshold (ideally cos(theta)==-1)
-        cos_theta = np.cos(fish1_angles - fish2_angles)
-        angle_criterion = (cos_theta < cos_theta_AP_threshold).all()
-        
-        # Radius of the best-fit circle should be less than the mean 
-        # distance between the heads of the fish over the frame window.
-        circle_size_criterion = \
-            (taubin_output[2] < np.mean(head_separation_window))
-
-        # Each fish heading should be tangent to the circle
-        R1 = fish1_positions - taubin_output[0:1]
-        R2 = fish2_positions - taubin_output[0:1]
-        n1 = np.column_stack((np.cos(fish1_angles), np.sin(fish1_angles)))
-        n2 = np.column_stack((np.cos(fish2_angles), np.sin(fish2_angles)))
-        # Dot product for each frame's values; this can be done with 
-        # matrix multiplication. Normalize R1, R2 (so result is cos(theta))
-        n1dotR1 = np.matmul(n1, R1.transpose()) / np.linalg.norm(R1, axis=1)
-        n2dotR2 = np.matmul(n2, R2.transpose()) / np.linalg.norm(R2, axis=1)
-        tangent_criterion = np.logical_and((np.abs(n1dotR1) 
-                                            < cos_theta_tangent_threshold).all(), 
-                                           (np.abs(n2dotR2) 
-                                            < cos_theta_tangent_threshold).all())
-        
-        showDiagnosticPlots = False
-        if (rmse_criterion and head_separation_window_criterion
-                and angle_criterion and tangent_criterion and circle_size_criterion):
-            circling_wf.append(idx+1)  # append the starting frame number
-            
-            if showDiagnosticPlots:
-                print('idx: ', idx, ', rmse: ', rmse)
-                print('fish 1 angles: ', fish1_angles)
-                print('fish 2 angles: ', fish2_angles)
-                print('Cos Theta: ', cos_theta)
-                plt.figure()
-                plt.plot(fish1_positions[:,0], fish1_positions[:,1], 'x')
-                plt.plot(fish2_positions[:,0], fish2_positions[:,1], '+')
-                plt.plot(taubin_output[0], taubin_output[1], 'o')
-                xplot = np.zeros((200,))
-                yplot = np.zeros((200,))
-                for k in range(200):
-                    xplot[k] = taubin_output[0] + taubin_output[2]*np.cos(k*2*np.pi/200)
-                    yplot[k] = taubin_output[1] + taubin_output[2]*np.sin(k*2*np.pi/200)
-                plt.plot(xplot, yplot, '-')
-                pltInput = input('Press Enter to move on, or "n" to stop after this dataset, or control-C')
-                showDiagnosticPlots = (pltInput.lower() == 'n')
-                plt.close()
+    dot_product_1 = np.sum(v1 * -dh_vec, axis=1)
+    magnitude_product_1 = np.linalg.norm(v1, axis=1) * np.linalg.norm(dh_vec, axis=1)
+    phi1 = np.arccos(dot_product_1 / magnitude_product_1)
     
-    return np.array(circling_wf).astype(int)
+    relative_orientation = np.stack((phi0, phi1), axis=1)  
+    
+    return relative_orientation
+
+    
