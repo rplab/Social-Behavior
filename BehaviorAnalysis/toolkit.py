@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified June 11, 2024
+Last modified June 13, 2024
 
 Description
 -----------
@@ -476,7 +476,7 @@ def get_interfish_distance(all_data, CSVcolumns, image_scale):
         in each frame 
     Input:
         all_data : all position data, from dataset["all_data"]
-        CSVcolumns
+        CSVcolumns : CSV column information (dictionary)
         image_scale : scale, um/px; from dataset["image_scale"]
     Output
         head_head_distance_mm : head-head distance (mm), Nframes x 1 array 
@@ -508,7 +508,7 @@ def get_fish_lengths(all_data, CSVcolumns):
     Get the length of each fish in each frame (sum of all segments)
     Input:
         all_data : all position data, from dataset["all_data"]
-        CSVcolumns
+        CSVcolumns : CSV column information (dictionary)
     Output
         fish_lengths : (px) Nframes x 2 array
     """
@@ -528,7 +528,7 @@ def get_fish_speeds(all_data, CSVcolumns, image_scale, fps):
         displacement of head position)
     Input:
         all_data : all position data, from dataset["all_data"]
-        CSVcolumns
+        CSVcolumns : CSV column information (dictionary)
         image_scale : scale, um/px; from dataset["image_scale"]
         fps : frames/second, from expt_config
     Output
