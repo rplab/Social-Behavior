@@ -13,6 +13,30 @@ Misc. deleted code
 """
 
 
+#%% Circling
+
+# In extract_behaviors:
+    
+    # CIRCLING
+    # t1_1 = perf_counter()
+    # print(f'   t1_1 start circling analysis: {t1_1 - t1_start:.2f} seconds')
+    # # Circling 
+    # circling_wfs = get_circling_frames(pos_data, dataset["inter-fish_distance"], 
+    #                                angle_data, Nframes, params["circle_windowsize"], 
+    #                                params["circle_fit_threshold"], 
+    #                                params["cos_theta_AP_threshold"], 
+    #                                params["cos_theta_tangent_threshold"], 
+    #                                params["motion_threshold"], 
+    #                                params["circle_distance_threshold"])
+    
+    params = {
+        "arena_edge_threshold_mm" : 5,
+        "circle_windowsize" : 25,
+        "circle_fit_threshold" : 0.25,
+        "circle_distance_threshold": 240,
+
+
+#%%
 
 def extract_single_fish_behaviors(dataset, params, CSVcolumns): 
     """
