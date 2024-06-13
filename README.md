@@ -1,12 +1,29 @@
 # Social-Behavior Analysis
 A collection of Python programs used to analyze social behaviors in zebrafish. 
 
+## Documentation
+
+- Behavior analysis pipeline v2.docx
+
+## Modules
+
+- BehaviorAnalysis: all the code
+
+**Needs to be updated below this point**
+
+## Example configuration files
+
+In \ExampleConfigFiles, see documentation 
+
+-----
+
+
 ## Modules:
-- BehaviorAnaysis: contains functions for finding specific social behaviors (e.g. circling, tail-rubbing, etc.).
+- BehaviorAnalysis: contains functions for finding specific social behaviors (e.g. circling, tail-rubbing, etc.).
 - Helper Functions: event sensitivity testing
 - Time Series Analysis: contains functions to find autocorrelations, cross-correlations, conditional probabilities, etc.
 - To-do: contains partially implemented new social behaviors/analysis functions that need to be updated or refined. 
-- convert matlab to csv: matlab to CSV file converter for datasets.
+- convert_fishTrackingData_MATtoCSV.m: matlab to CSV file converter for datasets.
 
 ## Background Information
 

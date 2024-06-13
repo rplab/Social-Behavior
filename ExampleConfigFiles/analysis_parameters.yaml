@@ -1,0 +1,28 @@
+# Defines analysis parameters for behavior identification
+params:
+  arena_edge_threshold_mm: 5
+  cos_theta_AP_threshold: -0.7
+  cos_theta_tangent_threshold: 0.34
+  cos_theta_90_thresh: 0.26
+  cosSeeingAngle: 0.5
+  perp_windowsize: 2
+  perp_maxHeadDist_mm: 17.0
+  contact_distance_threshold_mm: 2.5
+  contact_inferred_distance_threshold_mm: 3.5
+  contact_inferred_window: 3
+  tail_rub_ws: 2
+  tailrub_maxTailDist_mm: 2.0
+  tailrub_maxHeadDist_mm: 12.5
+  cos_theta_antipar: -0.8
+  Cbend_threshold: 0.63661977  # 2/np.pi
+  Jbend_rAP: 0.98
+  Jbend_cosThetaN: 0.34
+  Jbend_cosThetaNm1: 0.7
+  angle_xcorr_windowsize: 25
+  approach_speed_threshold_mm_second: 20
+  approach_cos_angle_thresh: 0.5
+  approach_min_frame_duration: [2,2]
+  # Output files, path
+  output_subFolder: Analysis
+  allDatasetsCSVfileName: behavior_count.csv 
+  allDatasets_markFrames_ExcelFile:  behaviors_in_each_frame.xlsx

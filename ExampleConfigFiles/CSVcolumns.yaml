@@ -1,0 +1,9 @@
+# Specify columns of the CSV files with fish trajectory information
+CSVcolumns:
+  N_columns: 26 # total number of columns in CSV file
+  head_column_x: 3 # head position x column (first col == 0)
+  head_column_y: 4 # head position y column (first col == 0)
+  angle_data_column: 5 # angle (radians) column (first col == 0)
+  body_column_x_start: 6 # starting column for body x positions (first==0)
+  body_column_y_start: 16 # starting column for body x positions (first==0)
+  body_Ncolumns: 10 # number of body datapoints
