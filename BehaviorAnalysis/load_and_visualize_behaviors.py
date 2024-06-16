@@ -169,12 +169,12 @@ def flag_possible_IDswitch(dataset, CSVcolumns):
     print('large angle change shape:', large_angle_change_flag.shape)
     
     # all lengths
-    fish_lengths = dataset["fish_length_array"]
+    fish_lengths = dataset["fish_length_array_mm"]
     diff_fish_length = np.diff(fish_lengths, n=1, axis=0)
     diff_fish_length_fraction = np.abs(diff_fish_length) / fish_lengths[:-1,:]
-    print('diff_fish_length_fraction shape:', large_angle_change_flag.shape)
     diff_fish_length_fraction_thresh = 0.2
-    diff_fish_length_flag = np.argwhere(diff_fish_length_fraction > diff_fish_length_fraction_thresh)
+    diff_fish_length_flag = np.argwhere(diff_fish_length_fraction > \
+                                        diff_fish_length_fraction_thresh)
     
     # All positions
     body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]

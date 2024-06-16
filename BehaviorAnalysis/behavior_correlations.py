@@ -3,14 +3,13 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Wed Sep  6 13:38:21 2023
-Last modified on March 1, 2024
+Last modified on June 15, 2024; moved "get_duration_info()" here
 
 Description
 -----------
 
 Contains function(s) for calculating the correlation between different 
-behavior events, and comparing relative durations of events across 
-experiments.
+behavior events
 
 Inputs:
     
@@ -19,11 +18,108 @@ Outputs:
 
 """
 
+import os
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
+import csv
 from scipy.stats import linregress
-from relative_duration import get_duration_info
 import pickle
+
+
+def get_duration_info(CSVfilename = ''):
+    """
+    Read the CSV output by calc_relative_durations_csv(), 
+    containing fish length differences
+    
+    Inputs:
+        CSVfilename : CSV file name containing dataset names (col 1) 
+            and relative durations. Reading stops at the first blank
+            row, and so will ignore the mean, etc.
+            Leave empty to list csv files in the current directory that 
+            have 'relDuration' in the file name. If there's only one,
+            use it as default.
+
+    Outputs:
+        duration_data : Pandas dataframe. Indexed by dataset name 
+            (remove '_2wpf', '_light', '_dark')
+            Can, for example, print all info for a dataset with:
+                print(duration_data.loc['3b_k7'])
+            Can, for example, plot all sets' contact duration vs. fish
+                length difference with:
+                plt.scatter(duration_data['Mean difference in fish lengths (px)'], duration_data['Contact (any)'], marker='o')
+        
+    Raghuveer Parthasarathy
+    Sept. 17, 2023
+    """
+    
+    print('Current directory: ', os.getcwd())
+    input_directory = input('Input directory containing .csv file (blank for current dir.): ')
+    if input_directory == '':
+        input_directory = os.getcwd()
+        
+    if CSVfilename=='':
+        # List all files in the directory
+        file_list = os.listdir(input_directory)
+        # Filter files with "relDuration" in their filename and .csv extension
+        filtered_files = [file for file in file_list if "relDuration" in file and file.endswith('.csv')]
+        if len(filtered_files)==1:
+            print('File found: ', filtered_files)
+            use_ff = input('Use this CSV file? (y or n): ')
+            if use_ff.lower() == 'y':
+                CSVfilename = filtered_files[0]
+            else: 
+                CSVfilename = input('Enter the CSV filename, including .csv: ')
+        else:
+            # Print the filtered file names
+            print('Suggested files: ')
+            for file_name in filtered_files:
+                print(file_name)
+            CSVfilename = input('Enter the CSV filename, including .csv: ')
+    CSVfilename = os.path.join(input_directory, CSVfilename)
+
+    # Initialize an empty DataFrame to store the data
+    duration_data = pd.DataFrame()
+
+    # Open the CSV file for reading
+    with open(CSVfilename, 'r', newline='') as csvfile:
+        csvreader = csv.reader(csvfile)
+    
+        # Read the header row
+        header = next(csvreader)
+    
+        # Check if the header is present and has at least one column
+        if header:
+            # Get the column names from the header (not including the dataset names)
+            column_names = header[1:]
+    
+            # Read the data row by row
+            for row in csvreader:
+                if not any(row):
+                    break # exit the loop; don't read further if the row is empty
+
+                # Extract the name (first column) and convert it to a string
+                name = row[0]
+                # Remove "2wpf", "_light", or "_dark" from the dataset name
+                name = name.replace('_2wpf', '').replace('_light', '').replace('_dark', '')
+    
+                # Extract the durations (remaining columns) and convert them to floats
+                durations_row = [float(dataval) for dataval in row[1:]]
+    
+                # Create a temporary DataFrame for the current row
+                temp_df = pd.DataFrame([durations_row], columns=column_names, 
+                                       index=[name])
+                # Append the temporary DataFrame to the main DataFrame
+                duration_data = pd.concat([duration_data, temp_df], ignore_index=False)
+    
+    Ndatasets = len(duration_data)
+    print(f'Number of datasets: {Ndatasets}')
+    
+    # Print the extracted column names
+    print(' ')
+    print("Column Names:", column_names)
+
+    return duration_data
 
 def calcDeltaFramesEvents(datasets):
     """
@@ -65,10 +161,10 @@ def calcDeltaFramesEvents(datasets):
 behav_corr, behavior_key_list = calcDeltaFramesEvents(datasets)
     """
 
-    behavior_key_list = ["perpendicular_noneSee", 
-                        "perpendicular_oneSees", "perpendicular_bothSee", 
-                        "perpendicular_larger_fish_sees", 
-                        "perpendicular_smaller_fish_sees", 
+    behavior_key_list = ["perp_noneSee", 
+                        "perp_oneSees", "perp_bothSee", 
+                        "perp_larger_fish_sees", 
+                        "perp_smaller_fish_sees", 
                         "contact_any", "contact_head_body", 
                         "contact_larger_fish_head", "contact_smaller_fish_head", 
                         "contact_inferred", "tail_rubbing", 

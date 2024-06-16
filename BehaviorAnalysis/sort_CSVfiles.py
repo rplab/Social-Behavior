@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon May  6 09:56:13 2024
-Last modified on May 27, 2024
+Last modified on June 15, 2024
 
 Description
 -----------
@@ -62,7 +62,8 @@ def process_excel_and_csvs(source_path, excel_file, mainCSV_path, subfolder_name
     group_codes = group_code_series.unique()
     wellOffsetPositionsCSVfileFull = os.path.join(mainCSV_path, wellOffsetPositionsCSVfilename)
 
-    # Create subfolders and copy wellOffsetPositionsCSVfile.csv if it exists
+    # Create subfolders for each group 
+    # and copy wellOffsetPositionsCSVfile.csv if it exists
     for group_code in group_codes:
         subfolder_path = os.path.join(mainCSV_path, f"{subfolder_name}_{group_code}")
         os.makedirs(subfolder_path, exist_ok=True)
@@ -108,15 +109,16 @@ def process_excel_and_csvs(source_path, excel_file, mainCSV_path, subfolder_name
 basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior'
 
 # Replace these:
-excel_fileName = r'SocPrefInf_2b_RaghuAnalysis.xlsx'
-sourceMATpath = basePath + r'\MAT files\2 week-old - pairs exposed to water conditioned by infected 6-dpf larvae'
-destination_mainCSV_path = basePath + r'\CSV files and outputs\2 week-old - pairs exposed to water conditioned by infected 6-dpf larvae'
-group_code_label = 'Cond_Code' # may be 'Group_Code'
+excel_fileName = r'SocDef_Shank3_AnalysisRaghu.xlsx'
+sourceMATpath = basePath + r'\MAT files\TEMP 2 week old - pairs with shank3 mutations - Copy'
+destination_mainCSV_path = basePath + r'\CSV files and outputs\TEMP 2 week old - pairs with shank3 mutations - Copy'
+group_code_label = 'Genotype' # may be 'Group_Code'
 include1_label = 'Include' # Header of the "include" column
 include2_label = None  # use None to avoid additional filtering, or 'Filter' to filter
-subfolder_name = 'Condition' # will append the group code to this for sub-folders
+subfolder_name = 'Genotype' # will append the group code to this for sub-folders
 wellOffsetPositionsCSVfilename = 'wellOffsetPositionsCSVfile.csv' # Probably don't need to change
-
+excludeCSVList = ['wellOffsetPositionsCSVfile.csv', 
+                  'SocDef_Shank3_AnalysisRaghu.csv']  # ignore these CSVs
 
 if not os.path.exists(destination_mainCSV_path):
     # Make the parent CSV folder
@@ -129,5 +131,5 @@ process_excel_and_csvs(sourceMATpath, excel_fileName,
                        subfolder_name = subfolder_name, 
                        group_code_label = group_code_label, 
                        include1_label = include1_label, include2_label = include2_label, 
-                       excludeCSVList = 'wellOffsetPositionsCSVfile.csv', 
+                       excludeCSVList = excludeCSVList, 
                        wellOffsetPositionsCSVfilename = wellOffsetPositionsCSVfilename)

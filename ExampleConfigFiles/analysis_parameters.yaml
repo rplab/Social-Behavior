@@ -25,4 +25,5 @@ params:
   # Output files, path
   output_subFolder: Analysis
   allDatasetsCSVfileName: behavior_count.csv 
+  allDatasets_ExcelFile: behavior_counts.xlsx 
   allDatasets_markFrames_ExcelFile:  behaviors_in_each_frame.xlsx

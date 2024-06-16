@@ -3,9 +3,9 @@
 """
 Author:   Raghuveer Parthasarathy
 Version ='2.0': 
-First versions created By  : Estelle Trieu, 9/7/2022
+First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified June 14, 2024
+Last modified by Rghuveer Parthasarathy, June 15, 2024
 
 Description
 -----------
@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import linear_sum_assignment
 import pickle
 import xlsxwriter
-
+import pandas as pd
 
 def get_CSV_folder_and_filenames(expt_config):
     """
@@ -32,7 +32,7 @@ def get_CSV_folder_and_filenames(expt_config):
 
     Inputs:
         expt_config : dictionary containing dataPath (or None to ask user)
-                        as well as subExpt info (optional)
+                        as well as subGroup info (optional)
     Returns:
         A tuple containing
         - data_path : the folder path containing CSV files
@@ -46,17 +46,17 @@ def get_CSV_folder_and_filenames(expt_config):
             data_path = os.getcwd() # Current working directory
     else:
         # Load path from config file
-        if ('subExpts' in expt_config.keys()):
+        if ('subGroups' in expt_config.keys()):
             main_data_path = expt_config['dataPath']
             print('\nSub-Experiments:')
-            for j, subExpt in enumerate(expt_config['subExpts']):
-                print(f'  {j}: {subExpt}')
-            subExpt_choice = input('Select sub-experiment (string or number): ')
+            for j, subGroup in enumerate(expt_config['subGroups']):
+                print(f'  {j}: {subGroup}')
+            subGroup_choice = input('Select sub-experiment (string or number): ')
             try:
-                subExptPath = expt_config['subExpts'][int(subExpt_choice)]
+                subGroupPath = expt_config['subGroups'][int(subGroup_choice)]
             except:
-                subExptPath = expt_config['subExpts'][subExpt_choice]
-            data_path = os.path.join(main_data_path, subExptPath)
+                subGroupPath = expt_config['subGroups'][subGroup_choice]
+            data_path = os.path.join(main_data_path, subGroupPath)
         else:
             data_path = expt_config['dataPath']
         
@@ -154,35 +154,47 @@ def get_dataset_name(CSVfileName):
 
 
 
-def make_frames_dictionary(frames, frames_to_remove):
+def make_frames_dictionary(frames, frames_to_remove, behavior_name,
+                           Nframes):
     """
     Make a dictionary of raw (original) frames, frames with "bad" 
-    frames removed, and combined (adjacent) frames + durations
+    frames removed, combined (adjacent) frames + durations,
+    total durations, and relative durations
     
     Calls remove_frames()
     Calls combine_events()
     Inputs:
         frames (int) : 1D array of frame numbers
         frames_to_remove : tuple of 1D arrays of frame numbers to remove
+        behavior_name : name to assign to the behavior (string)
+        Nframes : number of frames (probably datasets[j]['Nframes'])
         
     Outputs:
         frames_dict : dictionary with keys
+            behavior_name : name of the behavior (string)
             raw_frames : original (frames), 1D array
             edit_frames : frames with "bad" frames removed, 1D array
             combine_frames : 2 x N array using combine_events, frame numbers
                 and durations
-            total_duration : scalar, sum of durations
+            N_events : number of events (simply the length
+                                         of the second row of combine_frames)
+            total_duration : scalar, sum of durations (frames)
+            relative_duration : scalar, relative duration, i.e.
+                total_duration / Nframes
     """
     # necessary to initialize the dictionary this way?
     keys = {"raw_frames", "edit_frames", "combine_frames", 
-            "total_duration", "behavior_name"}
+            "total_duration", "behavior_name", "relative_duration"}
     frames_dict = dict([(key, []) for key in keys])
+    frames_dict["behavior_name"] = behavior_name
     frames_dict["raw_frames"] = frames
     frames_dict["edit_frames"] = \
         remove_frames(frames,  frames_to_remove)
     frames_dict["combine_frames"] = \
         combine_events(frames_dict["edit_frames"])
     frames_dict["total_duration"] = np.sum(frames_dict["combine_frames"][1,:])
+    frames_dict["N_events"] = frames_dict["combine_frames"].shape[1]
+    frames_dict["relative_duration"] = frames_dict["total_duration"] / Nframes
     return frames_dict
 
 
@@ -503,14 +515,15 @@ def get_interfish_distance(all_data, CSVcolumns, image_scale):
     
     return head_head_distance_mm, closest_distance_mm
         
-def get_fish_lengths(all_data, CSVcolumns):
+def get_fish_lengths(all_data, image_scale, CSVcolumns):
     """
     Get the length of each fish in each frame (sum of all segments)
     Input:
         all_data : all position data, from dataset["all_data"]
+        image_scale : scale, um/px; from dataset["image_scale"]
         CSVcolumns : CSV column information (dictionary)
     Output
-        fish_lengths : (px) Nframes x 2 array
+        fish_lengths : (mm) Nframes x 2 array of fish lengths
     """
     xstart = int(CSVcolumns["body_column_x_start"])
     xend =int(CSVcolumns["body_column_x_start"])+int(CSVcolumns["body_Ncolumns"])
@@ -519,7 +532,7 @@ def get_fish_lengths(all_data, CSVcolumns):
     dx = np.diff(all_data[:,xstart:xend,:], axis=1)
     dy = np.diff(all_data[:,ystart:yend,:], axis=1)
     dr = np.sqrt(dx**2 + dy**2)
-    fish_lengths = np.sum(dr,axis=1)
+    fish_lengths = np.sum(dr,axis=1)*image_scale/1000.0 # mm
     return fish_lengths
             
 def get_fish_speeds(all_data, CSVcolumns, image_scale, fps):
@@ -687,7 +700,7 @@ def write_pickle_file(list_for_pickle, data_path, outputFolderName, pickleFileNa
     
 def write_output_files(params, data_path, datasets):
     """
-    Write the output files and sheets (several) for all datasets
+    Write the output files (several) for all datasets
     Inputs:
         params : analysis parameters; we use the output file pathinfo
         data_path : path containing CSV input files
@@ -695,7 +708,7 @@ def write_output_files(params, data_path, datasets):
         N_datasets : number of datasets
         
     Outputs:
-        None (file outputs)
+        None (multiple file outputs)
     """
     
     N_datasets = len(datasets)
@@ -705,14 +718,17 @@ def write_output_files(params, data_path, datasets):
     if not os.path.exists(output_path):
         os.makedirs(output_path)
     
+    # Go to analysis folder
+    os.chdir(output_path)
+
     # Write to individual text files, individual Excel sheets, 
     # and summary CSV file
 
     # behaviors (events) to write
-    key_list = ["perpendicular_noneSee", 
-                "perpendicular_oneSees", "perpendicular_bothSee", 
-                "perpendicular_larger_fish_sees", 
-                "perpendicular_smaller_fish_sees", 
+    key_list = ["perp_noneSee", 
+                "perp_oneSees", "perp_bothSee", 
+                "perp_larger_fish_sees", 
+                "perp_smaller_fish_sees", 
                 "contact_any", "contact_head_body", 
                 "contact_larger_fish_head", "contact_smaller_fish_head", 
                 "contact_inferred", "tail_rubbing", 
@@ -720,84 +736,45 @@ def write_output_files(params, data_path, datasets):
                 "approaching_Fish0", "approaching_Fish1", 
                 "fleeing_Fish0", "fleeing_Fish1", 
                 "edge_frames", "bad_bodyTrack_frames"]
-    # removed "circling"
-    
-    # Excel workbok
+
+    # Excel workbook for indicating events in each frame
     markFrames_workbook = xlsxwriter.Workbook(os.path.join(output_path, 
                                                            params['allDatasets_markFrames_ExcelFile']))
-    print('File for collecting all behavior counts: ', params['allDatasetsCSVfileName'])
-    with open(os.path.join(output_path, params['allDatasetsCSVfileName']), 
-              "w", newline='') as results_file:
-        
-        # For summary file of behaviors
-        writer=csv.writer(results_file, delimiter=',')
-        writer.writerow(['Dataset', 'Total Time (s)', 
-                         'Mean difference in fish lengths (px)', 
-                         'Mean Inter-fish dist (px)', 
-                         'Angle XCorr mean', 
-                         # 'Angle XCorr std dev', 
-                         # 'Angle XCorr skew', 
-                         '90deg-None N_Events', 
-                         '90deg-One N_Events', '90deg-Both N_Events', 
-                         '90deg-largerSees N_events', '90deg-smallerSees N_events', 
-                         'Contact (any) N_Events', 
-                         'Contact (head-body) N_Events', 
-                         'Contact (Larger fish head-body) N_Events', 
-                         'Contact (Smaller fish head-body) N_Events', 
-                         'Contact (inferred) N_events', 'Tail-Rub N_Events', 
-                         'Cbend Fish0 N_Events', 'Cbend Fish1 N_Events',
-                         'Jbend Fish0 N_Events', 'Jbend Fish1 N_Events',
-                         'Fish0 Approaches N_Events', 'Fish1 Approaches N_Events',
-                         'Fish0 Flees N_Events', 'Fish1 Flees N_Events',
-                         'Dish edge N_Events', 'Bad tracking N_events', 
-                         '90deg-None Duration', 
-                         '90deg-One Duration', '90deg-Both Duration', 
-                         '90deg-largerSees Duration', '90deg-smallerSees Duration', 
-                         'Contact (any) Duration', 
-                         'Contact (head-body) Duration', 
-                         'Contact (Larger fish head-body) Duration', 
-                         'Contact (Smaller fish head-body) Duration', 
-                         'Contact (inferred) Duration', 'Tail-Rub Duration', 
-                         'Cbend Fish0 Duration', 'Cbend Fish1 Duration', 
-                         'Jbend Fish0 Duration', 'Jbend Fish1 Duration', 
-                         'Fish0 Approaches Duration', 'Fish1 Approaches Duration',
-                         'Fish0 Flees Duration', 'Fish1 Flees Duration',
-                         'Dish edge Duration', 'Bad Tracking Duration'])
-        # removed 'Circling N_Events', 'Circling Duration', 
-        
-        # Go to analysis folder
-        os.chdir(output_path)
-        for j in range(N_datasets):
-            
-            # Write for this dataset: summary in text file
-            write_behavior_txt_file(datasets[j], key_list)
-            
-            # Write for this dataset: frame-by-frame "basic measurements"
-            write_basicMeasurements_txt_file(datasets[j])
-
-            # Write for this dataset: sheet in Excel marking all frames with behaviors
-            mark_behavior_frames_Excel(markFrames_workbook, datasets[j], 
-                                       key_list)
-
-            # Append information to the CSV describing all datasets
-            writer = csv.writer(results_file)
-            list_to_write = [datasets[j]["dataset_name"]]
-            list_to_write.append(datasets[j]["total_time_seconds"])
-            list_to_write.append(datasets[j]["fish_length_Delta_mean"])
-            list_to_write.append(datasets[j]["head_head_distance_mm_mean"])
-            list_to_write.append(datasets[j]["AngleXCorr_mean"])
-            # list_to_write.append(datasets[j]["AngleXCorr_std"])
-            # list_to_write.append(datasets[j]["AngleXCorr_skew"])
-            for k in key_list:
-                list_to_write.append(datasets[j][k]["combine_frames"].shape[1])
-            for k in key_list:
-                list_to_write.append(datasets[j][k]["total_duration"])
-            writer.writerow(list_to_write)                 
-        
-    # Close the Excel file
+    for j in range(N_datasets):
+        # Write for this dataset: sheet in Excel marking all frames with behaviors
+        mark_behavior_frames_Excel(markFrames_workbook, datasets[j], 
+                                   key_list)
+    # Close the Excel file of events in each frame
     markFrames_workbook.close() 
-        
 
+    # Excel workbook for summary of all behavior counts, durations
+    print('File for collecting all behavior counts: ', 
+          params['allDatasets_ExcelFile'])
+    initial_keys = ["dataset_name", "fps", "image_scale",
+                    "total_time_seconds", 
+                    "fish_length_Delta_mm_mean", 
+                    "head_head_distance_mm_mean", 
+                    "AngleXCorr_mean"]
+    initial_strings = ["Dataset", "Frames per sec", 
+                       "Image scale (um/s)",
+                       "Total Time (s)", 
+                       "Mean difference in fish lengths (mm)", 
+                       "Mean head-head dist (mm)", 
+                       "AngleXCorr_mean"]
+    write_behaviorCounts_Excel(params["allDatasets_ExcelFile"], 
+                              datasets, key_list, 
+                              initial_keys, initial_strings)
+    
+
+    for j in range(N_datasets):
+        
+        # Write for this dataset: summary in text file
+        write_behavior_txt_file(datasets[j], key_list)
+        
+        # Write for this dataset: frame-by-frame "basic measurements"
+        write_basicMeasurements_txt_file(datasets[j])
+
+        
 def write_behavior_txt_file(dataset, key_list):
     """
     Creates a txt file of the relevant window frames and event durations
@@ -817,10 +794,10 @@ def write_behavior_txt_file(dataset, key_list):
         results_file.write(f"   Image scale (um/px): {dataset['image_scale']:.1f}\n")
         results_file.write(f"   frames per second: {dataset['fps']:.1f}\n")
         results_file.write(f"   Duration: {dataset['total_time_seconds']:.1f} s\n")
-        results_file.write(f"   Mean length: {dataset['fish_length_mean']:.2f} px\n")
-        results_file.write(f"   Mean difference in length: {dataset['fish_length_Delta_mean']:.2f} px\n")
-        results_file.write(f"   Mean head-to-head distance: {dataset['head_head_distance_mm_mean']:.2f} mm\n")
-        results_file.write(f"   Mean closest distance: {dataset['closest_distance_mm_mean']:.2f} mm\n")
+        results_file.write(f"   Mean length: {dataset['fish_length_mm_mean']:.3f} mm\n")
+        results_file.write(f"   Mean difference in length: {dataset['fish_length_Delta_mm_mean']:.3f} mm\n")
+        results_file.write(f"   Mean head-to-head distance: {dataset['head_head_distance_mm_mean']:.3f} mm\n")
+        results_file.write(f"   Mean closest distance: {dataset['closest_distance_mm_mean']:.3f} mm\n")
         for k in key_list:
             outString = f'{k} N_events: {dataset[k]["combine_frames"].shape[1]}\n' + \
                     f'{k} Total N_frames: {dataset[k]["total_duration"]}\n' + \
@@ -869,8 +846,8 @@ def write_basicMeasurements_txt_file(dataset):
 
     # Create a list of rows
     headers = ["frame", "head_head_distance_mm", "closest_distance_mm",
-               "speed_Fish0", "speed_Fish1", "d_to_edge_Fish0_mm",
-               "d_to_edge_Fish1_mm", "edge flag", "bad tracking"]
+               "speed_mm_s_Fish0", "speed_mm_s_Fish1", 
+               "d_to_edge_mm_Fish0", "d_to_edge_mm_Fish1", "edge flag", "bad tracking"]
     rows = []
     
     for j in range(Nframes):
@@ -905,7 +882,8 @@ def mark_behavior_frames_Excel(markFrames_workbook, dataset, key_list):
         N/A
     """
     
-    # Annoyingly, Excel won't allow a worksheet name > 31 characters!
+    # Annoyingly, Excel won't allow a worksheet name that's
+    # more than 31 characters! Force it to use the last 31.
     sheet_name = dataset["dataset_name"]
     sheet_name = sheet_name[-31:]
     sheet1 = markFrames_workbook.add_worksheet(sheet_name)
@@ -927,6 +905,106 @@ def mark_behavior_frames_Excel(markFrames_workbook, dataset, key_list):
             for duration_idx in range(dataset[k]["combine_frames"][1,run_idx]):
                 sheet1.write(f'{ascii_uppercase[j+1]}{dataset[k]["combine_frames"][0,run_idx]+duration_idx+1}', 
                          "X".center(17))
+
+
+def write_behaviorCounts_Excel(ExcelFileName, datasets, key_list, 
+                              initial_keys, initial_strings):
+    # Create a new Excel writer object
+    writer = pd.ExcelWriter(ExcelFileName, engine='xlsxwriter')
+
+    # Define the sheet names and corresponding data keys
+    sheets = {
+        "N_events": "N_events",
+        "Durations (frames)": "total_duration",
+        "Relative Durations": "relative_duration"
+    }
+
+    for sheet_name, data_key in sheets.items():
+        # Prepare data for the current sheet
+        data = []
+        for j in range(len(datasets)):
+            row = [datasets[j][key] for key in initial_keys]
+            for key in key_list:
+                row.append(datasets[j][key][data_key])
+            data.append(row)
+
+        # Create a DataFrame
+        df = pd.DataFrame(data, columns=initial_strings + key_list)
+
+        # Write the DataFrame to the Excel sheet
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+    # Save the Excel file
+    writer.close()
+
+
+def add_statistics_to_excel(file_path='behaviorCounts.xlsx'):
+    # Load the Excel file
+    xls = pd.ExcelFile(file_path)
+    writer = pd.ExcelWriter(file_path, engine='openpyxl', mode='a')
+    
+    # Get the existing workbook
+    book = writer.book
+    
+    for sheet_name in xls.sheet_names:
+        # Read the sheet
+        df = pd.read_excel(xls, sheet_name=sheet_name)
+        
+        # Separate non-numeric and numeric columns
+        non_numeric_cols = df.select_dtypes(exclude=[np.number]).columns
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        
+        # Calculate statistics for numeric columns
+        mean = df[numeric_cols].mean()
+        std = df[numeric_cols].std()
+        n = df[numeric_cols].count()
+        sem = std / np.sqrt(n)
+        
+        # Prepare statistics rows
+        stats_df = pd.DataFrame({
+            'Statistic': ['Mean', 'Std. Dev.', 'Std. Error of Mean', 'N datasets']
+        })
+        stats_df = pd.concat([stats_df, pd.DataFrame({
+            col: [mean[col], std[col], sem[col], n[col]] for col in numeric_cols
+        })], axis=1)
+        
+        # Clear the existing sheet
+        if sheet_name in book.sheetnames:
+            book.remove(book[sheet_name])
+        
+        # Write the original data
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
+        
+        # Get the worksheet
+        worksheet = writer.sheets[sheet_name]
+        
+        # Write statistics rows
+        start_row = len(df) + 3  # +3 to leave a blank row
+        for i, row in enumerate(stats_df.itertuples(index=False), start=start_row):
+            for j, value in enumerate(row):
+                cell = worksheet.cell(row=i, column=j+1, value=value)
+        
+        # Adjust column widths
+        for idx, column in enumerate(worksheet.columns, start=1):
+            max_length = 0
+            column = [cell for cell in column]
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(cell.value)
+                except:
+                    pass
+            adjusted_width = (max_length + 2)
+            worksheet.column_dimensions[column[0].column_letter].width = adjusted_width
+    
+    # Save the workbook
+    writer.close()
+
+# Example usage:
+# add_statistics_to_excel('behaviorCounts.xlsx')
+
+# Example usage:
+# add_statistics_to_excel('behaviorCounts.xlsx')
 
 def calc_distances_matrix(pos_current, pos_previous):
     """
@@ -1143,8 +1221,8 @@ def repair_double_length_fish(dataset, CSVcolumns,
     Inputs:
         dataset : dataset dictionary. Note "all_data" contains all position
                   data, and has shape (Nframes x data columns x 2 fish)
-                  Note that dataset["fish_length_array"] 
-                     contains fish lengths (px)
+                  Note that dataset["fish_length_array_mm"] 
+                     contains fish lengths (mm)
         CSVcolumns: information on what the columns of dataset["all_data"] are
         lengthFactor : a list with two values; 
                        split fish into two if length is between these
@@ -1157,8 +1235,8 @@ def repair_double_length_fish(dataset, CSVcolumns,
     """
     
     # median fish length (px) for each fish; take average across fish
-    mean_fish_length = np.mean(np.median(dataset["fish_length_array"], axis=0))
-    print('mean fish length: ', mean_fish_length)
+    mean_fish_length_mm = np.mean(np.median(dataset["fish_length_array_mm"], axis=0))
+    print('mean fish length (mm): ', mean_fish_length_mm)
     
     # .copy() to avoid repairing in place
     Npositions = CSVcolumns["body_Ncolumns"]
@@ -1177,8 +1255,8 @@ def repair_double_length_fish(dataset, CSVcolumns,
     oneFish_indices = np.argmax(good_bodyTrack[rows_with_one_tracked,:], axis=1)
     print('One fish indices\n', oneFish_indices)
     # Calculate length ratios
-    lengthRatios = dataset["fish_length_array"][rows_with_one_tracked, 
-                                                oneFish_indices] / mean_fish_length
+    lengthRatios = dataset["fish_length_array_mm"][rows_with_one_tracked, 
+                                                oneFish_indices] / mean_fish_length_mm
     # Find frame indices where length ratios meet the condition
     doubleLength_indices = rows_with_one_tracked[np.logical_and(lengthFactor[0] < lengthRatios, 
                              lengthRatios < lengthFactor[1])]

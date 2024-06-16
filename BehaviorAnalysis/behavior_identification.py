@@ -33,11 +33,12 @@ def get_contact_frames(body_x, body_y, closest_distance_mm,
     Assumes frames are contiguous, as should have been checked earlier.
 
     Args:
-        body_x (array): a 3D array (Nframes x 10 x 2 fish) of x positions along the 10 body markers.
-        body_y (array): a 3D array (Nframes x 10 x 2 fish) of y positions along the 10 body markers.
+        body_x (array): a 3D array (Nframes x 10 x 2 fish) of x positions along the 10 body markers. (px)
+        body_y (array): a 3D array (Nframes x 10 x 2 fish) of y positions along the 10 body markers. (px)
         closest_distance_mm (array) : 1D array of closest distance between fish (px)
         contact_distance_threshold: the contact distance threshold, *px*
-        fish_length_array: Nframes x 2 array of fish lengths in each frame
+        fish_length_array: Nframes x 2 array of fish lengths in each frame, mm
+                            Only used for identifying the larger fish.
 
     Returns:
         contact_dict (dictionary): a dictionary of arrays of different 
@@ -134,7 +135,8 @@ def get_90_deg_frames(fish_head_pos, fish_angle_data, Nframes, window_size,
         window_size (int)      : window size for which circling is averaged over.
         cos_theta_90_thresh (float): the cosine(angle) threshold for 90-degree orientation.
         perp_maxHeadDist (float): inter-fish head distance threshold, *px*
-        fish_length_array: Nframes x 2 array of fish lengths in each frame
+        fish_length_array: Nframes x 2 array of fish lengths in each frame, mm
+                            Only used for identifying the larger fish.
 
     Returns:
         orientations (dict): a dictionary of arrays of window frames for different 
@@ -301,12 +303,15 @@ def get_Cbend_frames(dataset, CSVcolumns, Cbend_threshold = 2/np.pi):
                        i.e. with bending < Cbend_threshold
     """
     
-    fish_length = dataset["fish_length_array"]  # length in each frame, Nframes x Nfish==2 array
+    # length in each frame, Nframes x Nfish==2 array, mm so convert
+    # to px using image scale (um/px)
+    fish_length_px = dataset["fish_length_array_mm"] * 1000.0 / dataset["image_scale"]  
+    
     body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
     body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
     fish_head_tail_distance = np.sqrt((body_x[:,0,:]-body_x[:,-1,:])**2 + 
                                       (body_y[:,0,:]-body_y[:,-1,:])**2) # Nframes x Nfish==2 array
-    Cbend_ratio = fish_head_tail_distance/fish_length # Nframes x Nfish==2 array
+    Cbend_ratio = fish_head_tail_distance/fish_length_px # Nframes x Nfish==2 array
     Cbend = Cbend_ratio < Cbend_threshold # # True if fish is bent; Nframes x Nfish==2 array
     
     # Dictionary containing C-bend frames for each fish

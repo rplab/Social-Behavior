@@ -323,16 +323,16 @@ if __name__ == '__main__':
     if exptName == 'Infected_housing_March2024':
         print('\nVibrio infection, Solitary and Co-housed, March 2024\n')
         # Manually indicate particular subsets (input)
-        subExptNameList = ['C1_G1 + C1_G2', 'C2_G1 + C2_G2']
+        subGroupNameList = ['C1_G1 + C1_G2', 'C2_G1 + C2_G2']
         
         # Ask the user to indicate the sub-experiment name, constrained 
-        subExptName = input("\n\nChoose a value for the sub-expt (options: {}): ".format(', '.join(subExptNameList)))
+        subGroupName = input("\n\nChoose a value for the Group (options: {}): ".format(', '.join(subGroupNameList)))
         # Check if the user's choice is in the list
-        while subExptName not in subExptNameList:
+        while subGroupName not in subGroupNameList:
             print("Invalid choice. Choose a value from the list.")
-            subExptName = input("\n\nChoose a value for the sub-expt (options: {}): ".format(', '.join(exptNameList)))
+            subGroupName = input("\n\nChoose a value for the Group (options: {}): ".format(', '.join(exptNameList)))
 
-        if subExptName == 'C1_G1 + C1_G2':
+        if subGroupName == 'C1_G1 + C1_G2':
             path1 = baseDir + r"\2 week old - infected versus non-infected, solitary versus co-housed pairs" \
                 + r"\C1_G1_nonInfect_coHoused"
             file1 = r"behavior_relDuration_c1g1.csv"
@@ -342,7 +342,7 @@ if __name__ == '__main__':
             dataLabel1 = 'C1_G1_nonInfected_coHoused'
             dataLabel2 = 'C1_G2_nonInfected_solitary'
 
-        if subExptName == 'C2_G1 + C2_G2':
+        if subGroupName == 'C2_G1 + C2_G2':
             path1 = baseDir + r"\2 week old - infected versus non-infected, solitary versus co-housed pairs" \
                 + r"\C2_G1_Infected_coHoused"
             file1 = r"behavior_relDuration_c2g1.csv"
@@ -394,8 +394,8 @@ if __name__ == '__main__':
     print(df1.columns.tolist())
 
     # Specify columns to exclude
-    exclude_columns = ["Mean difference in fish lengths (px)", 
-                       "Mean Inter-fish dist (px)", "Angle XCorr mean"]
+    exclude_columns = ["Mean difference in fish lengths (mm)", 
+                       "Mean Inter-fish dist (mm)", "Angle XCorr mean"]
     
     # exclude more columns
     exclude_more = False
