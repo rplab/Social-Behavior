@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon May  6 09:56:13 2024
-Last modified on June 15, 2024
+Last modified on June 17, 2024
 
 Description
 -----------
@@ -69,6 +69,9 @@ def process_excel_and_csvs(source_path, excel_file, mainCSV_path, subfolder_name
         os.makedirs(subfolder_path, exist_ok=True)
         if os.path.exists(wellOffsetPositionsCSVfileFull):
             shutil.copy(wellOffsetPositionsCSVfileFull, subfolder_path)
+        else:
+            print('\n\nwellOffsetPositionsCSVfile does not exist! Cannot copy.')
+                
 
         # Create CSV file name for the subset of the Excel info file
         info_csv = os.path.join(subfolder_path, f"{os.path.basename(excel_file).split('.')[0]}_set_{group_code}.csv")
