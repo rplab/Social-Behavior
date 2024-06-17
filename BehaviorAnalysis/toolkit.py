@@ -22,7 +22,6 @@ import os
 import matplotlib.pyplot as plt
 from scipy.optimize import linear_sum_assignment
 import pickle
-import xlsxwriter
 import pandas as pd
 
 def get_CSV_folder_and_filenames(expt_config, startString="results"):
@@ -402,7 +401,8 @@ def get_imageScale(dataset_name, expt_config):
     else:
         # Read from CSV file
         matching_rows = []
-        with open(expt_config['imageScaleLocation'], 'r') as file:
+        with open(expt_config['imageScaleLocation'], 'r', 
+                  encoding='Latin1') as file:
             reader = csv.reader(file)
             next(reader)  # Skip the header row
             for row in reader:
@@ -739,6 +739,8 @@ def write_output_files(params, dataPath, datasets):
                 "fleeing_Fish0", "fleeing_Fish1", 
                 "edge_frames", "bad_bodyTrack_frames"]
 
+    '''
+    DELETE HERE
     # Excel workbook for indicating events in each frame
     markFrames_workbook = xlsxwriter.Workbook(os.path.join(output_path, 
                                                            params['allDatasets_markFrames_ExcelFile']))
@@ -748,6 +750,20 @@ def write_output_files(params, dataPath, datasets):
                                    key_list)
     # Close the Excel file of events in each frame
     markFrames_workbook.close() 
+    '''
+    # Create the ExcelWriter object
+    excel_file = os.path.join(output_path, params['allDatasets_markFrames_ExcelFile'])
+    writer = pd.ExcelWriter(excel_file, engine='xlsxwriter')
+    
+    # Call the function for each dataset
+    for j in range(N_datasets):
+        # Annoyingly, Excel won't allow a worksheet name that's
+        # more than 31 characters! Force it to use the last 31.
+        sheet_name = datasets[j]["dataset_name"][-31:]
+        mark_behavior_frames_Excel(writer, datasets[j], key_list, sheet_name)
+    
+    # Save and close the Excel file
+    writer.close()
 
     # Excel workbook for summary of all behavior counts, durations
     print('File for collecting all behavior counts: ', 
@@ -874,44 +890,37 @@ def write_basicMeasurements_txt_file(dataset):
         f.write(",".join(headers) + "\n")
         f.write("\n".join(rows))
     
-    
-def mark_behavior_frames_Excel(markFrames_workbook, dataset, key_list):
+
+def mark_behavior_frames_Excel(writer, dataset, key_list, sheet_name):
     """
-    Create and fill in sheet in Excel marking all frames with behaviors
-    found in this dataset
-
+    Create and fill in a sheet in an existing Excel file, marking all frames with behaviors
+    found in this dataset.
     Args:
-        markFrames_workbook : Excel workbook 
-        dataset : dictionary with all dataset info
-        key_list : list of dictionary keys corresponding to each behavior to write
-
+        writer (pandas.ExcelWriter): The ExcelWriter object representing the Excel file.
+        dataset (dict): Dictionary with all dataset info.
+        key_list (list): List of dictionary keys corresponding to each behavior to write.
+        sheet_name (str): Name of the sheet to be created.
     Returns:
         N/A
     """
     
-    # Annoyingly, Excel won't allow a worksheet name that's
-    # more than 31 characters! Force it to use the last 31.
-    sheet_name = dataset["dataset_name"]
-    sheet_name = sheet_name[-31:]
-    sheet1 = markFrames_workbook.add_worksheet(sheet_name)
-    ascii_uppercase = list(map(chr, range(65, 91)))
+    # Create an empty dataframe with column names
+    df = pd.DataFrame(columns=['Frame'] + key_list)
     
-    # Headers 
-    sheet1.write('A1', 'Frame') 
-    for j, k in enumerate(key_list):
-        sheet1.write(f'{ascii_uppercase[j+1]}1', k) 
-        
-    # All frame numbers
+    # Add frame numbers to the 'Frame' column
     maxFrame = int(np.max(dataset["frameArray"]))
-    for j in range(1,maxFrame+1):
-        sheet1.write(f'A{j+1}', str(j))
-
-    # Each behavior
-    for j, k in enumerate(key_list):
-        for run_idx in  range(dataset[k]["combine_frames"].shape[1]):
-            for duration_idx in range(dataset[k]["combine_frames"][1,run_idx]):
-                sheet1.write(f'{ascii_uppercase[j+1]}{dataset[k]["combine_frames"][0,run_idx]+duration_idx+1}', 
-                         "X".center(17))
+    df['Frame'] = range(1, maxFrame + 1)
+    
+    # Fill the dataframe with 'X' for each behavior
+    for k in key_list:
+        for run_idx in range(dataset[k]["combine_frames"].shape[1]):
+            start_frame = dataset[k]["combine_frames"][0, run_idx]
+            duration = dataset[k]["combine_frames"][1, run_idx]
+            end_frame = start_frame + duration - 1
+            df.loc[start_frame-1:end_frame-1, k] = 'X'.center(17)
+    
+    # Write the dataframe to the Excel file as a new sheet
+    df.to_excel(writer, sheet_name=sheet_name, index=False)
 
 
 def write_behaviorCounts_Excel(ExcelFileName, datasets, key_list, 
