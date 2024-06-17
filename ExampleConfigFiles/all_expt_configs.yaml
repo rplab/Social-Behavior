@@ -1,10 +1,10 @@
 # experiment_paths_and_parameters
 
 TwoWeek2023:
-  dataPath: C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - pairs # path with CSV files; leave empty for user-input
+  dataPathMain: C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - pairs # path with CSV files or parent of subgroup folders; leave empty for user-input
   fps: 25.0  # frames per second
   arena_radius_mm: 25.0  # arena radius, mm
-  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior # path for the CSV with image scale
+  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Zebrafish behavior # path for the CSV with image scale
   imageScaleFilename: ArenaCenters_SocPref_3456.csv
   imageScaleColumn: 4 # column (0-indexed) with image scale
   datasetColumns:  [0] # columns to concatenate to match dataset name 
@@ -12,15 +12,32 @@ TwoWeek2023:
   datasetRemoveStrings: ['results_', 'SocPref_', '_ALL', '_light', '_dark', '_2wpf', '_SocPref'] # strings to remove from filenames and first column of the imageScale CSV to find matches. 
   offsetPositionsFilename: wellOffsetPositionsCSVfile.csv
   # Arena center location information 
-  arenaCentersPathName: C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior
+  arenaCentersPathName: C:/Users/Raghu/Documents/Experiments and Projects/Zebrafish behavior
   arenaCentersFilename: ArenaCenters_SocPref_3456.csv
   arenaCentersColumns: [5,6] # columns (0-indexed) with x,y arena centers
 
-CA2024:
-  dataPath: C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - pairs - cholic acid # path with CSV files; leave empty for user-input
+TwoWeekDark2023:
+  dataPathMain: C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - pairs in the dark # path with CSV files or parent of subgroup folders; leave empty for user-input
   fps: 25.0  # frames per second
   arena_radius_mm: 25.0  # arena radius, mm
-  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior/CSV files and outputs/2 week old - pairs - cholic acid
+  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Zebrafish behavior # path for the CSV with image scale
+  imageScaleFilename: ArenaCenters_SocPref_3456.csv
+  imageScaleColumn: 4 # column (0-indexed) with image scale
+  datasetColumns:  [0] # columns to concatenate to match dataset name 
+  # filename of CSV file *in each data folder* with image offset filename
+  datasetRemoveStrings: ['results_', 'SocPref_', '_ALL', '_light', '_dark', '_2wpf', '_SocPref'] # strings to remove from filenames and first column of the imageScale CSV to find matches. 
+  offsetPositionsFilename: wellOffsetPositionsCSVfile.csv
+  # Arena center location information 
+  arenaCentersPathName: C:/Users/Raghu/Documents/Experiments and Projects/Zebrafish behavior
+  arenaCentersFilename: ArenaCenters_SocPref_3456.csv
+  arenaCentersColumns: [5,6] # columns (0-indexed) with x,y arena centers
+
+
+CA2024:
+  dataPathMain: C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - pairs - cholic acid # path with CSV files or parent of subgroup folders; leave empty for user-input
+  fps: 25.0  # frames per second
+  arena_radius_mm: 25.0  # arena radius, mm
+  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Zebrafish behavior/CSV files and outputs/2 week old - pairs - cholic acid
   imageScaleFilename: ImageScale_SocPrefBA_3b_all.csv
   imageScaleColumn: 4 # column (0-indexed) with image scale
   datasetColumns:  [0] # columns to concatenate to match dataset name 
@@ -29,13 +46,13 @@ CA2024:
   # Arena center location information
   arenaCentersLocation:  # estimate from well offset positions
   arenaCentersColumns: 
-  subExpts: ['Condition1', 'Condition2'] # optional, strings of subFolder names of sub-experiments with the same overall parameters
+  subGroups: ['Condition1', 'Condition2'] # optional, strings of subFolder names of sub-experiments with the same overall parameters
   
 Solitary_Cohoused_March2024:
-  dataPath: C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\TwoWeekOld_Solitary_CoHoused_1_3-2-2024 # path with CSV files; leave empty for user-input
+  dataPathMain: C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\TwoWeekOld_Solitary_CoHoused_1_3-2-2024 # path with CSV files or parent of subgroup folders; leave empty for user-input
   fps: 25.0  # frames per second
   arena_radius_mm: 25.0  # arena radius, mm
-  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior/CSV files and outputs/TwoWeekOld_Solitary_CoHoused_1_3-2-2024
+  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Zebrafish behavior/CSV files and outputs/TwoWeekOld_Solitary_CoHoused_1_3-2-2024
   imageScaleFilename: SocDef_Solitary_AnalysisRaghu.csv
   imageScaleColumn: 4 # column (0-indexed) with image scale
   datasetColumns:  [0] # columns to concatenate to match dataset name 
@@ -44,13 +61,13 @@ Solitary_Cohoused_March2024:
   # Arena center location information
   arenaCentersLocation:  # estimate from well offset positions
   arenaCentersColumns: 
-  subExpts: ['Condition1', 'Condition2'] # optional, strings of subFolder names of sub-experiments with the same overall parameters
+  subGroups: ['Condition1', 'Condition2'] # optional, strings of subFolder names of sub-experiments with the same overall parameters
   
 Shank3_Feb2024:
-  dataPath: C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - pairs with shank3 mutations # path with CSV files; leave empty for user-input
+  dataPathMain: C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - pairs with shank3 mutations # path with CSV files or parent of subgroup folders; leave empty for user-input
   fps: 25.0  # frames per second
   arena_radius_mm: 25.0  # arena radius, mm
-  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior/CSV files and outputs/2 week old - pairs with shank3 mutations
+  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Zebrafish behavior/CSV files and outputs/2 week old - pairs with shank3 mutations
   imageScaleFilename: SocDef_Shank3_AnalysisRaghu.csv
   imageScaleColumn: 4 # column (0-indexed) with image scale
   datasetColumns: [0, 1] #  columns to concatenate to match dataset name 
@@ -59,13 +76,13 @@ Shank3_Feb2024:
   # Arena center location information
   arenaCentersLocation:  # estimate from well offset positions
   arenaCentersColumns: 
-  subExpts: ['Genotype 1', 'Genotype 2', 'Genotype 3'] # optional, strings of subFolder names of sub-experiments with the same overall parameters
+  subGroups: ['Genotype 1', 'Genotype 2', 'Genotype 3'] # optional, strings of subFolder names of sub-experiments with the same overall parameters
   
 Infected_housing_March2024:
-  dataPath: C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - infected versus non-infected, solitary versus co-housed pairs # path with CSV files; leave empty for user-input
+  dataPathMain: C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - infected versus non-infected, solitary versus co-housed pairs # path with CSV files or parent of subgroup folders; leave empty for user-input
   fps: 25.0  # frames per second
   arena_radius_mm: 25.0  # arena radius, mm
-  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior/CSV files and outputs/2 week old - infected versus non-infected, solitary versus co-housed pairs
+  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Zebrafish behavior/CSV files and outputs/2 week old - infected versus non-infected, solitary versus co-housed pairs
   imageScaleFilename: SocDist_1a_CorrespondingTables.csv
   imageScaleColumn: 1 # column (0-indexed) with image scale
   datasetColumns:  [0, 2]  # columns to concatenate to match dataset name
@@ -74,13 +91,13 @@ Infected_housing_March2024:
   # Arena center location information
   arenaCentersLocation:  # estimate from well offset positions
   arenaCentersColumns: 
-  subExpts: ['C1_G1_nonInfect_coHoused', 'C1_G2_nonInfect_solitary', 'C2_G1_Infected_coHoused', 'C2_G2_Infected_solitary'] # optional, strings of subFolder names of sub-experiments with the same overall parameters
+  subGroups: ['C1_G1_nonInfect_coHoused', 'C1_G2_nonInfect_solitary', 'C2_G1_Infected_coHoused', 'C2_G2_Infected_solitary'] # optional, strings of subFolder names of sub-experiments with the same overall parameters
   
 XGF_May2024:
-  dataPath: C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - conventionalized versus ex-germ-free fish # path with CSV files; leave empty for user-input
+  dataPathMain: C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - conventionalized versus ex-germ-free fish # path with CSV files or parent of subgroup folders; leave empty for user-input
   fps: 25.0  # frames per second
   arena_radius_mm: 25.0  # arena radius, mm
-  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior/CSV files and outputs/2 week old - conventionalized versus ex-germ-free fish
+  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Zebrafish behavior/CSV files and outputs/2 week old - conventionalized versus ex-germ-free fish
   imageScaleFilename: SocDef_XGF_AnalysisRaghu_Filtered_mod.csv
   imageScaleColumn: 4 # column (0-indexed) with image scale
   datasetColumns:  [0, 1] # columns to concatenate to match dataset name 
@@ -89,13 +106,13 @@ XGF_May2024:
   # Arena center location information
   arenaCentersLocation:  # estimate from well offset positions
   arenaCentersColumns: 
-  subExpts: ['XGF_filteredCSVs_1', 'XGF_filteredCSVs_2'] # optional, strings of subFolder names of sub-experiments with the same overall parameters
+  subGroups: ['XGF_filteredCSVs_1', 'XGF_filteredCSVs_2'] # optional, strings of subFolder names of sub-experiments with the same overall parameters
   
 Infected_May2024:
-  dataPath: C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - infected versus non-infected pairs # path with CSV files; leave empty for user-input
+  dataPathMain: C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - infected versus non-infected pairs # path with CSV files or parent of subgroup folders; leave empty for user-input
   fps: 25.0  # frames per second
   arena_radius_mm: 25.0  # arena radius, mm
-  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior/CSV files and outputs/2 week old - infected versus non-infected pairs
+  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Zebrafish behavior/CSV files and outputs/2 week old - infected versus non-infected pairs
   imageScaleFilename: SocDist_2a_RaghuAnalysis_mod.csv
   imageScaleColumn: 5 # column (0-indexed) with image scale
   datasetColumns:  [0,1] # columns to concatenate to match dataset name 
@@ -104,30 +121,30 @@ Infected_May2024:
   # Arena center location information
   arenaCentersLocation:  # estimate from well offset positions
   arenaCentersColumns: 
-  subExpts: ['infected_nonInfected_1', 'infected_nonInfected_2', 'infected_nonInfected_3'] # optional, strings of subFolder names of sub-experiments with the same overall parameters
+  subGroups: ['infected_nonInfected_1', 'infected_nonInfected_2', 'infected_nonInfected_3'] # optional, strings of subFolder names of sub-experiments with the same overall parameters
 
 TwoWeek2023_test:
-  dataPath: C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - pairs TestSubset # path with CSV files; leave empty for user-input
+  dataPathMain: C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - pairs TestSubset # path with CSV files or parent of subgroup folders; leave empty for user-input
   fps: 25.0  # frames per second
   arena_radius_mm: 25.0  # arena radius, mm
-  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior
+  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Zebrafish behavior
   imageScaleFilename: ArenaCenters_SocPref_3456.csv
   imageScaleColumn: 4 # column (0-indexed) with image scale
   datasetColumns:  [0] # columns to concatenate to match dataset name 
   datasetRemoveStrings: ['results_', 'SocPref_', '_ALL', '_light', '_dark', '_2wpf', '_SocPref'] # strings to remove from filenames and first column of the imageScale CSV to find matches. 
   # Arena center location information
-  arenaCentersPathName: C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior
+  arenaCentersPathName: C:/Users/Raghu/Documents/Experiments and Projects/Zebrafish behavior
   arenaCentersFilename: ArenaCenters_SocPref_3456.csv
   arenaCentersColumns: [5,6] # columns (0-indexed) with x,y arena centers
   # filename of CSV file *in each data folder* with image offset filename
   offsetPositionsFilename: wellOffsetPositionsCSVfile.csv
 
 Shank3_Feb2024_testSubset:
-  dataPath: C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\2 week old - shank3 mutations TEST subset # path with CSV files; leave empty for user-input
+  dataPathMain: C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - shank3 mutations TEST subset # path with CSV files or parent of subgroup folders; leave empty for user-input
   fps: 25.0  # frames per second
   arena_radius_mm: 25.0  # arena radius, mm
   image scale:   # image scale, um/px, or empty  to load from file
-  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Misc/Zebrafish behavior/CSV files and outputs/2 week old - shank3 mutations TEST subset
+  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Zebrafish behavior/CSV files and outputs/2 week old - shank3 mutations TEST subset
   imageScaleFilename: SocDef_Shank3_AnalysisRaghu.csv
   imageScaleColumn: 4 # column (0-indexed) with image scale
   datasetColumns: [0,1] # columns to concatenate in the  imageScale CSV to match dataset name .
@@ -136,4 +153,4 @@ Shank3_Feb2024_testSubset:
   # Arena center location information:
   arenaCentersLocation:  # None; estimate from well offset positions
   arenaCentersColumns: 
-  subExpts: ['Genotype 1', 'Genotype 2', 'Genotype 3'] # optional, strings of subFolder names of sub-experiments with the same overall parameters
+  subGroups: ['Genotype 1', 'Genotype 2', 'Genotype 3'] # optional, strings of subFolder names of sub-experiments with the same overall parameters

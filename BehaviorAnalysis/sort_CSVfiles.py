@@ -106,7 +106,7 @@ def process_excel_and_csvs(source_path, excel_file, mainCSV_path, subfolder_name
         
 #%% Main part
 
-basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior'
+basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior'
 
 # Replace these:
 excel_fileName = r'SocDef_Shank3_AnalysisRaghu.xlsx'

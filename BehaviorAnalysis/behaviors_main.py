@@ -7,8 +7,8 @@
 # Created By  : Estelle Trieu 9/19/2022
 # Re-written by : Raghuveer Parthasarathy (2023)
 # version ='2.0' Raghuveer Parthasarathy -- begun May 2023; see notes.
-# last modified: Raghuveer Parthasarathy, June 11, 2024
-# ---------------------------------------------------------------------------
+# last modified: Raghuveer Parthasarathy, June 17, 2024
+# ---------------------------------------------------1------------------------
 """
 
 import csv
@@ -93,6 +93,7 @@ def extract_behaviors(dataset, params, CSVcolumns):
     contact_inferred_distance_threshold_px = params["contact_inferred_distance_threshold_mm"]*1000/dataset["image_scale"]
     contact_dict = get_contact_frames(body_x, body_y, dataset["closest_distance_mm"],
                                 params["contact_inferred_distance_threshold_mm"], 
+                                dataset["image_scale"],
                                 dataset["fish_length_array_mm"])
     contact_any = contact_dict["any_contact"]
     contact_head_body = contact_dict["head-body"]
@@ -186,26 +187,28 @@ def main():
     cwd = os.getcwd() # Current working directory
 
     # Load experiment configuration file
-    config_path = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs'
+    config_path = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs'
     config_file = 'all_expt_configs.yaml'
     expt_config = load_expt_config(config_path, config_file)
     
     # Get CSV column info from configuration file
-    CSVinfo_path = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs'
+    CSVinfo_path = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs'
     CSVinfo_file = 'CSVcolumns.yaml'
     with open(os.path.join(CSVinfo_path, CSVinfo_file), 'r') as f:
         all_CSV = yaml.safe_load(f)
     CSVcolumns = all_CSV['CSVcolumns']
 
     # Get behavior analysis parameter info from configuration file
-    params_path = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs'
+    params_path = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs'
     params_file = 'analysis_parameters.yaml'
     with open(os.path.join(params_path, params_file), 'r') as f:
         all_param = yaml.safe_load(f)
     params = all_param['params']
     
     # Get folder containing CSV files, and all "results" CSV filenames
-    data_path, allCSVfileNames = get_CSV_folder_and_filenames(expt_config) 
+    # Note that dataPath is the path containing CSVs, which 
+    # may be a subgroup path
+    dataPath, allCSVfileNames = get_CSV_folder_and_filenames(expt_config) 
     print(f'\n\n All {len(allCSVfileNames)} CSV files starting with "results": ')
     print(allCSVfileNames)
     
@@ -217,7 +220,7 @@ def main():
         
     # initialize a list of dictionaries for datasets
     datasets = [{} for j in range(N_datasets)]
-    os.chdir(data_path)
+    os.chdir(dataPath)
 
     # For display    
     showAllPositions = False
@@ -469,16 +472,23 @@ def main():
     # Write pickle file containing all datasets (optional)
     if pickleFileName != '':
         list_for_pickle = [datasets, CSVcolumns, expt_config, params]
-        write_pickle_file(list_for_pickle, data_path, 
+        write_pickle_file(list_for_pickle, dataPath, 
                           params['output_subFolder'], pickleFileName)
     
     # Write the output files (CSV, Excel)
-    write_output_files(params, data_path, datasets)
+    write_output_files(params, dataPath, datasets)
     
     # Modify the Excel sheets with behavior counts to include
     # summary statistics for all datasets (e.g. average for 
     # each behavior)
     add_statistics_to_excel(params['allDatasets_ExcelFile'])
+    
+    # Write a YAML file with parameters, combining expt_config,
+    # analysis parameters, and dataPath of subgroup
+    more_param_output = dict({'dataPath': dataPath})
+    all_outputs = expt_config | params | more_param_output
+    with open('all_params.yaml', 'w') as file:
+        yaml.dump(all_outputs, file)
     
     # Return to original directory
     os.chdir(cwd)

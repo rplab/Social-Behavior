@@ -25,29 +25,31 @@ import pickle
 import xlsxwriter
 import pandas as pd
 
-def get_CSV_folder_and_filenames(expt_config):
+def get_CSV_folder_and_filenames(expt_config, startString="results"):
     """
-    Asks user for the folder path containing CSV files; returns this
-    and a list of all CSV files whose names start with "results"
+    Get the folder path containing CSV files, either from the
+    configuration file, or asking user for the folder path
+    Also get list of all CSV files whose names start with 
+    startString, probably "results"
 
     Inputs:
-        expt_config : dictionary containing dataPath (or None to ask user)
+        expt_config : dictionary containing dataPathMain (or None to ask user)
                         as well as subGroup info (optional)
     Returns:
         A tuple containing
-        - data_path : the folder path containing CSV files
+        - dataPath : the folder path containing CSV files
         - allCSVfileNames : all CSV Files with names starting with 'results'
     
     """
     
-    if expt_config['dataPath'] == None:
-        data_path = input("Enter the folder for CSV files, or leave empty for cwd: ")
-        if data_path=='':
-            data_path = os.getcwd() # Current working directory
+    if expt_config['dataPathMain'] == None:
+        dataPath = input("Enter the folder for CSV files, or leave empty for cwd: ")
+        if dataPath=='':
+            dataPath = os.getcwd() # Current working directory
     else:
         # Load path from config file
         if ('subGroups' in expt_config.keys()):
-            main_data_path = expt_config['dataPath']
+            dataPathMain = expt_config['dataPathMain']
             print('\nSub-Experiments:')
             for j, subGroup in enumerate(expt_config['subGroups']):
                 print(f'  {j}: {subGroup}')
@@ -56,24 +58,24 @@ def get_CSV_folder_and_filenames(expt_config):
                 subGroupPath = expt_config['subGroups'][int(subGroup_choice)]
             except:
                 subGroupPath = expt_config['subGroups'][subGroup_choice]
-            data_path = os.path.join(main_data_path, subGroupPath)
+            dataPath = os.path.join(dataPathMain, subGroupPath)
         else:
-            data_path = expt_config['dataPath']
+            dataPath = expt_config['dataPathMain']
         
     # Validate the folder path
-    while not os.path.isdir(data_path):
+    while not os.path.isdir(dataPath):
         print("Invalid data path. Please try again (manual entry).")
-        data_path = input("Enter the folder path: ")
+        dataPath = input("Enter the folder path: ")
 
-    print("Selected folder path: ", data_path)
+    print("Selected folder path: ", dataPath)
     
     # Make a list of all relevant CSV files in the folder
     allCSVfileNames = []
-    for filename in os.listdir(data_path):
-        if (filename.endswith('.csv') and filename.startswith('results')):
+    for filename in os.listdir(dataPath):
+        if (filename.endswith('.csv') and filename.startswith(startString)):
             allCSVfileNames.append(filename)
 
-    return data_path, allCSVfileNames
+    return dataPath, allCSVfileNames
 
     
 def load_data(CSVfileName, N_columns):
@@ -668,7 +670,7 @@ def plotAllPositions(dataset, CSVcolumns, arena_radius_mm,
     plt.axis('equal')
 
 
-def write_pickle_file(list_for_pickle, data_path, outputFolderName, pickleFileName):
+def write_pickle_file(list_for_pickle, dataPath, outputFolderName, pickleFileName):
     """
     Write Pickle file in the analysis folder
     
@@ -676,7 +678,7 @@ def write_pickle_file(list_for_pickle, data_path, outputFolderName, pickleFileNa
     Parameters
     ----------
     list_for_pickle : list of datasets to save in the Pickle file
-    data_path : CSV data path
+    dataPath : CSV data path
     outputFolderName : output path, should be params['output_subFolder']
     pickleFileName : string, filename -- will append .pickle
 
@@ -685,10 +687,10 @@ def write_pickle_file(list_for_pickle, data_path, outputFolderName, pickleFileNa
     None.
 
     """
-    pickle_folder = os.path.join(data_path, outputFolderName)
+    pickle_folder = os.path.join(dataPath, outputFolderName)
     
     # Create output directory, if it doesn't exist
-    pickle_folder = os.path.join(data_path, outputFolderName)
+    pickle_folder = os.path.join(dataPath, outputFolderName)
     if not os.path.exists(pickle_folder):
         os.makedirs(pickle_folder)
 
@@ -698,12 +700,12 @@ def write_pickle_file(list_for_pickle, data_path, outputFolderName, pickleFileNa
         pickle.dump(list_for_pickle, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     
-def write_output_files(params, data_path, datasets):
+def write_output_files(params, dataPath, datasets):
     """
     Write the output files (several) for all datasets
     Inputs:
         params : analysis parameters; we use the output file pathinfo
-        data_path : path containing CSV input files
+        dataPath : path containing CSV input files
         datasets : all dataset and analysis info
         N_datasets : number of datasets
         
@@ -714,7 +716,7 @@ def write_output_files(params, data_path, datasets):
     N_datasets = len(datasets)
     
     # Create output directory, if it doesn't exist
-    output_path = os.path.join(data_path, params['output_subFolder'])
+    output_path = os.path.join(dataPath, params['output_subFolder'])
     if not os.path.exists(output_path):
         os.makedirs(output_path)
     
@@ -811,12 +813,14 @@ def write_basicMeasurements_txt_file(dataset):
     a given *single dataset* at each frame.
     Rows = Frames
     Columns = 
-    •	Head-to-head distance (mm) ["head_head_distance_mm"]
-    •	Closest inter-fish distance (mm) ["closest_distance_mm"]
-    •	Speed of each fish (mm/s); frame-to-frame speed, recorded as 0 for the first frame. ["speed_array_mm_s"]
-    •	Distance to edge, each fish (mm); ["d_to_edge_mm"]
-    •	Edge flag (1 or 0) ["edge_frames"]
-    •	Bad track (1 or 0) ["bad_bodyTrack_frames"]
+        Head-to-head distance (mm) ["head_head_distance_mm"]
+        Closest inter-fish distance (mm) ["closest_distance_mm"]
+        Speed of each fish (mm/s); frame-to-frame speed, recorded as 0 for the first frame. ["speed_array_mm_s"]
+        Relative orientation, i.e. angle between heading and 
+            head-to-head vector, for each fish (radians) ["relative_orientation"]
+        Distance to edge, each fish (mm); ["d_to_edge_mm"]
+        Edge flag (1 or 0) ["edge_frames"]
+        Bad track (1 or 0) ["bad_bodyTrack_frames"]
 
     Caution: 
         Number of fish hard-coded as 2
@@ -847,6 +851,7 @@ def write_basicMeasurements_txt_file(dataset):
     # Create a list of rows
     headers = ["frame", "head_head_distance_mm", "closest_distance_mm",
                "speed_mm_s_Fish0", "speed_mm_s_Fish1", 
+               "rel_orientation_rad_Fish0", "rel_orientation_rad_Fish1", 
                "d_to_edge_mm_Fish0", "d_to_edge_mm_Fish1", "edge flag", "bad tracking"]
     rows = []
     
@@ -856,6 +861,8 @@ def write_basicMeasurements_txt_file(dataset):
                "{:.3f}".format(dataset["closest_distance_mm"][j].item()),
                "{:.3f}".format(dataset["speed_array_mm_s"][j, 0].item()),
                "{:.3f}".format(dataset["speed_array_mm_s"][j, 1].item()),
+               "{:.3f}".format(dataset["relative_orientation"][j, 0].item()),
+               "{:.3f}".format(dataset["relative_orientation"][j, 1].item()),
                "{:.3f}".format(dataset["d_to_edge_mm"][j, 0].item()),
                "{:.3f}".format(dataset["d_to_edge_mm"][j, 1].item()),
                "{:d}".format(EdgeFlag[j]),

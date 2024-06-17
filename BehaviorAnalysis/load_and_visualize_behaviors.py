@@ -41,9 +41,9 @@ def loadAllFromPickle(pickleFileName = None):
     if pickleFileName == None:
         #pickleFileName = input('Pickle file name; Will append .pickle: ')
         #pickleFileName = pickleFileName + '.pickle'
-        pickleFileName = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs\temp\temp.pickle'
-        # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\2 week old - pairs\all_2week_light.pickle'
-        # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files\2 week old - pairs in the dark\all_2week_dark.pickle'
+        pickleFileName = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\temp\temp.pickle'
+        # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files\2 week old - pairs\all_2week_light.pickle'
+        # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files\2 week old - pairs in the dark\all_2week_dark.pickle'
 
 
     with open(pickleFileName, 'rb') as handle:
@@ -259,7 +259,7 @@ def how_many_both_approaching_frames(dataset):
 
 if __name__ == '__main__':
     
-    pickleFileNameBase  = r'C:\Users\Raghu\Documents\Experiments and Projects\Misc\Zebrafish behavior\CSV files and outputs'
+    pickleFileNameBase  = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs'
     pickleFileName = pickleFileNameBase + r'\temp\temp.pickle'    
     
     datasets, CSVcolumns, expt_config, params = \

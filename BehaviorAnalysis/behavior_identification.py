@@ -24,8 +24,8 @@ import numpy as np
 
 
 def get_contact_frames(body_x, body_y, closest_distance_mm, 
-                       contact_distance_threshold, 
-                       fish_length_array):
+                       contact_distance_threshold_mm, 
+                       image_scale, fish_length_array):
     """
     Returns a dictionary of window frames for different 
     contact between two fish: any body positions, or head-body contact
@@ -35,8 +35,9 @@ def get_contact_frames(body_x, body_y, closest_distance_mm,
     Args:
         body_x (array): a 3D array (Nframes x 10 x 2 fish) of x positions along the 10 body markers. (px)
         body_y (array): a 3D array (Nframes x 10 x 2 fish) of y positions along the 10 body markers. (px)
-        closest_distance_mm (array) : 1D array of closest distance between fish (px)
-        contact_distance_threshold: the contact distance threshold, *px*
+        closest_distance_mm (array) : 1D array of closest distance between fish (mm)
+        contact_distance_threshold_mm: the contact distance threshold, *mm*
+        image_scale : um/px, from datasets[j]["image_scale"]
         fish_length_array: Nframes x 2 array of fish lengths in each frame, mm
                             Only used for identifying the larger fish.
 
@@ -53,7 +54,7 @@ def get_contact_frames(body_x, body_y, closest_distance_mm,
 
         # Any contact: look at closest element of distance matrix between
         # body points, previously calculated
-        if closest_distance_mm[idx] < contact_distance_threshold:
+        if closest_distance_mm[idx] < contact_distance_threshold_mm:
             contact_dict["any_contact"].append(idx+1)
             
         # Head-body contact
@@ -61,8 +62,8 @@ def get_contact_frames(body_x, body_y, closest_distance_mm,
                                 (body_y[idx,0,0] - body_y[idx,:,1])**2)
         d_head2_body1 = np.sqrt((body_x[idx,0,1] - body_x[idx,:,0])**2 + 
                                 (body_y[idx,0,1] - body_y[idx,:,0])**2)
-        fish1_hb_contact = np.min(d_head1_body2) < contact_distance_threshold
-        fish2_hb_contact = np.min(d_head2_body1) < contact_distance_threshold
+        fish1_hb_contact = np.min(d_head1_body2) < contact_distance_threshold_mm*1000/image_scale
+        fish2_hb_contact = np.min(d_head2_body1) < contact_distance_threshold_mm*1000/image_scale
         
         if fish1_hb_contact or fish2_hb_contact:
             contact_dict["head-body"].append(idx+1)
@@ -556,7 +557,6 @@ def get_approach_flee_frames(dataset, CSVcolumns,
     
     # Cosine of angle between heading and closest distance vector
     cos_angle_head_body = np.cos(angle_head_body - angle_data)
-    print('Cosine angle shape: ', cos_angle_head_body.shape)
     
     # frame-to-frame change in distance between fish (px)
     delta_dheadbody = d_head_body[1:,:] - d_head_body[:-1, :]
