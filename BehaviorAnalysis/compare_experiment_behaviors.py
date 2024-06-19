@@ -536,6 +536,21 @@ def ratio_with_sim_uncertainty(x, sigx, y, sigy, n_samples=10000):
     return ratios, r_lower, r_upper
 
 
+def getOutputPath():
+    # Ask user for the output path (for plots)
+    # If empty, dialog box
+    
+    outputPath = input('Enter the path (folder) for output, or leave blank to use a dialog box: ')
+
+    if outputPath:
+        return outputPath
+    else:
+        root = tk.Tk()
+        root.withdraw()
+        outputPath = filedialog.askdirectory(title="Select a folder")
+        return outputPath
+
+    
 #%%
 
 if __name__ == '__main__':
@@ -557,7 +572,12 @@ if __name__ == '__main__':
     file_paths = (file_path1, file_path2)
     dataLabels = [data_label1, data_label2]
 
-    outputName = input('Base name for comparison file output: ')
+    # Output plot, and location
+    outputPath = getOutputPath()
+    baseName0 = input('Base file name for comparison outputs.\n' + \
+                       '    Include image extension (e.g. "exptGraphs.eps"): ')
+    baseName, out_ext = os.path.splitext(baseName0)
+    baseName = baseName.split('.')[0]
 
     # Read Relative Durations sheets into Pandas DataFrames
     df1 = read_behavior_Excel(file_paths[0])
@@ -582,6 +602,7 @@ if __name__ == '__main__':
                                  'contact_smaller_fish_head',
                                  'Cbend_Fish0', 'Cbend_Fish1',
                                  'bad_bodyTrack_frames'])
+        
     also_exclude_from_loglog = ['Mean difference in fish lengths (mm)',
                            'Mean head-head dist (mm)',
                            "AngleXCorr_mean"]
@@ -592,20 +613,24 @@ if __name__ == '__main__':
     exclude_from_ratio = exclude_from_all + also_exclude_from_ratio
     
 
-    # Call the function to plot the comparison
+    # Call the function for log-log plot of the comparison
+    new_baseName = baseName + '_relBehaviorRatios' 
+    outputFileName = os.path.join(outputPath, new_baseName + out_ext)
+
     plot_comparison((df1, df2), exclude_from_loglog, 
                     (dataLabels[0], dataLabels[1]),
                     logPlot = True, showTextLabels = False, 
                     showLegend = True,
-                    outputFileName = outputName + '_relBehaviorPlot.eps')
+                    outputFileName = outputFileName)
     
     # Call the function to create scatter plots with error bars
     # Because uncertainties in mean values are large and asymmetric,
     # use bootstrap resampling (separate function)
     # Note that I'm plotting set 2/ set 1, to match "y / x" from the earlier 
     # graph
+    new_baseName = baseName + '_relBehaviorPlot' 
+    outputFileName = os.path.join(outputPath, new_baseName + out_ext)
     scatter_plots_with_error_bars((df2, df1), exclude_from_ratio,
                                   (dataLabels[1], dataLabels[0]),
                                   showLegend = False,
-                                  outputFileName = outputName + \
-                                      '_relBehaviorRatios.png')
+                                  outputFileName = outputFileName)
