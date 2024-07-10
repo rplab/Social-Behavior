@@ -7,7 +7,7 @@
 # Created By  : Estelle Trieu 9/19/2022
 # Re-written by : Raghuveer Parthasarathy (2023)
 # version ='2.0' Raghuveer Parthasarathy -- begun May 2023; see notes.
-# last modified: Raghuveer Parthasarathy, June 17, 2024
+# last modified: Raghuveer Parthasarathy, July 9, 2024
 # ---------------------------------------------------1------------------------
 """
 
@@ -28,11 +28,11 @@ from toolkit import get_CSV_folder_and_filenames, load_data, \
         add_statistics_to_excel
 from behavior_identification import get_contact_frames, \
     get_inferred_contact_frames, get_90_deg_frames, \
-    get_tail_rubbing_frames, get_Cbend_frames, get_Jbend_frames, \
+    get_tail_rubbing_frames, get_isMoving_frames, \
+    get_Cbend_frames, get_Jbend_frames, \
     calcOrientationXCorr, get_approach_flee_frames, \
     get_relative_orientation
 
-import matplotlib.pyplot as plt
 from scipy.stats import skew
 
 # ---------------------------------------------------------------------------
@@ -183,23 +183,26 @@ def main():
     Main function for calling reading functions, basic analysis functions,
     and behavior extraction functions for all CSV files in a set 
     """
-    
-    cwd = os.getcwd() # Current working directory
+
+    # The main folder containing configuration and parameter files.
+    basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior'
+
+    cwd = os.getcwd() # Note the current working directory
 
     # Load experiment configuration file
-    config_path = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs'
+    config_path = os.path.join(basePath, r'CSV files and outputs')
     config_file = 'all_expt_configs.yaml'
     expt_config = load_expt_config(config_path, config_file)
     
     # Get CSV column info from configuration file
-    CSVinfo_path = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs'
+    CSVinfo_path = os.path.join(basePath, r'CSV files and outputs')
     CSVinfo_file = 'CSVcolumns.yaml'
     with open(os.path.join(CSVinfo_path, CSVinfo_file), 'r') as f:
         all_CSV = yaml.safe_load(f)
     CSVcolumns = all_CSV['CSVcolumns']
 
     # Get behavior analysis parameter info from configuration file
-    params_path = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs'
+    params_path = os.path.join(basePath, r'CSV files and outputs')
     params_file = 'analysis_parameters.yaml'
     with open(os.path.join(params_path, params_file), 'r') as f:
         all_param = yaml.safe_load(f)
@@ -208,9 +211,19 @@ def main():
     # Get folder containing CSV files, and all "results" CSV filenames
     # Note that dataPath is the path containing CSVs, which 
     # may be a subgroup path
-    dataPath, allCSVfileNames = get_CSV_folder_and_filenames(expt_config) 
+    dataPath, allCSVfileNames, subGroupName = \
+        get_CSV_folder_and_filenames(expt_config) 
     print(f'\n\n All {len(allCSVfileNames)} CSV files starting with "results": ')
     print(allCSVfileNames)
+    
+    # If there are subgroups, modify the output Excel file name for
+    # summary statistics of each behavior for each dataset -- instead
+    # of "behavior_counts.xlsx" (or whatever params["allDatasets_ExcelFile"]
+    # currently is), append subGroupName
+    if not subGroupName==None:
+        base_name, extension = os.path.splitext(params["allDatasets_ExcelFile"])
+        params["allDatasets_ExcelFile"] = f"{base_name}_{subGroupName}{extension}"
+        print(f"Modifying output allDatasets_ExcelFile file name to be: {params['allDatasets_ExcelFile']}")
     
     print('\nEnter the filename for an output pickle file (w/ all datasets).')
     pickleFileName = input('   Will append .pickle. Leave blank for none.: ')
@@ -250,7 +263,8 @@ def main():
         datasets[j]["total_time_seconds"] = (np.max(datasets[j]["frameArray"]) - \
             np.min(datasets[j]["frameArray"]) + 1.0) / datasets[j]["fps"]
         print('   ', 'Total duration: ', datasets[j]["total_time_seconds"], 'seconds')
-        
+
+
         # (Optional) Show all head positions, and arena center, and dish edge. 
         #    (& close threshold)
         if showAllPositions:
@@ -295,7 +309,7 @@ def main():
 
 
     # For each dataset, characterizations that involve single fish
-    # (e.g. length, bending, speed)
+    # (e.g. fish length, bending, speed)
     for j in range(N_datasets):
         print('Single-fish characterizations for Dataset: ', 
                   datasets[j]["dataset_name"])
@@ -311,6 +325,35 @@ def main():
         datasets[j]["speed_array_mm_s"] = \
             get_fish_speeds(datasets[j]["all_data"], CSVcolumns, 
                             datasets[j]["image_scale"], expt_config['fps'])
+            
+        # Frames with speed above threshold (i.e. moving fish)
+        # "_each" is a dictionary with a key for each fish, 
+        #     each containing a numpy array of frames in which that fish is moving
+        # "_any" is a numpy array of frames in which any fish is moving
+        # "_all" is a numpy array of frames in which all fish are moving
+        
+        isMoving_frames_each, isMoving_frames_any, isMoving_frames_all = \
+            get_isMoving_frames(datasets[j], params["motion_speed_threshold_mm_second"])
+
+        # For movement indicator, for "any" and "all" fish,
+        # make a dictionary containing frames, removing frames with 
+        # "bad" elements. Unlike other characteristics, need to "dilate"
+        # bad tracking frames, since each bad tracking frame affects 
+        # prior and subsequent speed measure.
+        # Also makes a 2xN array of initial frames and durations 
+        isMoving_keys = ('isMoving_any', 'isMoving_all')
+        isMoving_arrays = (isMoving_frames_any, isMoving_frames_all)
+        for isMoving_key, isMoving_array in zip(isMoving_keys, isMoving_arrays):
+            badTrFramesRaw = np.array(datasets[j]["bad_bodyTrack_frames"]["raw_frames"]).astype(int)
+            dilate_badTrackFrames = np.concatenate((badTrFramesRaw,
+                                                   badTrFramesRaw + 1))
+            dilate_badTrackFrames = np.unique(dilate_badTrackFrames)
+            datasets[j][isMoving_key] = make_frames_dictionary(isMoving_array,
+                                          (datasets[j]["edge_frames"]["raw_frames"],
+                                           dilate_badTrackFrames),
+                                          behavior_name = isMoving_key,
+                                          Nframes=datasets[j]['Nframes'])
+
 
         # Frames with C-bends and J-bends; each is a dictionary with two 
         # keys, one for each fish, each containing a numpy array of frames

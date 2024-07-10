@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, June 15, 2024
+Last modified by Rghuveer Parthasarathy, July 9, 2024
 
 Description
 -----------
@@ -38,6 +38,7 @@ def get_CSV_folder_and_filenames(expt_config, startString="results"):
         A tuple containing
         - dataPath : the folder path containing CSV files
         - allCSVfileNames : all CSV Files with names starting with 'results'
+        - subGroupName : Path name of the subGroup; None if no subgroups
     
     """
     
@@ -54,11 +55,12 @@ def get_CSV_folder_and_filenames(expt_config, startString="results"):
                 print(f'  {j}: {subGroup}')
             subGroup_choice = input('Select sub-experiment (string or number): ')
             try:
-                subGroupPath = expt_config['subGroups'][int(subGroup_choice)]
+                subGroupName = expt_config['subGroups'][int(subGroup_choice)]
             except:
-                subGroupPath = expt_config['subGroups'][subGroup_choice]
-            dataPath = os.path.join(dataPathMain, subGroupPath)
+                subGroupName = expt_config['subGroups'][subGroup_choice]
+            dataPath = os.path.join(dataPathMain, subGroupName)
         else:
+            subGroupName = None
             dataPath = expt_config['dataPathMain']
         
     # Validate the folder path
@@ -74,7 +76,7 @@ def get_CSV_folder_and_filenames(expt_config, startString="results"):
         if (filename.endswith('.csv') and filename.startswith(startString)):
             allCSVfileNames.append(filename)
 
-    return dataPath, allCSVfileNames
+    return dataPath, allCSVfileNames, subGroupName
 
     
 def load_data(CSVfileName, N_columns):
@@ -555,9 +557,9 @@ def get_fish_speeds(all_data, CSVcolumns, image_scale, fps):
     dr = np.sqrt((head_x[1:,:] - head_x[:-1,:])**2 + 
                     (head_y[1:,:] - head_y[:-1,:])**2)
     speed_array_mm_s = dr*image_scale*fps/1000.0
-    # to make Nframes x Nfish==2 set as 0 for frame 1
+    # to make Nframes x Nfish==2 set as 0 for the last frame
     speed_array_mm_s = np.append(speed_array_mm_s, np.zeros((1, 2)), axis=0)
-
+    
     return speed_array_mm_s
 
 def get_bad_headTrack_frames(dataset, params, xcol=3, ycol=4, tol=0.001):
@@ -628,7 +630,6 @@ def get_bad_bodyTrack_frames(dataset, params, body_column_x_start=6,
     # print(bad_bodyTrack_frames)
     
     return bad_bodyTrack_frames
-    
     
 
 
@@ -737,20 +738,9 @@ def write_output_files(params, dataPath, datasets):
                 "Cbend_Fish0", "Cbend_Fish1", "Jbend_Fish0", "Jbend_Fish1",
                 "approaching_Fish0", "approaching_Fish1", 
                 "fleeing_Fish0", "fleeing_Fish1", 
+                "isMoving_any", "isMoving_all", 
                 "edge_frames", "bad_bodyTrack_frames"]
 
-    '''
-    DELETE HERE
-    # Excel workbook for indicating events in each frame
-    markFrames_workbook = xlsxwriter.Workbook(os.path.join(output_path, 
-                                                           params['allDatasets_markFrames_ExcelFile']))
-    for j in range(N_datasets):
-        # Write for this dataset: sheet in Excel marking all frames with behaviors
-        mark_behavior_frames_Excel(markFrames_workbook, datasets[j], 
-                                   key_list)
-    # Close the Excel file of events in each frame
-    markFrames_workbook.close() 
-    '''
     # Create the ExcelWriter object
     excel_file = os.path.join(output_path, params['allDatasets_markFrames_ExcelFile'])
     writer = pd.ExcelWriter(excel_file, engine='xlsxwriter')
