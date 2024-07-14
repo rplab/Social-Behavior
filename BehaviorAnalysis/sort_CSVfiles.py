@@ -12,7 +12,8 @@ Code to move CSV files to destination folders, sorting by group or condition
    code as indicated in the Excel file. For each CSV file, examines the file
    name and reads the "Trial_ID" and "Pair_ID" columns in the Excel file to 
    find the matching row. Uses the "group_code_label" heading in the Excel 
-   file to sort. Excel file must be in the source MAT folder; copied to 
+   file to sort; or ignore group codes.
+   Excel file must be in the source MAT folder; it is copied to 
    the CSV parent folder
 Only moves files if the "include1_label" is 1
 Optional: only move if "include2_label" is one -- for additional filtering; 
@@ -38,7 +39,6 @@ import pandas as pd
 import shutil
 import numpy as np
 
-
 def process_excel_and_csvs(source_path, excel_file, mainCSV_path, subfolder_name, 
                            group_code_label, include1_label, 
                            include2_label=None, 
@@ -57,21 +57,29 @@ def process_excel_and_csvs(source_path, excel_file, mainCSV_path, subfolder_name
     # Copy the Excel file to the parent CSV folder
     shutil.copy(excel_fileFull, mainCSV_path)
 
-    # Find unique Group_Code values and enforce integer type, ignoring NaN and Inf
-    group_code_series = df[group_code_label].dropna().replace([np.inf, -np.inf], np.nan).dropna().astype(int)
-    group_codes = group_code_series.unique()
     wellOffsetPositionsCSVfileFull = os.path.join(mainCSV_path, wellOffsetPositionsCSVfilename)
 
-    # Create subfolders for each group 
-    # and copy wellOffsetPositionsCSVfile.csv if it exists
+    # Find unique Group_Code values and enforce integer type, ignoring NaN and Inf
+    # If there are no group codes, use the value "1" just to keep 
+    if group_code_label is None:
+        group_codes = [1]
+    else:
+        group_code_series = df[group_code_label].dropna().replace([np.inf, -np.inf], np.nan).dropna().astype(int)
+        group_codes = group_code_series.unique()
+    
+    # Create subfolders for each group (or just use main folder if there are not groups)
+    # Copy wellOffsetPositionsCSVfile.csv if it exists
     for group_code in group_codes:
-        subfolder_path = os.path.join(mainCSV_path, f"{subfolder_name}_{group_code}")
+        if group_code_label is None:
+            subfolder_path = mainCSV_path
+        else:
+            subfolder_path = os.path.join(mainCSV_path, 
+                                          f"{subfolder_name}_{group_code}")
         os.makedirs(subfolder_path, exist_ok=True)
         if os.path.exists(wellOffsetPositionsCSVfileFull):
             shutil.copy(wellOffsetPositionsCSVfileFull, subfolder_path)
         else:
             print('\n\nwellOffsetPositionsCSVfile does not exist! Cannot copy.')
-                
 
         # Create CSV file name for the subset of the Excel info file
         info_csv = os.path.join(subfolder_path, f"{os.path.basename(excel_file).split('.')[0]}_set_{group_code}.csv")
@@ -84,12 +92,24 @@ def process_excel_and_csvs(source_path, excel_file, mainCSV_path, subfolder_name
                 csv_path = os.path.join(source_path, csv_file)
                 csv_basename = os.path.splitext(csv_file)[0]
                 trial_id, pair_id = csv_basename.rsplit('_', 1)
-                pair_id = int(pair_id.split('_')[-1])
-
+                try:
+                    pair_id = int(pair_id.split('_')[-1])
+                except:
+                    print('\nsort_CSVfiles.py')
+                    print('**Error: cannot determine pair ID**') 
+                    print('trial_id: ', trial_id)
+                    print('pair_id: ', pair_id)
+                    pair_id = input('Enter the pair ID number (integer): ')
+                    pair_id = int(pair_id)
+                
                 # Find the row in the Excel sheet that matches the CSV file name
-                row_mask = (df["Trial_ID"].apply(lambda x: str(x) in trial_id)) & \
-                    (df["Pair_ID"] == pair_id) & \
-                        (df[group_code_label] == group_code)
+                if group_code_label is None:
+                        row_mask = (df["Trial_ID"].apply(lambda x: str(x) in trial_id)) & \
+                            (df["Pair_ID"] == pair_id)
+                else:
+                        row_mask = (df["Trial_ID"].apply(lambda x: str(x) in trial_id)) & \
+                            (df["Pair_ID"] == pair_id) & \
+                            (df[group_code_label] == group_code)
                 row = df.loc[row_mask]
 
                 if not row.empty:
@@ -112,13 +132,13 @@ def process_excel_and_csvs(source_path, excel_file, mainCSV_path, subfolder_name
 basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior'
 
 # Replace these:
-excel_fileName = r'SocDef_Shank3_AnalysisRaghu.xlsx'
-sourceMATpath = basePath + r'\MAT files\TEMP 2 week old - pairs with shank3 mutations - Copy'
-destination_mainCSV_path = basePath + r'\CSV files and outputs\TEMP 2 week old - pairs with shank3 mutations - Copy'
-group_code_label = 'Genotype' # may be 'Group_Code'
+excel_fileName = r'SocPref_6a-b_AnalysisRaghu.xlsx'
+sourceMATpath = basePath + r'\MAT files\2 week old - single fish in the dark'
+destination_mainCSV_path = basePath + r'\CSV files and outputs\2 week old - single fish in the dark'
+group_code_label =  None # e.g. 'Genotype', or 'Group_Code'. Use None [no quotes] to ignore
 include1_label = 'Include' # Header of the "include" column
 include2_label = None  # use None to avoid additional filtering, or 'Filter' to filter
-subfolder_name = 'Genotype' # will append the group code to this for sub-folders
+subfolder_name = 'Genotype' # will append the group code to this for sub-folders; probably make this the same as group_code_label
 wellOffsetPositionsCSVfilename = 'wellOffsetPositionsCSVfile.csv' # Probably don't need to change
 excludeCSVList = ['wellOffsetPositionsCSVfile.csv', 
                   'SocDef_Shank3_AnalysisRaghu.csv']  # ignore these CSVs
@@ -127,7 +147,6 @@ if not os.path.exists(destination_mainCSV_path):
     # Make the parent CSV folder
     print('Parent CSV folder does not exist; creating it.')
     os.makedirs(destination_mainCSV_path, exist_ok=False)
-
 
 process_excel_and_csvs(sourceMATpath, excel_fileName, 
                        mainCSV_path = destination_mainCSV_path,
