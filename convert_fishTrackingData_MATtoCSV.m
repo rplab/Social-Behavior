@@ -4,7 +4,8 @@
 % etc.) to CSV files to be more easily read in Python.
 % Also records well offset positions, videoDataResults.wellPositions{1,1}
 %
-% Number of fish must be 2 (checked)
+% Can handle data of any (nonzero) number of fish; user inputs this, and
+% program checks that the data agree.
 %
 % MAT files can contain single movie data or multiple; shape Nmovies x
 % Nfish. 
@@ -22,6 +23,8 @@
 %   17-26 : Tail Y positions
 %
 % Inputs
+%   NfishExpected : number of fish in each movie (no default value -- must be
+%             entered)
 %   dataDir : Directory containing MAT files; default present working
 %             directory
 %   MATfilenames : *either* the MAT file name to convert, or a cell array of
@@ -36,6 +39,8 @@
 %                 ArenaCenters_SocPref_3456 minus (topLeftX, topLeftY).
 %             Leave empty to ignore well positions; skip writing a file
 %   makePlots : make simple plot of some frames' position data; default = false
+%             Not very general; just a quick diagnostic for some Nfish==2
+%             data
 %
 % Outputs
 %   None, but writes CSV files. CSV filename same as MAT filename, but
@@ -45,22 +50,24 @@
 % April 29, 2022
 % Major changes June 18, 2023 (reading and writing multiple MAT/CSV files, etc.)
 % January 30, 2024: allow MAT files that contain multiple movies' data
-% last modified May 6, 2024 (change order of inputs)
+% last modified July 13, 2024 (Allow variable number of fish)
 
-function convert_fishTrackingData_MATtoCSV(dataDir, MATfilenames, ...
+function convert_fishTrackingData_MATtoCSV(NfishExpected, dataDir, MATfilenames, ...
     wellOffsetPositionsCSVfile, makePlots)
 
 %% Inputs
+
+NfishExpected = uint8(NfishExpected); % force integer
 
 pDir = pwd;
 if ~exist('dataDir', 'var') || isempty(dataDir)
     dataDir = pDir;
 end
-if ~exist('makePlots', 'var') || isempty(makePlots)
-    makePlots = false;
-end
 if ~exist('wellOffsetPositionsCSVfile', 'var')
     wellOffsetPositionsCSVfile = 'wellOffsetPositionsCSVfile.csv';
+end
+if ~exist('makePlots', 'var') || isempty(makePlots)
+    makePlots = false;
 end
 
 cd(dataDir)
@@ -103,7 +110,7 @@ for j=1:Nfiles
         fprintf('Converting file %d of %d, movie %d of %d\n', ...
             j, Nfiles, k, Nmovies);
         % Check number of fish. Should be 2
-        Nfish = checkNfish(videoDataResults, 2);
+        Nfish = checkNfish(videoDataResults, NfishExpected);
 
         % Check number of frames is consistent with number of rows
         Nframes = checkNframes(videoDataResults, Nfish);
@@ -222,6 +229,7 @@ function Nfish = checkNfish(videoDataResults, NfishExpected)
     if ~(Nfish==NfishExpected)
         errordlg(fprintf('Error! Number of fish is not %d! (Control-C)', NfishExpected));
         disp('Press Control-C to abort!')
+        pause
     end
 end
 
