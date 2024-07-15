@@ -22,8 +22,8 @@ params:
   approach_speed_threshold_mm_second: 20
   approach_cos_angle_thresh: 0.5
   approach_min_frame_duration: [2,2]
-  motion_speed_threshold_mm_second: 10
   # Output files, path
   output_subFolder: Analysis
+  allDatasetsCSVfileName: behavior_count.csv 
   allDatasets_ExcelFile: behavior_counts.xlsx 
   allDatasets_markFrames_ExcelFile:  behaviors_in_each_frame.xlsx

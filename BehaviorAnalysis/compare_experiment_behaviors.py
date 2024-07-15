@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Fri Dec. 1, 2023
-Last modified on July 9, 2024
+Last modified on June 17, 2024
 
 Description
 -----------
@@ -101,6 +101,134 @@ def get_data_label_and_higher_folder(file_path):
         print("Warning: Could not determine higher_folder_path. The file structure might not be as expected.")
     
     return data_label, higher_folder_path
+
+def getFilenames_and_Labels():
+
+    exptNameList = ['TwoWeekLightDark2023', 'CholicAcid_Jan2024', 
+                    'Solitary_Cohoused_March2024', 
+                    'Shank3_Feb2024', 'Infected_housing_March2024', 
+                    'XGF_May2024', 'Infected_May2023', 
+                    'TwoWeekLight2023_TimeFlip']
+    
+    # Ask the user to indicate the experiment name, constrained 
+    exptName = input("\n\nChoose a value for exptName (options: {}): ".format(', '.join(exptNameList)))
+    # Check if the user's choice is in the list
+    while exptName not in exptNameList:
+        print("Invalid choice. Choose a value of exptName from the list.")
+        exptName = input("Choose a value for exptName (options: {}): ".format(', '.join(exptNameList)))
+    
+    
+    print('\n\nExperiment being plotted: ', exptName)
+    
+    # Specify the paths and file names
+    baseDir = r"C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs"
+    
+    if exptName == 'TwoWeekLightDark2023':
+        print('\nTwo week old fish, light and dark 2023\n')
+        path1 = baseDir + r"\2 week old - pairs"
+        file1 = r"behavior_relDuration_2week_light_26Nov2023.csv"
+        path2 = baseDir + r"\2 week old - pairs in the dark"
+        file2 = r"behavior_relDuration_2week_dark_26Nov2023.csv"
+        dataLabel1 = 'Zebrafish, in light'
+        dataLabel2 = 'Zebrafish, in dark'
+    
+    if exptName == 'CholicAcid_Jan2024':
+        print('\nCholic Acid Jan. 2024 \n')
+        path1 = baseDir + r"\2 week old - pairs - cholic acid\Condition1"
+        file1 = r"behavior_relDuration_condition1_31Jan2024.csv"
+        path2 = baseDir + r"\2 week old - pairs - cholic acid\Condition2"
+        file2 = r"behavior_relDuration_condition2_31Jan2024.csv"
+        dataLabel1 = 'Fish, condition 1'
+        dataLabel2 = 'Fish, condition 2'
+    
+    if exptName == 'Solitary_Cohoused_March2024':
+        print('\nSolitary and Co-Housed, March 2024 \n')
+        path1 = r"C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\TwoWeekOld_Solitary_CoHoused_1_3-2-2024\Condition1"
+        file1 = r"behavior_relDuration_condition1_3March2024.csv"
+        path2 = r"C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\TwoWeekOld_Solitary_CoHoused_1_3-2-2024\Condition2"
+        file2 = r"behavior_relDuration_condition2_3March2024.csv"
+        dataLabel1 = '(1) Co-housed'
+        dataLabel2 = '(2) Solitary'
+    
+    if exptName == 'Shank3_Feb2024':
+        print('\nShank3, Genotypes 1 and 2 2024\n')
+        path1 = baseDir + r"\2 week old - pairs with shank3 mutations\Genotype 1"
+        file1 = r"behavior_relDuration_G1.csv"
+        #path2 = baseDir + r"\2 week old - pairs with shank3 mutations\Genotype 2"
+        #file2 = r"behavior_relDuration_G2.csv"
+        path2 = baseDir + r"\2 week old - pairs with shank3 mutations\Genotype 3"
+        file2 = r"behavior_relDuration_G3.csv"
+        dataLabel1 = 'Genotype 1 WT'
+        # dataLabel2 = 'Genotype 2 Shank3a/b'
+        dataLabel2 = 'Mixed Genotypes'
+    
+    if exptName == 'Infected_housing_March2024':
+        print('\nVibrio infection, Solitary and Co-housed, March 2024\n')
+        # Manually indicate particular subsets (input)
+        subGroupNameList = ['C1_G1 + C1_G2', 'C2_G1 + C2_G2']
+        
+        # Ask the user to indicate the sub-experiment name, constrained 
+        subGroupName = input("\n\nChoose a value for the Group (options: {}): ".format(', '.join(subGroupNameList)))
+        # Check if the user's choice is in the list
+        while subGroupName not in subGroupNameList:
+            print("Invalid choice. Choose a value from the list.")
+            subGroupName = input("\n\nChoose a value for the Group (options: {}): ".format(', '.join(exptNameList)))
+    
+        if subGroupName == 'C1_G1 + C1_G2':
+            path1 = baseDir + r"\2 week old - infected versus non-infected, solitary versus co-housed pairs" \
+                + r"\C1_G1_nonInfect_coHoused"
+            file1 = r"behavior_relDuration_c1g1.csv"
+            path2 = baseDir + r"\2 week old - infected versus non-infected, solitary versus co-housed pairs" \
+                + r"\C1_G2_nonInfect_solitary"
+            file2 = r"behavior_relDuration_c1g2.csv"
+            dataLabel1 = 'C1_G1_nonInfected_coHoused'
+            dataLabel2 = 'C1_G2_nonInfected_solitary'
+    
+        if subGroupName == 'C2_G1 + C2_G2':
+            path1 = baseDir + r"\2 week old - infected versus non-infected, solitary versus co-housed pairs" \
+                + r"\C2_G1_Infected_coHoused"
+            file1 = r"behavior_relDuration_c2g1.csv"
+            path2 = baseDir + r"\2 week old - infected versus non-infected, solitary versus co-housed pairs" \
+                + r"\C2_G2_Infected_solitary"
+            file2 = r"behavior_relDuration_c2g2.csv"
+            dataLabel1 = 'C2_G1_Infected_coHoused'
+            dataLabel2 = 'C2_G2_Infected_solitary'
+    
+    if exptName == 'XGF_May2024':
+        print('\nCVZ and XGF, May 2024\n')
+        path1 = baseDir + r"\2 week old - conventionalized versus ex-germ-free fish\XGF_filteredCSVs_1"
+        file1 = r"behavior_relDuration_g1.csv"
+        path2 = baseDir + r"\2 week old - conventionalized versus ex-germ-free fish\XGF_filteredCSVs_2"
+        file2 = r"behavior_relDuration_g2.csv"
+        dataLabel1 = 'CVZ'
+        dataLabel2 = 'XGF'
+        
+    if exptName == 'Infected_May2023':
+        print('\nVibrio Infected and non-Infected\n')
+        path1 = baseDir + r"\2 week old - infected versus non-infected pairs\infected_nonInfected_1"
+        file1 = r"behavior_relDuration_g1.csv"
+        path2 = baseDir + r"\2 week old - infected versus non-infected pairs\infected_nonInfected_2"
+        file2 = r"behavior_relDuration_g2.csv"
+        # path2 = baseDir + r"\2 week old - infected versus non-infected pairs\infected_nonInfected_3"
+        # file2 = r"behavior_relDuration_g3.csv"
+        dataLabel1 = 'Non-Infected'
+        dataLabel2 = 'Infected WT Vibrio'
+        # dataLabel2 = 'Infected dACD Vibrio'
+        
+        
+    if exptName == 'TwoWeekLight2023_TimeFlip':
+        print('\nTwoWeekLight 2023, and Fish1 Time Flipped\n')
+        path1 = baseDir + r"\2 week old - pairs"
+        file1 = r"behavior_relDuration_2week_light_26Nov2023.csv"
+        path2 = baseDir + r"\2 week old - Fish1 FLIPPED in TIME"
+        file2 = r"behavior_relDuration_TimeFlipped.csv"
+        dataLabel1 = 'In light'
+        dataLabel2 = 'In light; *F1 time flipped*'
+        
+    file_paths = (os.path.join(path1, file1), os.path.join(path2, file2))
+    dataLabels = (dataLabel1, dataLabel2)
+    
+    return file_paths, dataLabels
 
 
 def read_behavior_Excel(file_path):
@@ -426,7 +554,9 @@ def getOutputPath():
 #%%
 
 if __name__ == '__main__':
-        
+    
+    # (file_paths, dataLabels) = getFilenames_and_Labels()
+    
     
     # initial_directory = "C:/Users/YourUsername/Documents"  # Optional: Specify an initial directory
     

@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Jul 10 18:09:34 2023
-Last modified on July 9, 2024
+Last modified on June 1, 2024
 
 Description
 -----------
@@ -18,7 +18,6 @@ Contains the functions
 import numpy as np
 import matplotlib  # should replace this by just matplotlib.colormaps
 import matplotlib.pyplot as plt
-import os
 import pickle
 
 from toolkit import link_weighted, repair_disjoint_heads, repair_double_length_fish
@@ -40,10 +39,9 @@ def loadAllFromPickle(pickleFileName = None):
     """
     
     if pickleFileName == None:
-        basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior'
         #pickleFileName = input('Pickle file name; Will append .pickle: ')
         #pickleFileName = pickleFileName + '.pickle'
-        pickleFileName = os.path.join(basePath, r'temp\temp.pickle')
+        pickleFileName = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\temp\temp.pickle'
         # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files\2 week old - pairs\all_2week_light.pickle'
         # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files\2 week old - pairs in the dark\all_2week_dark.pickle'
 
@@ -261,10 +259,8 @@ def how_many_both_approaching_frames(dataset):
 
 if __name__ == '__main__':
     
-    basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior'
-    
-    picklePath  = basePath + r'\CSV files and outputs\2 week old - pairs\Analysis'
-    pickleFileName = os.path.join(picklePath, r'all_2week_light.pickle')
+    pickleFileNameBase  = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs'
+    pickleFileName = pickleFileNameBase + r'\temp\temp.pickle'    
     
     datasets, CSVcolumns, expt_config, params = \
         loadAllFromPickle(pickleFileName = pickleFileName) # or None
@@ -278,19 +274,6 @@ if __name__ == '__main__':
     for j in range(len(datasets)):
         if datasets[j]["dataset_name"]==whichDataset:
             chosenSet = datasets[j]
-    
-    showSpeedGraphs = False
-    if showSpeedGraphs:
-        plt.figure()
-        plt.plot(chosenSet['speed_array_mm_s'][:,0], label='Fish 0')
-        plt.plot(chosenSet['speed_array_mm_s'][:,1], label='Fish 1')
-        plt.ylabel('Speed (mm/s)')
-        plt.legend()
-        
-        plt.figure()
-        plt.hist(chosenSet['speed_array_mm_s'][:,0], 1000)
-        plt.hist(chosenSet['speed_array_mm_s'][:,1], 1000)
-        plt.xlabel('Speed (mm/s)')
     
     startFrame = 180
     endFrame = 211

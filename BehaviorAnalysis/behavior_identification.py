@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified July 9, 2024 -- Raghu Parthasarathy
+Last modified May 19, 2024 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -402,40 +402,6 @@ def get_Jbend_frames(dataset, CSVcolumns, JbendThresholds = (0.98, 0.34, 0.70)):
     
     return Jbend_frames
 
-
-def get_isMoving_frames(dataset, motion_speed_threshold_mm_s = 10.0):
-    """ 
-    Find frames in which one or more fish have an above-threshold speed.
-    Inputs:
-        dataset: dataset dictionary of all behavior information for a given expt.
-        motion_speed_threshold_mm_s : speed threshold, mm/s
-    Output : 
-        isMoving_frames...
-           _each:  dictionary with a key for each fish, 
-                   each containing a numpy array of frames in which 
-                   that fish is moving
-           _any : numpy array of frames in which any fish is moving
-           _all : numpy array of frames in which all fish are moving
-    """
-    
-    speed_data = dataset["speed_array_mm_s"] # Nframes x Nfish array of speeds
-    Nfish = speed_data.shape[1]
-    isMoving = speed_data > motion_speed_threshold_mm_s
-
-    # Dictionary containing "is moving" frames for each fish
-    isMoving_frames_each = {}
-    for fish in range(Nfish):
-        isMoving_frames_each[fish] = np.array(np.where(isMoving[:, fish])).flatten() + 1
-    
-    # any fish
-    any_fish_moving  = np.any(isMoving, axis=1)
-    isMoving_frames_any = np.where(any_fish_moving)[0] + 1
-    
-    # all fish
-    all_fish_moving  = np.all(isMoving, axis=1)
-    isMoving_frames_all = np.where(all_fish_moving)[0] + 1
-
-    return isMoving_frames_each, isMoving_frames_any, isMoving_frames_all
 
 def calcOrientationXCorr(dataset, CSVcolumns, window_size = 25, makeDiagnosticPlots = False):
     """
