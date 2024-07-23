@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon May  6 09:56:13 2024
-Last modified on June 17, 2024
+Last modified on July 16, 2024
 
 Description
 -----------
@@ -79,6 +79,8 @@ def process_excel_and_csvs(source_path, excel_file, mainCSV_path, subfolder_name
         if os.path.exists(wellOffsetPositionsCSVfileFull):
             shutil.copy(wellOffsetPositionsCSVfileFull, subfolder_path)
         else:
+            print('\n\nFull Path for wellOffsetPositionsCSVfileFull: ')
+            print('    ', wellOffsetPositionsCSVfileFull)
             print('\n\nwellOffsetPositionsCSVfile does not exist! Cannot copy.')
 
         # Create CSV file name for the subset of the Excel info file
@@ -132,16 +134,16 @@ def process_excel_and_csvs(source_path, excel_file, mainCSV_path, subfolder_name
 basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior'
 
 # Replace these:
-excel_fileName = r'SocPref_6a-b_AnalysisRaghu.xlsx'
-sourceMATpath = basePath + r'\MAT files\2 week old - single fish in the dark'
-destination_mainCSV_path = basePath + r'\CSV files and outputs\2 week old - single fish in the dark'
-group_code_label =  None # e.g. 'Genotype', or 'Group_Code'. Use None [no quotes] to ignore
+excel_fileName = r'SocBehTransm_0c_Log.xlsx'
+sourceMATpath = basePath + r'\MAT files\2 week old - pairs assayed for gut transmission 0c'
+destination_mainCSV_path = basePath + r'\CSV files and outputs\2 week old - pairs assayed for gut transmission 0c'
+group_code_label =  'Group_Code' # e.g. 'Genotype', or 'Group_Code'. Use None [no quotes] to ignore
 include1_label = 'Include' # Header of the "include" column
 include2_label = None  # use None to avoid additional filtering, or 'Filter' to filter
-subfolder_name = 'Genotype' # will append the group code to this for sub-folders; probably make this the same as group_code_label
+subfolder_name = 'Group' # will append the group code to this for sub-folders; probably make this the same as group_code_label
 wellOffsetPositionsCSVfilename = 'wellOffsetPositionsCSVfile.csv' # Probably don't need to change
 excludeCSVList = ['wellOffsetPositionsCSVfile.csv', 
-                  'SocDef_Shank3_AnalysisRaghu.csv']  # ignore these CSVs
+                  'SocBehTransm_0c_Log.csv']  # ignore these CSVs
 
 if not os.path.exists(destination_mainCSV_path):
     # Make the parent CSV folder

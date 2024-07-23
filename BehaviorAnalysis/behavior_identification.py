@@ -5,12 +5,13 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified July 9, 2024 -- Raghu Parthasarathy
+Last modified July 13, 2024 -- Raghu Parthasarathy
 
 Description
 -----------
 
 Module containing all zebrafish pair behavior identification functions:
+    - extract_behaviors(), which calls all the other functions
     - Contact
     - 90-degree orientation
     - Tail rubbing
@@ -18,9 +19,241 @@ Module containing all zebrafish pair behavior identification functions:
 
 """
 import matplotlib.pyplot as plt
-
+from time import perf_counter
 import numpy as np
+from toolkit import  make_frames_dictionary
+from scipy.stats import skew
 # from circle_fit_taubin import TaubinSVD
+
+
+def get_basic_two_fish_characterizations(datasets, CSVcolumns,
+                                             expt_config, params):
+    """
+    For each dataset, perform “basic” two-fish characterizations  
+        (e.g. inter-fish distance, relative orientation)
+    
+    Inputs:
+        datasets : dictionaries for each dataset
+        CSVcolumns : CSV column information (dictionary)
+        expt_config : dictionary of configuration information
+        params : dictionary of all analysis parameters
+    Returns:
+        datasets : dictionaries for each dataset. datasets[j] contains
+                    all the information for dataset j.
+    """
+    
+    # Number of datasets
+    N_datasets = len(datasets)
+    
+    print('Basic two-fish characterizations: ')
+    # For each dataset, measure inter-fish distance (head-head and
+    # closest points) in each frame and the relative orientation, 
+    # and calculate a sliding window cross-correlation of heading angles
+    for j in range(N_datasets):
+
+        # Get the inter-fish distance (distance between head positions) in 
+        # each frame (Nframes x 1 array). Units = mm
+        datasets[j]["head_head_distance_mm"], datasets[j]["closest_distance_mm"] = \
+            get_interfish_distance(datasets[j]["all_data"], CSVcolumns,
+                                   datasets[j]["image_scale"])
+        
+        # Relative orientation of fish (angle between heading and
+        # connecting vector). Nframes x Nfish==2 array; radians
+        datasets[j]["relative_orientation"] = \
+            get_relative_orientation(datasets[j], CSVcolumns)   
+        
+        # Get the sliding window cross-correlation of heading angles
+        datasets[j]["xcorr_array"] = \
+            calcOrientationXCorr(datasets[j]["all_data"], CSVcolumns, 
+                                 params["angle_xcorr_windowsize"])
+        
+    # For each dataset, exclude bad tracking frames from calculations of
+    # the mean and std. absolute difference in fish length
+    # the mean inter-fish distance
+    # exclude bad tracking frames from the 
+    # calculation of the mean angle-heading cross-correlation
+    # if the bad frames occur anywhere in the sliding window
+    for j in range(N_datasets):
+        print('Dataset: ', datasets[j]["dataset_name"])
+        print('   Removing bad frames from stats for inter-fish distance')
+        goodIdx = np.where(np.in1d(datasets[j]["frameArray"], 
+                                   datasets[j]["bad_bodyTrack_frames"]["raw_frames"], 
+                                   invert=True))[0]
+        goodHHDistanceArray = datasets[j]["head_head_distance_mm"][goodIdx]
+        goodClosestDistanceArray = datasets[j]["closest_distance_mm"][goodIdx]
+        datasets[j]["head_head_distance_mm_mean"] = np.mean(goodHHDistanceArray)
+        datasets[j]["closest_distance_mm_mean"] = np.mean(goodClosestDistanceArray)
+        print(f'   Mean head-to-head distance {datasets[j]["head_head_distance_mm_mean"]:.2f} mm')
+        print(f'   Mean closest distance {datasets[j]["closest_distance_mm_mean"]:.2f} px')
+
+        goodLengthArray = datasets[j]["fish_length_array_mm"][goodIdx]
+        datasets[j]["fish_length_Delta_mm_mean"] = np.mean(np.abs(np.diff(goodLengthArray, 1)))
+        datasets[j]["fish_length_Delta_mm_std"] = np.std(np.abs(np.diff(goodLengthArray, 1)))
+        print('   Mean +/- std. of difference in fish length: ', 
+              f'{datasets[j]["fish_length_Delta_mm_mean"]:.3f} +/- ',
+              f'{datasets[j]["fish_length_Delta_mm_std"]:.3f} mm')
+    
+        print('Removing bad frames from stats for angle xcorr')
+        badFrames = datasets[j]["bad_bodyTrack_frames"]["raw_frames"]
+        expandBadFrames = []
+        for k in range(len(badFrames)):
+            # make a list of all frames that are within windowsize prior to bad frames
+            expandBadFrames = np.append(expandBadFrames, 
+                                        np.arange(badFrames[k] - 
+                                                  params["angle_xcorr_windowsize"]+1, 
+                                                  badFrames[k]))
+        expandBadFrames = np.unique(expandBadFrames)    
+        goodIdx = np.where(np.in1d(datasets[j]["frameArray"], 
+                                   expandBadFrames, invert=True))[0]
+        goodXCorrArray = datasets[j]["xcorr_array"][goodIdx]
+        # Also limit to finite values
+        finiteGoodXCorrArray = goodXCorrArray[np.isfinite(goodXCorrArray)]
+        datasets[j]["AngleXCorr_mean"] = np.mean(finiteGoodXCorrArray)
+        # print(f'   Mean heading angle XCorr: {datasets[j]["AngleXCorr_mean"]:.4f}')
+        # Calculating the std dev and skew, but won't write to CSV
+        datasets[j]["AngleXCorr_std"] = np.std(finiteGoodXCorrArray)
+        datasets[j]["AngleXCorr_skew"] = skew(finiteGoodXCorrArray)
+        # print(f'   (Not in CSV) std, skew heading angle XCorr: {datasets[j]["AngleXCorr_std"]:.4f}, {datasets[j]["AngleXCorr_skew"]:.4f}')
+
+    return datasets
+
+
+    
+def get_interfish_distance(all_data, CSVcolumns, image_scale):
+    """
+    Get the inter-fish distance (calculated both as the distance 
+        between head positions and as the closest distance)
+        in each frame 
+    Input:
+        all_data : all position data, from dataset["all_data"]
+        CSVcolumns : CSV column information (dictionary)
+        image_scale : scale, um/px; from dataset["image_scale"]
+    Output
+        head_head_distance_mm : head-head distance (mm), Nframes x 1 array 
+        closest_distance_mm : closest distance (mm), Nframes x 1 array
+    """
+    
+    # head-head distance
+    head_x = all_data[:,CSVcolumns["head_column_x"],:] # x, both fish
+    head_y = all_data[:,CSVcolumns["head_column_y"],:] # y, both fish
+    dx = np.diff(head_x)
+    dy = np.diff(head_y)
+    # distance, mm
+    head_head_distance_mm = (np.sqrt(dx**2 + dy**2))*image_scale/1000.0
+    
+    # body-body distance, for all pairs of points
+    body_x = all_data[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = all_data[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+    closest_distance_mm = np.zeros((body_x.shape[0],1))
+    for idx in range(body_x.shape[0]):
+        d0 = np.subtract.outer(body_x[idx,:,0], body_x[idx,:,1]) # all pairs of subtracted x positions
+        d1 = np.subtract.outer(body_y[idx,:,0], body_y[idx,:,1]) # all pairs of subtracted y positions
+        d = np.sqrt(d0**2 + d1**2) # Euclidean distance matrix, all points
+        closest_distance_mm[idx] = np.min(d)*image_scale/1000.0 # mm
+    
+    return head_head_distance_mm, closest_distance_mm
+
+def extract_behaviors(dataset, params, CSVcolumns): 
+    """
+    Calls functions to identify frames corresponding to each two-fish
+    behavioral motif in a single dataset.
+    
+    Inputs:
+        dataset : dictionary, with keys like "all_data" containing all 
+                    position data
+        params : parameters for behavior criteria
+        CSVcolumns : CSV column parameters
+    Outputs:
+        arrays of all frames in which the various behaviors are found:
+            perp_noneSee, perp_oneSees, 
+            perp_bothSee, contact_any, contact_head_body, 
+            contact_larger_fish_head, contact_smaller_fish_head,
+            contact_inferred, tail_rubbing_frames
+
+    """
+    
+    # Timer
+    t1_start = perf_counter()
+
+    # Arrays of head, body positions; angles. 
+    # Last dimension = fish (so arrays are Nframes x {1 or 2}, Nfish==2)
+    head_pos_data = dataset["all_data"][:,CSVcolumns["head_column_x"]:CSVcolumns["head_column_y"]+1, :]
+        # head_pos_data is Nframes x 2 (x and y positions) x 2 (Nfish) array of head positions
+    angle_data = dataset["all_data"][:,CSVcolumns["angle_data_column"], :]
+    # body_x and _y are the body positions, each of size Nframes x 10 x 2 (fish)
+    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+        
+    t1_2 = perf_counter()
+    print(f'   t1_2 start 90degree analysis: {t1_2 - t1_start:.2f} seconds')
+    # 90-degrees 
+    orientation_dict = get_90_deg_frames(head_pos_data, angle_data, 
+                                         dataset["closest_distance_mm"].flatten(),
+                                         params["perp_windowsize"], 
+                                         params["cos_theta_90_thresh"], 
+                                         params["perp_maxDistance_mm"],
+                                         params["cosSeeingAngle"], 
+                                         dataset["fish_length_array_mm"])
+    perp_noneSee = orientation_dict["noneSee"]
+    perp_oneSees = orientation_dict["oneSees"]
+    perp_bothSee = orientation_dict["bothSee"]
+    perp_larger_fish_sees = orientation_dict["larger_fish_sees"]
+    perp_smaller_fish_sees = orientation_dict["smaller_fish_sees"]
+ 
+    t1_3 = perf_counter()
+    print(f'   t1_3 start contact analysis: {t1_3 - t1_start:.2f} seconds')
+    # Any contact, or head-body contact
+    contact_inferred_distance_threshold_px = params["contact_inferred_distance_threshold_mm"]*1000/dataset["image_scale"]
+    contact_dict = get_contact_frames(body_x, body_y, dataset["closest_distance_mm"],
+                                params["contact_inferred_distance_threshold_mm"], 
+                                dataset["image_scale"],
+                                dataset["fish_length_array_mm"])
+    contact_any = contact_dict["any_contact"]
+    contact_head_body = contact_dict["head-body"]
+    contact_larger_fish_head = contact_dict["larger_fish_head_contact"]
+    contact_smaller_fish_head = contact_dict["smaller_fish_head_contact"]
+    contact_inferred_frames = get_inferred_contact_frames(dataset,
+                        params["contact_inferred_window"],                                  
+                        contact_inferred_distance_threshold_px)
+    # Include inferred contact frames in "any" contact.
+    contact_any = np.unique(np.concatenate((contact_any, 
+                                            contact_inferred_frames),0))
+
+    t1_4 = perf_counter()
+    print(f'   t1_4 start tail-rubbing analysis: {t1_4 - t1_start:.2f} seconds')
+    # Tail-rubbing
+    tailrub_maxTailDist_px = params["tailrub_maxTailDist_mm"]*1000/dataset["image_scale"]
+    tail_rubbing_frames = get_tail_rubbing_frames(body_x, body_y, 
+                                          dataset["head_head_distance_mm"], 
+                                          angle_data, 
+                                          params["tail_rub_ws"], 
+                                          tailrub_maxTailDist_px, 
+                                          params["cos_theta_antipar"], 
+                                          params["tailrub_maxHeadDist_mm"])
+
+    t1_5 = perf_counter()
+    print(f'   t1_5 start approaching / fleeing analysis: {t1_5 - t1_start:.2f} seconds')
+    # Approaching or fleeing
+    (approaching_frames, fleeing_frames) = get_approach_flee_frames(dataset, 
+                                                CSVcolumns, 
+                                                speed_threshold_mm_s = params["approach_speed_threshold_mm_second"],
+                                                min_frame_duration = params["approach_min_frame_duration"],
+                                                cos_angle_thresh = params["approach_cos_angle_thresh"])
+
+
+    t1_end = perf_counter()
+    print(f'   t1_end end analysis: {t1_end - t1_start:.2f} seconds')
+
+    # removed "circling_wfs," from the list
+
+    return perp_noneSee, perp_oneSees, \
+        perp_bothSee, perp_larger_fish_sees, \
+        perp_smaller_fish_sees, \
+        contact_any, contact_head_body, contact_larger_fish_head, \
+        contact_smaller_fish_head, contact_inferred_frames, \
+        tail_rubbing_frames, approaching_frames, fleeing_frames
+
+    
 
 
 def get_contact_frames(body_x, body_y, closest_distance_mm, 
@@ -118,8 +351,9 @@ def get_inferred_contact_frames(dataset, frameWindow, contact_dist_mm):
 
 
 
-def get_90_deg_frames(fish_head_pos, fish_angle_data, Nframes, window_size, 
-                      cos_theta_90_thresh, perp_maxHeadDist, cosSeeingAngle, 
+def get_90_deg_frames(fish_head_pos, fish_angle_data, 
+                      closest_distance_mm, window_size, 
+                      cos_theta_90_thresh, perp_maxDistance_mm, cosSeeingAngle, 
                       fish_length_array):
     """
     Returns an array of frames for 90-degree orientation events.
@@ -129,13 +363,11 @@ def get_90_deg_frames(fish_head_pos, fish_angle_data, Nframes, window_size,
     Args:
         fish_head_pos (array): a 3D array of (x, y) head positions for both fish.
                           Nframes x 2 [x, y] x 2 fish 
-        fish1_angle_data (array): a 2D array of angles; Nframes x 2 fish
-
-        Nframes (int): Number of frames (typically 15,000.)
-        
-        window_size (int)      : window size for which circling is averaged over.
+        fish_angle_data (array): a 2D array of angles; Nframes x 2 fish
+        closest_distance_mm : array of closest distance, mm, between fish (Nframes, 1)
+        window_size (int)      : window size for which condition is averaged over.
         cos_theta_90_thresh (float): the cosine(angle) threshold for 90-degree orientation.
-        perp_maxHeadDist (float): inter-fish head distance threshold, *px*
+        perp_maxDistance_mm (float): inter-fish distance threshold, mm
         fish_length_array: Nframes x 2 array of fish lengths in each frame, mm
                             Only used for identifying the larger fish.
 
@@ -159,14 +391,16 @@ def get_90_deg_frames(fish_head_pos, fish_angle_data, Nframes, window_size,
     cos_theta = np.cos(fish_angle_data[:,0] - fish_angle_data[:,1])
     cos_theta_criterion = (np.abs(cos_theta) < cos_theta_90_thresh)
                 
-    # head-head distance, and distance vector for all frames
+    # head-to-head distance vector for all frames
     dh_vec = fish_head_pos[:,:,1] - fish_head_pos[:,:,0]  # also used later, for the connecting vector
-    head_separation = np.sqrt(np.sum(dh_vec**2, axis=1))
-    head_separation_criterion = (head_separation < perp_maxHeadDist)
+    
+    # closeness criterion
+    separation_criterion = (closest_distance_mm < perp_maxDistance_mm)
     
     # All criteria (and), in each frame
     all_criteria_frame = np.logical_and(cos_theta_criterion, 
-                                        head_separation_criterion)
+                                        separation_criterion)
+
     all_criteria_window = np.zeros(all_criteria_frame.shape, 
                                    dtype=bool) # initialize to false
     # Check that criteria are met through the frame window. 
@@ -285,157 +519,6 @@ def get_tail_rubbing_frames(body_x, body_y, head_separation,
     return tail_rubbing_frames
 
 
-
-def get_Cbend_frames(dataset, CSVcolumns, Cbend_threshold = 2/np.pi):
-    """ 
-    Find frames in which a fish is sharply bent (C-bend)
-    Bending is determined by ratio of head to tail-end distance / overall 
-    fish length (sum of segments); bend = ratio < threshold
-    Inputs:
-        dataset: dataset dictionary of all behavior information for a given expt.
-        CSVcolumns : information on what the columns of dataset["all_data"] are
-        Cbend_threshold : consider a fish bent if chord/arc < this threshold
-                         Default 2/pi (0.637) corresponds to a semicircle shape
-                         For a circle, chord/arc = sin(theta/2) / (theta/2)
-    Output : 
-        Cbend_frames : dictionary with two keys, 0 and 1, each of which
-                       contains a numpy array of frames with 
-                       identified C-bend frames for fish 0 and fish 1, 
-                       i.e. with bending < Cbend_threshold
-    """
-    
-    # length in each frame, Nframes x Nfish==2 array, mm so convert
-    # to px using image scale (um/px)
-    fish_length_px = dataset["fish_length_array_mm"] * 1000.0 / dataset["image_scale"]  
-    
-    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
-    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
-    fish_head_tail_distance = np.sqrt((body_x[:,0,:]-body_x[:,-1,:])**2 + 
-                                      (body_y[:,0,:]-body_y[:,-1,:])**2) # Nframes x Nfish==2 array
-    Cbend_ratio = fish_head_tail_distance/fish_length_px # Nframes x Nfish==2 array
-    Cbend = Cbend_ratio < Cbend_threshold # # True if fish is bent; Nframes x Nfish==2 array
-    
-    # Dictionary containing C-bend frames for each fish
-    Cbend_frames = {0: np.array(np.where(Cbend[:,0])).flatten() + 1, 
-                         1: np.array(np.where(Cbend[:,1])).flatten() + 1}
-
-    # Cbend_criterion = np.any(Cbend_ratio < Cbend_threshold, axis=1) # True if either fish is bent
-    # Cbend_frames = np.array(np.where(Cbend_criterion)).flatten() + 1
-    
-    return Cbend_frames
-
-
-def get_Jbend_frames(dataset, CSVcolumns, JbendThresholds = (0.98, 0.34, 0.70)):
-    """ 
-    Find frames in which one or more fish have a J-bend: straight anterior
-    and bent posterior.
-    A J-bend is defined by:
-        - body points 1-5 are linearly correlated: |Pearson r| > JbendThresholds[0]  
-          Note that this avoids chord / arc distance issues with point #2
-          sometimes being anterior of #1
-        - cos(angle) between (points 9-10) and heading angle < JbendThresholds[1]
-        - cos(angle) between (points 8-9) and heading angle < JbendThresholds[2]
-    Inputs:
-        dataset: dataset dictionary of all behavior information for a given expt.
-        CSVcolumns : information on what the columns of dataset["all_data"] are
-        JbendThresholds : see J-bend definition above
-    Output : 
-        Jbend_frames : dictionary with two keys, 0 and 1, each of which
-                       contains a numpy array of frames with 
-                       identified J-bend frames for fish 0 and fish 1
-
-    """
-    
-    midColumn = int(CSVcolumns["body_Ncolumns"]/2)
-    # print('midColumn should be 5: ', midColumn)
-    
-    # All body positions, as in C-bending function
-    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
-    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
-    
-    angle_data = dataset["all_data"][:,CSVcolumns["angle_data_column"], :]
-
-    # Angle between each pair of points and the heading angle
-    segment_angles = np.zeros((body_x.shape[0], body_x.shape[1]-1, body_x.shape[2]))
-    for j in range(segment_angles.shape[1]):
-        segment_angles[:, j, :] = np.arctan2(body_y[:,j+1,:]-body_y[:,j,:], 
-                          body_x[:,j+1,:]-body_x[:,j,:])
-    
-    # mean values, repeated to allow subtraction
-    mean_x = np.mean(body_x[:,0:midColumn,:], axis=1)
-    mean_x = np.swapaxes(np.tile(mean_x, (midColumn, 1, 1)), 0, 1)
-    mean_y = np.mean(body_y[:,0:midColumn,:], axis=1)
-    mean_y = np.swapaxes(np.tile(mean_y, (midColumn, 1, 1)), 0, 1)
-    Npts = midColumn # number of points
-    cov_xx = np.sum((body_x[:,0:midColumn,:]-mean_x)*(body_x[:,0:midColumn,:]-mean_x), 
-                    axis=1)/(Npts-1)
-    cov_yy = np.sum((body_y[:,0:midColumn,:]-mean_y)*(body_y[:,0:midColumn,:]-mean_y), 
-                    axis=1)/(Npts-1)
-    cov_xy = np.sum((body_x[:,0:midColumn,:]-mean_x)*(body_y[:,0:midColumn,:]-mean_y), 
-                    axis=1)/(Npts-1)
-    Tr = cov_xx + cov_yy
-    DetCov = cov_xx*cov_yy - cov_xy**2
-    
-    # Two eigenvalues for each frame, each fish
-    eig_array = np.zeros((Tr.shape[0], Tr.shape[1], 2))
-    eig_array[:,:,0]  = Tr/2.0 + np.sqrt((Tr**2)/4.0 - DetCov)
-    eig_array[:,:,1] = Tr/2.0 - np.sqrt((Tr**2)/4.0 - DetCov)
-    anterior_straight_var = np.max(eig_array, axis=2)/np.sum(eig_array, axis=2)
-    anterior_straight_criterion = anterior_straight_var \
-        > JbendThresholds[0] # Nframes x Nfish==2 array; Boolean 
-
-    # Evaluate angle between last pair of points and the heading angle
-    cos_angle_last_heading = np.cos(segment_angles[:,-1,:] - angle_data)
-    cos_angle_last_criterion = np.abs(cos_angle_last_heading) < JbendThresholds[1]
-
-    # Evaluate the angle between second-last pair of points and the heading angle
-    cos_angle_2ndlast_heading = np.cos(segment_angles[:,-2,:] - angle_data)
-    cos_angle_2ndlast_criterion = np.abs(cos_angle_2ndlast_heading) < JbendThresholds[2]
-    
-    allCriteria = np.all(np.stack((anterior_straight_criterion, 
-                           cos_angle_last_criterion, cos_angle_2ndlast_criterion), 
-                           axis=2), axis=2) # for each fish, all criteria must be true    
-    
-    # Dictionary containing J-bend frames for each fish
-    Jbend_frames = {0: np.array(np.where(allCriteria[:,0])).flatten() + 1, 
-                         1: np.array(np.where(allCriteria[:,1])).flatten() + 1}
-    
-    return Jbend_frames
-
-
-def get_isMoving_frames(dataset, motion_speed_threshold_mm_s = 10.0):
-    """ 
-    Find frames in which one or more fish have an above-threshold speed.
-    Inputs:
-        dataset: dataset dictionary of all behavior information for a given expt.
-        motion_speed_threshold_mm_s : speed threshold, mm/s
-    Output : 
-        isMoving_frames...
-           _each:  dictionary with a key for each fish, 
-                   each containing a numpy array of frames in which 
-                   that fish is moving
-           _any : numpy array of frames in which any fish is moving
-           _all : numpy array of frames in which all fish are moving
-    """
-    
-    speed_data = dataset["speed_array_mm_s"] # Nframes x Nfish array of speeds
-    Nfish = speed_data.shape[1]
-    isMoving = speed_data > motion_speed_threshold_mm_s
-
-    # Dictionary containing "is moving" frames for each fish
-    isMoving_frames_each = {}
-    for fish in range(Nfish):
-        isMoving_frames_each[fish] = np.array(np.where(isMoving[:, fish])).flatten() + 1
-    
-    # any fish
-    any_fish_moving  = np.any(isMoving, axis=1)
-    isMoving_frames_any = np.where(any_fish_moving)[0] + 1
-    
-    # all fish
-    all_fish_moving  = np.all(isMoving, axis=1)
-    isMoving_frames_all = np.where(all_fish_moving)[0] + 1
-
-    return isMoving_frames_each, isMoving_frames_any, isMoving_frames_all
 
 def calcOrientationXCorr(dataset, CSVcolumns, window_size = 25, makeDiagnosticPlots = False):
     """

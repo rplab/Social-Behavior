@@ -6,7 +6,7 @@ params:
   cos_theta_90_thresh: 0.26
   cosSeeingAngle: 0.5
   perp_windowsize: 2
-  perp_maxHeadDist_mm: 17.0
+  perp_maxDistance_mm: 12.0
   contact_distance_threshold_mm: 2.5
   contact_inferred_distance_threshold_mm: 3.5
   contact_inferred_window: 3

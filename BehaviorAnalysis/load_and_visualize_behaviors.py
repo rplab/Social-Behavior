@@ -263,8 +263,10 @@ if __name__ == '__main__':
     
     basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior'
     
-    picklePath  = basePath + r'\CSV files and outputs\2 week old - pairs\Analysis'
-    pickleFileName = os.path.join(picklePath, r'all_2week_light.pickle')
+    # picklePath  = basePath + r'\CSV files and outputs\2 week old - pairs\Analysis'
+    # pickleFileName = os.path.join(picklePath, r'all_2week_light.pickle')
+    picklePath  = basePath + r'\CSV files and outputs\2 week old - pairs TestSubset\Analysis'
+    pickleFileName = os.path.join(picklePath, r'test.pickle')
     
     datasets, CSVcolumns, expt_config, params = \
         loadAllFromPickle(pickleFileName = pickleFileName) # or None
@@ -279,11 +281,12 @@ if __name__ == '__main__':
         if datasets[j]["dataset_name"]==whichDataset:
             chosenSet = datasets[j]
     
-    showSpeedGraphs = False
+    showSpeedGraphs = True
     if showSpeedGraphs:
         plt.figure()
         plt.plot(chosenSet['speed_array_mm_s'][:,0], label='Fish 0')
         plt.plot(chosenSet['speed_array_mm_s'][:,1], label='Fish 1')
+        plt.xlabel('Frame number')
         plt.ylabel('Speed (mm/s)')
         plt.legend()
         
@@ -292,6 +295,38 @@ if __name__ == '__main__':
         plt.hist(chosenSet['speed_array_mm_s'][:,1], 1000)
         plt.xlabel('Speed (mm/s)')
     
+        plt.figure()
+        plt.plot(chosenSet['speed_array_mm_s'][:,0], label='Fish 0 speed')
+        plt.plot((180.0/np.pi)*chosenSet['tail_angle_rad'][:,0], label='Fish 0 tail angle')
+        plt.xlabel('Frame number')
+        plt.ylabel('Speed (mm/s) or angle (deg.)')
+        plt.legend()
+
+        plt.figure()
+        plt.hist(chosenSet['tail_angle_rad'][:,0], 1000)
+        plt.hist(chosenSet['tail_angle_rad'][:,1], 1000)
+        plt.xlabel('Tail angle (rad)')
+        
+        plt.figure()
+        plt.hist2d(np.log10(chosenSet['speed_array_mm_s'][:,0]), 
+                   np.log10((180.0/np.pi)*chosenSet['tail_angle_rad'][:,0]), 
+                   bins=25, range=[[0, 2], [0, 2]])
+        #, range=[[0, 50], [0, 180]]
+        plt.xlabel('log10 [Speed (mm/s)]', fontsize=16)
+        plt.ylabel('log10 [Tail angle (deg)]', fontsize=16)
+        plt.title(whichDataset, fontsize=20)
+
+        plt.figure()
+        plt.hist2d(chosenSet['speed_array_mm_s'][:,0], 
+                   (180.0/np.pi)*chosenSet['tail_angle_rad'][:,0], 
+                   bins=25, range=[[0, 100], [0, 180]],
+                   vmin=0, vmax=100)
+        #, range=[[0, 50], [0, 180]]
+        plt.xlabel('Speed (mm/s)', fontsize=16)
+        plt.ylabel('Tail angle (deg)', fontsize=16)
+        plt.title(whichDataset, fontsize=20)
+
+
     startFrame = 180
     endFrame = 211
     visualize_fish(chosenSet, CSVcolumns, 
