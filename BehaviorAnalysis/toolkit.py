@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, July 21, 2024
+Last modified by Rghuveer Parthasarathy, July 23, 2024
 
 Description
 -----------
@@ -31,6 +31,57 @@ from scipy.optimize import linear_sum_assignment
 import pickle
 import pandas as pd
 import yaml
+import tkinter as tk
+
+# Function to get a valid path from the user
+def get_basePath(basePathDefault):
+    """
+    Ask the user whether to use basePathDefault as the basePath; if not
+    get a path string either as text input or from a dialog box.
+    """
+    while True:
+        print('Default base path (contains "CSV files and outputs"  folder, etc): ')
+        print('   ',  basePathDefault)
+        user_input = input("Use the default base path (y / n / path string)? n -> dialog box. ")
+        if user_input.lower() == 'y':
+            return basePathDefault
+        elif user_input.lower() == 'n':
+            root = tk.Tk()
+            root.withdraw()  # Hide the root window
+            selected_path = tk.filedialog.askdirectory(title="Select Base Path")
+            if os.path.isdir(selected_path):
+                return selected_path
+            else:
+                print("Invalid path. Please try again.")
+        else:
+            if os.path.isdir(user_input):
+                return user_input
+            else:
+                print("Invalid input. Please enter 'y' or 'n', or provide a valid path.")
+
+def get_valid_file(fileTypeString = 'Config File'):
+    """
+    Check if the file+path exists; if not, dialog box.
+
+    Parameters
+    ----------
+    fileTypeString : String, to use in prompt text
+
+    Returns
+    -------
+    selected_file : selected path+file
+
+    """
+    root = tk.Tk()
+    root.withdraw()  # Hide the root window
+    while True:
+        titleString = f'Select {fileTypeString}'
+        selected_file = tk.filedialog.askopenfilename(title=titleString)
+        if os.path.isfile(selected_file):
+            return selected_file
+        else:
+            print(f"Invalid file. Please select a valid {fileTypeString}.")
+            
 
 def load_expt_config(config_path, config_file):
     """ 
@@ -41,7 +92,13 @@ def load_expt_config(config_path, config_file):
     Outputs:
         expt_config : dictionary of configuration information
     """
-    with open(os.path.join(config_path, config_file), 'r') as f:
+    config_file_full = os.path.join(config_path, config_file)
+    # Check if the config file exists; dialog box if not
+    if not os.path.isfile(config_file_full):
+        print(f"The config file '{config_file_full}' does not exist.")
+        config_file_full = get_valid_file(fileTypeString = 'Config File')
+    
+    with open(config_file_full, 'r') as f:
         all_config = yaml.safe_load(f)
     all_expt_names = list(all_config.keys())
     print('\n\nALl experiments: ')

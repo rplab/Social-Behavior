@@ -14,23 +14,16 @@
 import os
 import numpy as np
 import yaml
-from toolkit import load_expt_config, get_CSV_folder_and_filenames, \
-    load_all_position_data, make_frames_dictionary, \
-     get_edge_frames_dictionary, \
+from toolkit import get_basePath, get_valid_file, load_expt_config, \
+        get_CSV_folder_and_filenames, load_all_position_data, \
+        make_frames_dictionary, get_edge_frames_dictionary, \
         get_badTracking_frames_dictionary, \
         write_output_files, write_pickle_file, \
         add_statistics_to_excel
 from behavior_identification_single import get_single_fish_characterizations
-# , \
-#    get_fish_lengths, get_fish_speeds, getTailAngle, get_Cbend_frames, get_Jbend_frames
 from behavior_identification import extract_behaviors, \
     get_basic_two_fish_characterizations
-    # calcOrientationXCorr, get_relative_orientation
-# from behavior_identification import extract_behaviors, get_contact_frames, \
-#     get_inferred_contact_frames, get_90_deg_frames, \
-#     get_tail_rubbing_frames, get_isMoving_frames, \
-#     calcOrientationXCorr, get_approach_flee_frames, \
-#     get_relative_orientation
+
 
 
 
@@ -47,26 +40,38 @@ def main():
     """
 
     # The main folder containing configuration and parameter files.
+    # Default here; ask user whether to use this.
+    
     basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior'
-
+    basePath = get_basePath(basePath)
+    
+    configFolder = r'CSV files and outputs' # for config files
     cwd = os.getcwd() # Note the current working directory
 
     # Load experiment configuration file
-    config_path = os.path.join(basePath, r'CSV files and outputs')
+    config_path = os.path.join(basePath, configFolder)
     config_file = 'all_expt_configs.yaml'
     expt_config = load_expt_config(config_path, config_file)
     
     # Get CSV column info from configuration file
-    CSVinfo_path = os.path.join(basePath, r'CSV files and outputs')
+    CSVinfo_path = os.path.join(basePath, configFolder)
     CSVinfo_file = 'CSVcolumns.yaml'
-    with open(os.path.join(CSVinfo_path, CSVinfo_file), 'r') as f:
+    CSVinfo_file_full = os.path.join(CSVinfo_path, CSVinfo_file)
+    if not os.path.isfile(CSVinfo_file_full):
+        print(f"The config file '{CSVinfo_file_full}' does not exist.")
+        CSVinfo_file_full = get_valid_file(fileTypeString = 'CSV Info File')
+    with open(CSVinfo_file_full, 'r') as f:
         all_CSV = yaml.safe_load(f)
     CSVcolumns = all_CSV['CSVcolumns']
 
     # Get behavior analysis parameter info from configuration file
-    params_path = os.path.join  (basePath, r'CSV files and outputs')
+    params_path = os.path.join(basePath, configFolder)
     params_file = 'analysis_parameters.yaml'
-    with open(os.path.join(params_path, params_file), 'r') as f:
+    params_file_full = os.path.join(params_path, params_file)
+    if not os.path.isfile(params_file_full):
+        print(f"The config file '{params_file_full}' does not exist.")
+        params_file_full = get_valid_file(fileTypeString = 'Analysis Params File')
+    with open(params_file_full, 'r') as f:
         all_param = yaml.safe_load(f)
     params = all_param['params']
     
