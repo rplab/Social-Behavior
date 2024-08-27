@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Jul 10 18:09:34 2023
-Last modified on July 9, 2024
+Last modified on August 26, 2024
 
 Description
 -----------
@@ -23,13 +23,14 @@ import pickle
 
 from toolkit import link_weighted, repair_disjoint_heads, repair_double_length_fish
 
-def loadAllFromPickle(pickleFileName = None):
+def loadAllFromPickle(pickleFileName = None, 
+                      basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs'):
     """
 
     Parameters
     ----------
-    pickleFileName : string, optional
-        DESCRIPTION. The default is None; hard-coded options
+    pickleFileName : pickle file name; can include path to append to basePath
+    basePath = None : main path for behavior analysis
 
     Returns
     -------
@@ -40,13 +41,11 @@ def loadAllFromPickle(pickleFileName = None):
     """
     
     if pickleFileName == None:
-        basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior'
         #pickleFileName = input('Pickle file name; Will append .pickle: ')
         #pickleFileName = pickleFileName + '.pickle'
         pickleFileName = os.path.join(basePath, r'temp\temp.pickle')
         # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files\2 week old - pairs\all_2week_light.pickle'
         # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files\2 week old - pairs in the dark\all_2week_dark.pickle'
-
 
     with open(pickleFileName, 'rb') as handle:
         b = pickle.load(handle)
@@ -55,9 +54,9 @@ def loadAllFromPickle(pickleFileName = None):
     datasets = b[0]
     CSVcolumns = b[1]
     expt_config = b[2]
+    params = b[3]
     # fps = b[2]    
     # arena_radius_mm = b[3]
-    params = b[3]
     
     return datasets, CSVcolumns, expt_config, params
 
@@ -68,9 +67,10 @@ def visualize_fish(dataset, CSVcolumns, startFrame, endFrame):
        body{x, y} are Nframes x 10 x Nfish=2 arrays of x and y positions.
     Calls plot_one_fish() to plot. Note that plot_one_fish flips "y"
        to match movie orientation
-    Color by frame, with Fish 0 markers in the "summer_r" 
-       (reversed summer, yellow to green) colormap, and Fish 1 markers in 
-       "cool" colormap (cyan to magenta)  
+    Color by frame, with Fish 0 markers in the "cool" colormap (cyan to magenta)
+       and Fish 1 markers in the "summer_r" (reversed summer, yellow to green) 
+       colormap
+         
     Marker for head = circle (Fish 0) and Diamond (Fish 1); 
        x's for bad frames
 
@@ -261,11 +261,11 @@ def how_many_both_approaching_frames(dataset):
 
 if __name__ == '__main__':
     
-    basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior'
+    basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs'
     
     # picklePath  = basePath + r'\CSV files and outputs\2 week old - pairs\Analysis'
     # pickleFileName = os.path.join(picklePath, r'all_2week_light.pickle')
-    picklePath  = basePath + r'\CSV files and outputs\2 week old - pairs TestSubset\Analysis'
+    picklePath  = basePath + r'\2 week old - pairs TestSubset\Analysis'
     pickleFileName = os.path.join(picklePath, r'test.pickle')
     
     datasets, CSVcolumns, expt_config, params = \
@@ -281,7 +281,7 @@ if __name__ == '__main__':
         if datasets[j]["dataset_name"]==whichDataset:
             chosenSet = datasets[j]
     
-    showSpeedGraphs = True
+    showSpeedGraphs = False
     if showSpeedGraphs:
         plt.figure()
         plt.plot(chosenSet['speed_array_mm_s'][:,0], label='Fish 0')
@@ -343,7 +343,7 @@ if __name__ == '__main__':
     print('Here 0')
     print('Angle 2107 1:', chosenSet["all_data"][2107,5,1])
     # Fix disjoint heads
-    fix_disjoint_heads = True
+    fix_disjoint_heads = False
     if fix_disjoint_heads:
         chosenSet = repair_disjoint_heads(chosenSet, CSVcolumns, 
                               Dtol=3.0, tol=0.001)
@@ -359,32 +359,32 @@ if __name__ == '__main__':
     body_column_y_start=16
     body_Ncolumns=10
     idx_to_plot = 2106
-    print('Here before double length fix')
-    print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0])
-    print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1])
-    plt.figure()
-    plt.plot(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0],
-               -chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),0], 
-               color='olivedrab', marker='x')
-    plt.plot(0.25+chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1],
-               0.25-chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),1], 
-               color='magenta', marker='x')
-    fix_double_length = True
+    fix_double_length = False
     if fix_double_length:
+        print('Here before double length fix')
+        print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0])
+        print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1])
+        plt.figure()
+        plt.plot(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0],
+                   -chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),0], 
+                   color='olivedrab', marker='x')
+        plt.plot(0.25+chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1],
+                   0.25-chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),1], 
+                   color='magenta', marker='x')
         lengthFactor = [1.5, 2.5]
         chosenSet = repair_double_length_fish(chosenSet, CSVcolumns, 
                               lengthFactor = lengthFactor, tol=0.001)
-    print('Here after double length fix')
-    print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0])
-    print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1])
-    print(chosenSet["all_data"][idx_to_plot,5,0])
-    print(chosenSet["all_data"][idx_to_plot,5,1])
-    plt.plot(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0],
-               -chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),0], 
-               color='limegreen', marker='o')
-    plt.plot(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1],
-               -chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),1], 
-               color='hotpink', marker='o')
+        print('Here after double length fix')
+        print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0])
+        print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1])
+        print(chosenSet["all_data"][idx_to_plot,5,0])
+        print(chosenSet["all_data"][idx_to_plot,5,1])
+        plt.plot(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0],
+                   -chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),0], 
+                   color='limegreen', marker='o')
+        plt.plot(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1],
+                   -chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),1], 
+                   color='hotpink', marker='o')
 
 
     # Fix IDs

@@ -113,6 +113,24 @@ def main():
         raise ValueError("Not all datasets have the same 'Nfish' value")
     Nfish = Nfish_values[0]
     
+    # Time-reverse one of the fish
+    time_reverse_fish_idx = None # set to None to avoid flipping
+    if time_reverse_fish_idx is not None:
+        caution_check = input(f'ARE YOU SURE you want to time-flip fish {time_reverse_fish_idx}? (y/n): ')
+        if caution_check=='y':
+            valid_idx = (np.isin(time_reverse_fish_idx, np.arange(0, Nfish))) and \
+                        (type(time_reverse_fish_idx)==int)
+            if valid_idx==True:
+                print(f'\n\n  ** Time-flipping fish {time_reverse_fish_idx}**')
+                print('\n\n  ** Keeping the first two columns unchanged.** \n\n')
+                for j in range(len(datasets)):
+                    datasets[j]["all_data"][:,2:,time_reverse_fish_idx] = \
+                        np.flip(datasets[j]["all_data"][:,2:,time_reverse_fish_idx], axis=0)
+            else:
+                print('Invalid index; *NOT* flipping')
+                input('Press enter to indicate acknowlegement: ')
+
+        
     # Identify close-to-edge frames for each dataset
     # Call get_edge_frames for each datasets[j] and put results in a 
     # dictionary that includes durations of edge events, etc.
@@ -138,7 +156,6 @@ def main():
         datasets = get_basic_two_fish_characterizations(datasets, CSVcolumns,
                                                      expt_config, params)
     
-
     # For each dataset, identify social behaviors
     if Nfish > 1:
         for j in range(N_datasets):

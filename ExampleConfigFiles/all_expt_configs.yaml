@@ -232,3 +232,19 @@ SingleFish_Light_July2024_subset:
   # Arena center location information 
   arenaCentersLocation:  # estimate from well offset positions
   arenaCentersColumns: 
+
+TwoWeek2023_Fish1_TimeFlipped:
+  dataPathMain: C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - Fish1 FLIPPED in TIME # path with CSV files or parent of subgroup folders; leave empty for user-input
+  fps: 25.0  # frames per second
+  arena_radius_mm: 25.0  # arena radius, mm
+  imageScalePathName: C:/Users/Raghu/Documents/Experiments and Projects/Zebrafish behavior # path for the CSV with image scale
+  imageScaleFilename: ArenaCenters_SocPref_3456.csv
+  imageScaleColumn: 4 # column (0-indexed) with image scale
+  datasetColumns:  [0] # columns to concatenate to match dataset name 
+  # filename of CSV file *in each data folder* with image offset filename
+  datasetRemoveStrings: ['results_', 'SocPref_', '_ALL', '_light', '_dark', '_2wpf', '_SocPref'] # strings to remove from filenames and first column of the imageScale CSV to find matches. 
+  offsetPositionsFilename: wellOffsetPositionsCSVfile.csv
+  # Arena center location information 
+  arenaCentersPathName: C:/Users/Raghu/Documents/Experiments and Projects/Zebrafish behavior
+  arenaCentersFilename: ArenaCenters_SocPref_3456.csv
+  arenaCentersColumns: [5,6] # columns (0-indexed) with x,y arena centers

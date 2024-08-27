@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Wed Jul  5 17:54:16 2023
-Last modified on Nov. 21, 2023
+Last modified on August 14, 2024
 
 Description
 -----------
@@ -137,3 +137,137 @@ def get_orientation_type(sign_tuple):
         (1,-1,-1) : "bothSee"
     }
     return switcher.get(sign_tuple)
+
+
+def mark_behavior_frames_Excel(markFrames_workbook, dataset, key_list):
+    """
+    Create and fill in sheet in Excel marking all frames with behaviors
+    found in this dataset
+
+    Args:
+        markFrames_workbook : Excel workbook 
+        dataset : dictionary with all dataset info
+        key_list : list of dictionary keys corresponding to each behavior to write
+
+    Returns:
+        N/A
+    """
+    
+    # Annoyingly, Excel won't allow a worksheet name that's
+    # more than 31 characters! Force it to use the last 31.
+    sheet_name = dataset["dataset_name"]
+    sheet_name = sheet_name[-31:]
+    sheet1 = markFrames_workbook.add_worksheet(sheet_name)
+    ascii_uppercase = list(map(chr, range(65, 91)))
+    
+    # Headers 
+    sheet1.write('A1', 'Frame') 
+    for j, k in enumerate(key_list):
+        sheet1.write(f'{ascii_uppercase[j+1]}1', k) 
+        
+    # All frame numbers
+    maxFrame = int(np.max(dataset["frameArray"]))
+    for j in range(1,maxFrame+1):
+        sheet1.write(f'A{j+1}', str(j))
+
+    # Each behavior
+    for j, k in enumerate(key_list):
+        for run_idx in  range(dataset[k]["combine_frames"].shape[1]):
+            for duration_idx in range(dataset[k]["combine_frames"][1,run_idx]):
+                sheet1.write(f'{ascii_uppercase[j+1]}{dataset[k]["combine_frames"][0,run_idx]+duration_idx+1}', 
+                         "X".center(17))
+
+
+def combine_all_speeds(datasets):
+    """
+    Loop through each dataset, get speed array values for all fish, 
+    avoiding bad frames (dilated +1), collect all these in a list of 
+    numpy arrays. One list per dataset (flattened across fish.)
+    (Can concatenate into one numpy array with 
+                   "np.concatenate()"). .
+    For making a histogram of speeds
+
+    Parameters
+    ----------
+    datasets : list of dictionaries containing all analysis. 
+
+    Returns
+    -------
+    speeds_mm_s_all : list of numpy arrays of all speeds in all datasets
+
+    """
+    Ndatasets = len(datasets)
+    speeds_mm_s_all = []
+    for j in range(Ndatasets):
+        frames = datasets[j]["frameArray"]
+        badTrackFrames = datasets[j]["bad_bodyTrack_frames"]["raw_frames"]
+        dilate_badTrackFrames = np.concatenate((badTrackFrames,
+                                               badTrackFrames + 1))
+        bad_frames_set = set(dilate_badTrackFrames) # faster lookup
+        # Calculate mean speed excluding bad tracking frames
+        good_frames_mask = np.isin(frames, list(bad_frames_set), invert=True)
+        speeds_this_set = datasets[j]["speed_array_mm_s"][good_frames_mask, :].flatten()
+        speeds_mm_s_all.append(speeds_this_set)
+        
+    return speeds_mm_s_all
+
+
+def calculate_value_autocorr_oneSet(dataset, keyName='speed_array_mm_s', 
+                                    dilate_plus1=True, t_max=10, 
+                                    t_window=None):
+    """
+    For a *single* dataset, calculate the autocorrelation of the numerical
+    property in the given key (e.g. speed)
+    Ignore "bad tracking" frames. If "dilate_plus1" is True, dilate the bad frames +1.
+    Output is a numpy array with dim 1 corresponding to each fish.
+    
+    Parameters
+    ----------
+    dataset : single analysis dataset
+    keyName : the key to combine (e.g. "speed_array_mm_s")
+    dilate_plus1 : If True, dilate the bad frames +1
+    t_max : max time to consider for autocorrelation, seconds.
+    t_window : size of sliding window in seconds. If None, don't use a sliding window.
+    
+    Returns
+    -------
+    autocorr_one : autocorrelation of desired property, numpy array of
+                    shape (#time lags + 1 , Nfish)
+    t_lag : time lag array, seconds (including zero)
+    """
+    value_array = dataset[keyName]
+    Nframes, Nfish = value_array.shape
+    fps = dataset["fps"]
+    badTrackFrames = dataset["bad_bodyTrack_frames"]["raw_frames"]
+    if dilate_plus1:
+        dilate_badTrackFrames = np.concatenate((badTrackFrames, badTrackFrames + 1))
+        bad_frames_set = set(dilate_badTrackFrames)
+    else:
+        bad_frames_set = set(badTrackFrames)
+     
+    t_lag = np.arange(0, t_max + 1.0/fps, 1.0/fps)
+    n_lags = len(t_lag)
+    
+    autocorr = np.zeros((n_lags, Nfish))
+    
+    for fish in range(Nfish):
+        fish_value = value_array[:, fish].copy()
+        
+        good_frames = [speed for i, speed in enumerate(fish_value) if i not in bad_frames_set]
+        mean_value = np.mean(good_frames)
+        std_value = np.std(good_frames)
+        
+        for frame in bad_frames_set:
+            if frame < Nframes:
+                fish_value[frame] = np.random.normal(mean_value, std_value)
+        
+        if t_window is None:
+            fish_autocorr = calculate_autocorr(fish_value, n_lags)
+        else:
+            window_size = int(t_window * fps)
+            fish_autocorr = calculate_block_autocorr(fish_value, n_lags, 
+                                                     window_size)
+        
+        autocorr[:, fish] = fish_autocorr
+    
+    return autocorr, t_lag

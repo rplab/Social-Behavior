@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Split from behavior_identification.py on July 22, 2024
-Last modified July 22, 2024 -- Raghu Parthasarathy
+Last modified August 15, 2024 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -20,8 +20,9 @@ that apply to single fish:
 """
 
 import numpy as np
-from toolkit import  make_frames_dictionary
-    
+from toolkit import make_frames_dictionary, dilate_frames
+
+
 def get_single_fish_characterizations(datasets, CSVcolumns,
                                              expt_config, params):
     """
@@ -66,6 +67,45 @@ def get_single_fish_characterizations(datasets, CSVcolumns,
         isMoving_frames_each, isMoving_frames_any, isMoving_frames_all = \
             get_isMoving_frames(datasets[j], params["motion_speed_threshold_mm_second"])
             
+        # For movement indicator, for each fish and for "any" and "all" fish,
+        # make a dictionary containing frames, removing frames with 
+        # "bad" elements. Unlike other characteristics, need to "dilate"
+        # bad tracking frames, since each bad tracking frame j affects 
+        # speed j and speed j+1.
+        # Also makes a 2xN array of initial frames and durations, as usual
+        # for these dictionaries
+        # Code to allow an arbitrary number of fish, and consequently an 
+        #    arbitrary number of elements isMoving_frames_each dictionary
+        
+        """
+        isMoving_keys = ('isMoving_any', 'isMoving_all')
+        isMoving_arrays = (isMoving_frames_any, isMoving_frames_all)
+        for isMoving_key, isMoving_array in zip(isMoving_keys, isMoving_arrays):
+            badTrFramesRaw = np.array(datasets[j]["bad_bodyTrack_frames"]["raw_frames"]).astype(int)
+            dilate_badTrackFrames = dilate_frames(badTrFramesRaw, 
+                                                  dilate_frames=np.array([1]))
+            datasets[j][isMoving_key] = make_frames_dictionary(isMoving_array,
+                                          (datasets[j]["edge_frames"]["raw_frames"],
+                                           dilate_badTrackFrames),
+                                          behavior_name = isMoving_key,
+                                          Nframes=datasets[j]['Nframes'])
+        """
+        
+        iMe_arrays = [isMoving_frames_each[key] for key in sorted(isMoving_frames_each.keys())]
+        iM_arrays = iMe_arrays + [isMoving_frames_any] + [isMoving_frames_all] 
+        # Create the second tuple of strings
+        iM_keys = tuple(f'isMoving_Fish{i}' for i in range(len(isMoving_frames_each))) + ('isMoving_any',) \
+                  + ('isMoving_all', )
+
+        for iM_key, iM_array in zip(iM_keys, iM_arrays):
+            badTrFramesRaw = np.array(datasets[j]["bad_bodyTrack_frames"]["raw_frames"]).astype(int)
+            dilate_badTrackFrames = dilate_frames(badTrFramesRaw, 
+                                                  dilate_frames=np.array([1]))
+            datasets[j][iM_key] = make_frames_dictionary(iM_array,
+                                          dilate_badTrackFrames,
+                                          behavior_name = iM_key,
+                                          Nframes=datasets[j]['Nframes'])
+
         # Average speed (averaged over fish), and average speed only in moving frames
         speed_mean_all, speed_mean_moving = \
             get_mean_speed(datasets[j]["speed_array_mm_s"], 
@@ -74,25 +114,6 @@ def get_single_fish_characterizations(datasets, CSVcolumns,
         datasets[j]["speed_mm_s_mean"] = np.mean(speed_mean_all)
         datasets[j]["speed_whenMoving_mm_s_mean"] = np.mean(speed_mean_moving)
 
-
-        # For movement indicator, for "any" and "all" fish,
-        # make a dictionary containing frames, removing frames with 
-        # "bad" elements. Unlike other characteristics, need to "dilate"
-        # bad tracking frames, since each bad tracking frame j affects 
-        # speed j and speed j+1.
-        # Also makes a 2xN array of initial frames and durations 
-        isMoving_keys = ('isMoving_any', 'isMoving_all')
-        isMoving_arrays = (isMoving_frames_any, isMoving_frames_all)
-        for isMoving_key, isMoving_array in zip(isMoving_keys, isMoving_arrays):
-            badTrFramesRaw = np.array(datasets[j]["bad_bodyTrack_frames"]["raw_frames"]).astype(int)
-            dilate_badTrackFrames = np.concatenate((badTrFramesRaw,
-                                                   badTrFramesRaw + 1))
-            dilate_badTrackFrames = np.unique(dilate_badTrackFrames)
-            datasets[j][isMoving_key] = make_frames_dictionary(isMoving_array,
-                                          (datasets[j]["edge_frames"]["raw_frames"],
-                                           dilate_badTrackFrames),
-                                          behavior_name = isMoving_key,
-                                          Nframes=datasets[j]['Nframes'])
 
         # Get tail angle of each fish in each frame 
         # Nframes x Nfish array
@@ -135,6 +156,7 @@ def get_single_fish_characterizations(datasets, CSVcolumns,
                                            datasets[j]["bad_bodyTrack_frames"]["raw_frames"]),
                                           behavior_name = CJ_key,
                                           Nframes=datasets[j]['Nframes'])
+
     # For each dataset, exclude bad tracking frames from calculation of
     # the mean fish length
     # Also exclude bad tracking, dilated one frame as in isMoving,
@@ -259,13 +281,11 @@ def get_mean_speed(speed_array_mm_s, isMoving_frames_each, badTrackFrames):
     badTrackFrames = np.array(badTrackFrames).astype(int)
     dilate_badTrackFrames = np.concatenate((badTrackFrames,
                                            badTrackFrames + 1))
-    dilate_badTrackFrames = np.unique(dilate_badTrackFrames)
-    # dilate_badTrackIdx = dilate_badTrackFrames - 1
-    bad_frames_set = set(dilate_badTrackFrames) # faster lookup
+    bad_frames_set = set(dilate_badTrackFrames) # faster lookup -- caution use "list" for "isin"
     
     # Calculate mean speed excluding bad tracking frames
-    good_frames_mask = np.isin(frames, badTrackFrames, invert=True)
-    speed_mean_all = np.mean(speed_array_mm_s[good_frames_mask], axis=0).reshape(1, Nfish)
+    good_frames_mask = np.isin(frames, list(bad_frames_set), invert=True)
+    speed_mean_all = np.mean(speed_array_mm_s[good_frames_mask, :], axis=0).reshape(1, Nfish)
     
     # Calculate mean speed for moving frames, excluding bad tracking frames
     speed_mean_moving = np.zeros((1, Nfish))
@@ -388,9 +408,10 @@ def get_Cbend_frames(dataset, CSVcolumns, Cbend_threshold = 2/np.pi):
                          Default 2/pi (0.637) corresponds to a semicircle shape
                          For a circle, chord/arc = sin(theta/2) / (theta/2)
     Output : 
-        Cbend_frames : dictionary with two keys, 0 and 1, each of which
+        Cbend_frames : dictionary with a number of keys equal to the 
+                       number of fish, each of which
                        contains a numpy array of frames with 
-                       identified C-bend frames for fish 0 and fish 1, 
+                       identified C-bend frames, 
                        i.e. with bending < Cbend_threshold
     """
     
@@ -492,4 +513,5 @@ def get_Jbend_frames(dataset, CSVcolumns, JbendThresholds = (0.98, 0.34, 0.70)):
         Jbend_frames[fish] = np.array(np.where(allCriteria[:, fish])).flatten() + 1
 
     return Jbend_frames
+
 
