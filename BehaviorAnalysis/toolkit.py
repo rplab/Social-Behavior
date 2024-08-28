@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, August 21, 2024
+Last modified by Rghuveer Parthasarathy, August 27, 2024
 
 Description
 -----------
@@ -37,8 +37,8 @@ import yaml
 import tkinter as tk
 from scipy import signal
 
-# Function to get a valid path from the user
-def get_basePath(basePathDefault):
+# Function to get a valid path from the user (base Path or config path)
+def get_basePath(basePathDefault, pathString = 'base path (contains "CSV files and outputs")'):
     """
     Ask the user whether to use basePathDefault as the basePath; if not
     get a path string either as text input or from a dialog box.
@@ -91,6 +91,8 @@ def load_expt_config(config_path, config_file):
     """ 
     Loads the experimental configuration file
     Asks user for the experiment being examined
+    Image scale and arena centers paths will be appended to config_path
+        (same as basePath in main code).
     Inputs:
         config_path, config_file: path and file name of the yaml config file
     Outputs:
@@ -117,13 +119,15 @@ def load_expt_config(config_path, config_file):
         expt_config = all_config[all_expt_names[int(expt_choice)]]
     except:
         expt_config = all_config[all_expt_names[expt_choice]]
-    expt_config['imageScaleLocation'] = os.path.join(expt_config['imageScalePathName'], 
+    expt_config['imageScaleLocation'] = os.path.join(config_path,
+                                                     expt_config['imageScalePathName'], 
                                                      expt_config['imageScaleFilename'])
 
     if ("arenaCentersFilename" in expt_config.keys()):
         if expt_config['arenaCentersFilename'] != None:
-            expt_config['arenaCentersLocation'] = os.path.join(expt_config['arenaCentersPathName'], 
-                                                           expt_config['arenaCentersFilename'])
+            expt_config['arenaCentersLocation'] = os.path.join(config_path,
+                                                               expt_config['arenaCentersPathName'], 
+                                                               expt_config['arenaCentersFilename'])
         else:
             expt_config['arenaCentersLocation'] = None
     else:
@@ -132,7 +136,7 @@ def load_expt_config(config_path, config_file):
     return expt_config
     
 
-def get_CSV_folder_and_filenames(expt_config, startString="results"):
+def get_CSV_folder_and_filenames(expt_config, basePath, startString="results"):
     """
     Get the folder path containing CSV files, either from the
     configuration file, or asking user for the folder path
@@ -142,6 +146,9 @@ def get_CSV_folder_and_filenames(expt_config, startString="results"):
     Inputs:
         expt_config : dictionary containing dataPathMain (or None to ask user)
                         as well as subGroup info (optional)
+        basePath : folder containing folders with CSV files for analysis;
+                    dataPathMain will be appended to this.
+                    Required, even if dataPathFull overwrites it
         startString : the string that all CSV files to be considered should
                         start with. Default "results"
     Returns:
@@ -152,15 +159,20 @@ def get_CSV_folder_and_filenames(expt_config, startString="results"):
         - subGroupName : Path name of the subGroup; None if no subgroups
     
     """
-    
-    if expt_config['dataPathMain'] == None:
+
+    if (expt_config['dataPathMain'] == None) and \
+        (expt_config['dataPathFull'] == None):
+        # No path specified; prompt user
         dataPath = input("Enter the folder for CSV files, or leave empty for cwd: ")
         if dataPath=='':
             dataPath = os.getcwd() # Current working directory
     else:
         # Load path from config file
+        if expt_config['dataPathFull'] == None:
+            dataPathMain = os.path.join(basePath, expt_config['dataPathMain'])
+        else:
+            dataPathMain = expt_config['dataPathFull']
         if ('subGroups' in expt_config.keys()):
-            dataPathMain = expt_config['dataPathMain']
             print('\nSub-Experiments:')
             for j, subGroup in enumerate(expt_config['subGroups']):
                 print(f'  {j}: {subGroup}')
@@ -172,7 +184,7 @@ def get_CSV_folder_and_filenames(expt_config, startString="results"):
             dataPath = os.path.join(dataPathMain, subGroupName)
         else:
             subGroupName = None
-            dataPath = expt_config['dataPathMain']
+            dataPath = dataPathMain
         
     # Validate the folder path
     while not os.path.isdir(dataPath):
@@ -2207,7 +2219,8 @@ def make_2D_histogram(datasets, keyNames = ('speed_array_mm_s', 'head_head_dista
                       
 def average_bout_trajectory_oneSet(dataset, t_range_s=(-0.5, 2.0), 
                                    makePlot=False, 
-                                   constraintKey=None, constraintRange=None,
+                                   constraintKey=None,
+                                   constraintRange=None,
                                    constraintIdx = 0):
     """
     Tabulates speed information from dataset["speed_array_mm_s"] 
@@ -2216,7 +2229,8 @@ def average_bout_trajectory_oneSet(dataset, t_range_s=(-0.5, 2.0),
     a given fish; considers each fish in dataset.
     Optional: only consider bouts for which the value of constraintKey 
     at the start frame (first isMoving frame) is between constraintRange[0]
-    and constraintRange[1].
+    and constraintRange[1]. Calls get_values_subset(); can apply operations
+    like mean on constraint
     
     Parameters:
         dataset : single dictionary containing the analysis data.
@@ -2267,13 +2281,20 @@ def average_bout_trajectory_oneSet(dataset, t_range_s=(-0.5, 2.0),
         
         all_speeds_mm_s = []
         
+        if constraintKey is not None and constraintIdx is not None:
+            # constraint key may be multidimensional
+            constraint_array = get_values_subset(dataset[constraintKey], 
+                                                 constraintIdx)
+        else:
+            constraint_array = dataset[constraintKey]
+            
         for j in range(N_events):
             start_frame = moving_frameInfo[0,j] + start_offset
             end_frame = start_frame + frames_to_plot
             
             # Check constraint if provided
             if constraintKey is not None and constraintRange is not None:
-                constraint_value = dataset[constraintKey][moving_frameInfo[0,j]]
+                constraint_value = constraint_array[moving_frameInfo[0,j]]
                 if not (constraintRange[0] <= constraint_value <= constraintRange[1]):
                     continue
             
@@ -2307,8 +2328,9 @@ def average_bout_trajectory_oneSet(dataset, t_range_s=(-0.5, 2.0),
 
 
 def average_bout_trajectory_allSets(datasets, t_range_s=(-0.5, 2.0), 
-                                    constraintKey=None, 
+                                    constraintKey=None,
                                     constraintRange=None,
+                                    constraintIdx = 0,
                                     makePlot=False, 
                                     ylim = None, titleStr = None):
     """
@@ -2319,13 +2341,23 @@ def average_bout_trajectory_allSets(datasets, t_range_s=(-0.5, 2.0),
     
     Optional: only consider bouts for which the value of constraintKey 
     at the start frame (first isMoving frame) is between constraintRange[0]
-    and constraintRange[1].
+    and constraintRange[1]. Calls get_values_subset(); can apply operations
+    like mean on constraint
     
     Parameters:
         datasets (list): List of dictionaries containing the analysis data.
         t_range_s : time interval, seconds, around bout offset around which to tabulate data
-        constraintKey (str): Key name for the constraint, or None to use no constraint.
+        constraintKey (str): Key name for the constraint, 
+            or None to use no constraint. Apply the same constraint to both keys.
+            see combine_all_values_constrained()
         constraintRange (np.ndarray): Numpy array with two elements specifying the constraint range, or None to use no constraint.
+        constraintIdx : integer or string.
+                        If the constraint is a multidimensional array, will use
+                        dimension constraintIdx if constraintIdx is an integer 
+                        or the "operation" if constraintIdx is a string,
+                        "min", "max", or "mean",
+                        If None, won't apply constraint    
+                        see combine_all_values_constrained()
         makePlot : if True, plot avg speed vs. time relative to bout start
         ylim : Optional ymin, ymax for plot
         titleStr : title string for plot

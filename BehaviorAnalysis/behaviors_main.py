@@ -7,7 +7,7 @@
 # First version  : Estelle Trieu 9/19/2022
 # Re-written by : Raghuveer Parthasarathy (2023)
 # version ='2.0' Raghuveer Parthasarathy -- begun May 2023; see notes.
-# last modified: Raghuveer Parthasarathy, July 21, 2024
+# last modified: Raghuveer Parthasarathy, August 28, 2024
 # ---------------------------------------------------1------------------------
 """
 
@@ -25,8 +25,6 @@ from behavior_identification import extract_behaviors, \
     get_basic_two_fish_characterizations
 
 
-
-
 # ---------------------------------------------------------------------------
 
 
@@ -42,21 +40,18 @@ def main():
     # The main folder containing configuration and parameter files.
     # Default here; ask user whether to use this.
     
-    basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior'
+    basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs'
     basePath = get_basePath(basePath)
     
-    configFolder = r'CSV files and outputs' # for config files
     cwd = os.getcwd() # Note the current working directory
 
     # Load experiment configuration file
-    config_path = os.path.join(basePath, configFolder)
     config_file = 'all_expt_configs.yaml'
-    expt_config = load_expt_config(config_path, config_file)
+    expt_config = load_expt_config(basePath, config_file)
     
     # Get CSV column info from configuration file
-    CSVinfo_path = os.path.join(basePath, configFolder)
     CSVinfo_file = 'CSVcolumns.yaml'
-    CSVinfo_file_full = os.path.join(CSVinfo_path, CSVinfo_file)
+    CSVinfo_file_full = os.path.join(basePath, CSVinfo_file)
     if not os.path.isfile(CSVinfo_file_full):
         print(f"The config file '{CSVinfo_file_full}' does not exist.")
         CSVinfo_file_full = get_valid_file(fileTypeString = 'CSV Info File')
@@ -65,9 +60,8 @@ def main():
     CSVcolumns = all_CSV['CSVcolumns']
 
     # Get behavior analysis parameter info from configuration file
-    params_path = os.path.join(basePath, configFolder)
     params_file = 'analysis_parameters.yaml'
-    params_file_full = os.path.join(params_path, params_file)
+    params_file_full = os.path.join(basePath, params_file)
     if not os.path.isfile(params_file_full):
         print(f"The config file '{params_file_full}' does not exist.")
         params_file_full = get_valid_file(fileTypeString = 'Analysis Params File')
@@ -79,7 +73,7 @@ def main():
     # Note that dataPath is the path containing CSVs, which 
     # may be a subgroup path
     dataPath, allCSVfileNames, subGroupName = \
-        get_CSV_folder_and_filenames(expt_config) 
+        get_CSV_folder_and_filenames(expt_config, basePath, startString="results") 
     print(f'\n\n All {len(allCSVfileNames)} CSV files starting with "results": ')
     print(allCSVfileNames)
     
