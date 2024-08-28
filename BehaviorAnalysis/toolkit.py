@@ -2221,7 +2221,7 @@ def average_bout_trajectory_oneSet(dataset, t_range_s=(-0.5, 2.0),
                                    makePlot=False, 
                                    constraintKey=None,
                                    constraintRange=None,
-                                   constraintIdx = 0):
+                                   constraintIdx = None):
     """
     Tabulates speed information from dataset["speed_array_mm_s"] 
     around each onset of a bout ("isMoving" == True) in the
@@ -2271,6 +2271,7 @@ def average_bout_trajectory_oneSet(dataset, t_range_s=(-0.5, 2.0),
         moving_frameInfo = dataset[f"isMoving_Fish{k}"]["combine_frames"]
         
         # Remove columns based on conditions
+        print(moving_frameInfo.shape)
         valid_columns = (
             (moving_frameInfo[0,:] + (t_max_s * fps + 1) <= dataset["Nframes"]) &
             (moving_frameInfo[0,:] + (t_min_s * fps) >= 1)
@@ -2281,12 +2282,10 @@ def average_bout_trajectory_oneSet(dataset, t_range_s=(-0.5, 2.0),
         
         all_speeds_mm_s = []
         
-        if constraintKey is not None and constraintIdx is not None:
+        if (constraintKey is not None) and (constraintIdx is not None):
             # constraint key may be multidimensional
             constraint_array = get_values_subset(dataset[constraintKey], 
                                                  constraintIdx)
-        else:
-            constraint_array = dataset[constraintKey]
             
         for j in range(N_events):
             start_frame = moving_frameInfo[0,j] + start_offset
@@ -2330,7 +2329,7 @@ def average_bout_trajectory_oneSet(dataset, t_range_s=(-0.5, 2.0),
 def average_bout_trajectory_allSets(datasets, t_range_s=(-0.5, 2.0), 
                                     constraintKey=None,
                                     constraintRange=None,
-                                    constraintIdx = 0,
+                                    constraintIdx = None,
                                     makePlot=False, 
                                     ylim = None, titleStr = None):
     """
