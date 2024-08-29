@@ -35,33 +35,47 @@ import pickle
 import pandas as pd
 import yaml
 import tkinter as tk
+import tkinter.filedialog
 from scipy import signal
 
 # Function to get a valid path from the user (base Path or config path)
-def get_basePath(basePathDefault, pathString = 'base path (contains "CSV files and outputs")'):
+def get_basePath():
     """
     Ask the user whether to use basePathDefault as the basePath; if not
     get a path string either as text input or from a dialog box.
+    Verify that the basePath contains:
+        expt_config.yaml, analysis_parameters.yaml, CSVcolumns.yaml
+
     """
+    print('\n\nSelect the "CSV files" folder for this experiment')
     while True:
-        print('Default base path (contains "CSV files and outputs"  folder, etc): ')
-        print('   ',  basePathDefault)
-        user_input = input("Use the default base path (y / n / path string)? n -> dialog box. ")
-        if user_input.lower() == 'y':
-            return basePathDefault
-        elif user_input.lower() == 'n':
+        user_input = input("Type the full path name; leave empty for dialog box: ")
+        if user_input.lower() == '':
             root = tk.Tk()
             root.withdraw()  # Hide the root window
-            selected_path = tk.filedialog.askdirectory(title="Select Base Path")
-            if os.path.isdir(selected_path):
-                return selected_path
-            else:
-                print("Invalid path. Please try again.")
+            selected_path = tk.filedialog.askdirectory(title="Select CSV files folder")
         else:
-            if os.path.isdir(user_input):
-                return user_input
-            else:
-                print("Invalid input. Please enter 'y' or 'n', or provide a valid path.")
+            selected_path = user_input
+        if os.path.isdir(selected_path):
+            # It's a valid path
+            # Check that it contains the required config files
+            if not (os.path.isfile(os.path.join(selected_path, "expt_config.yaml")) and
+                    os.path.isfile(os.path.join(selected_path, "analysis_parameters.yaml")) and
+                    os.path.isfile(os.path.join(selected_path, "CSVcolumns.yaml"))):
+                print('\n\nFolder does not contain all three config files: expt_config.yaml, analysis_parameters.yaml, CSVcolumns.yaml')
+                print("Invalid path. Please try again.")
+            else: 
+                # Check path name
+                last_part_of_path = os.path.basename(os.path.normpath(selected_path))
+                if "csv files" not in last_part_of_path.lower():
+                    verifyName = input('Chosen folder name does not include "CSV files." Continue? (y/n): ') 
+                    if verifyName.lower() == 'y':
+                        return selected_path
+                else:
+                    return selected_path
+        else:
+            print("Invalid path. Please try again.")
+
 
 def get_valid_file(fileTypeString = 'Config File'):
     """
@@ -86,13 +100,17 @@ def get_valid_file(fileTypeString = 'Config File'):
         else:
             print(f"Invalid file. Please select a valid {fileTypeString}.")
             
-
-def load_expt_config(config_path, config_file):
+def load_global_expt_config(config_path, config_file):
     """ 
-    Loads the experimental configuration file
-    Asks user for the experiment being examined
-    Image scale and arena centers paths will be appended to config_path
-        (same as basePath in main code).
+    Loads the global experimental configuration file, which points to the
+    experiment-specific configuration files
+    
+    PLACEHOLDER
+    To be written.
+    Modify all_expt_configs to just contain basePath for the various experiments
+    Note that this uses get_valid_file(); it's the only function that does;
+       will need to load this in behaviors_main.py
+
     Inputs:
         config_path, config_file: path and file name of the yaml config file
     Outputs:
@@ -110,18 +128,75 @@ def load_expt_config(config_path, config_file):
     print('\n\nALl experiments: ')
     for j, key in enumerate(all_expt_names):
         print(f'  {j}: {key}')
+
+    #----
+    # MODIFY HERE: As below, select an experiment, but just use this path info, 
+    # and load the expt config file with load_expt_config
+        
     expt_choice = input('Select experiment (name string or number): ')
     # Note that we're not checking if the choice is valid, i.e. if in 
     # all_expt_names (if a string) or if in 0...len(all_expt_names) (if 
     # a string that can be converted to an integer.)
     try:
-        # Is the input string just an integer?
+        # Is the input string just an integer? Try integer...
         expt_config = all_config[all_expt_names[int(expt_choice)]]
     except:
+        # Must be a string
         expt_config = all_config[all_expt_names[expt_choice]]
-    expt_config['imageScaleLocation'] = os.path.join(config_path,
-                                                     expt_config['imageScalePathName'], 
-                                                     expt_config['imageScaleFilename'])
+    
+    return expt_config            
+
+def load_expt_config(config_path, config_file):
+    """ 
+    Loads the experimental configuration file
+    Image scale and arena centers paths will be appended to config_path
+        (same as basePath in main code).
+    Inputs:
+        config_path, config_file: path and file name of the yaml config file
+    Outputs:
+        expt_config : dictionary of configuration information
+    """
+    config_file_full = os.path.join(config_path, config_file)
+    # Note that we have already checked that basePath contains all three 
+    # config files, including expt_config.yaml
+    # Check if the config file exists; dialog box if not
+    
+    with open(config_file_full, 'r') as f:
+        all_config = yaml.safe_load(f)
+    
+    # There need only be one experimental configuration in the config file,
+    # but allow for the possibility of more
+    all_expt_names = list(all_config.keys())
+
+    if len(all_expt_names)> 1:
+        print('More...')
+        print('\n\nALl experiments in this config file: ')
+        for j, key in enumerate(all_expt_names):
+            print(f'  {j}: {key}')
+        expt_choice = input('Select experiment (name string or number): ')
+        # Note that we're not checking if the choice is valid, i.e. if in 
+        # all_expt_names (if a string) or if in 0...len(all_expt_names) (if 
+        # a string that can be converted to an integer.)
+        try:
+            # Is the input string just an integer? Try integer...
+            expt_config = all_config[all_expt_names[int(expt_choice)]]
+        except:
+            # Must be a string
+            expt_config = all_config[all_expt_names[expt_choice]]
+    else:
+        expt_config = all_config[all_expt_names[0]]
+
+    # Image scale path, if specified
+    if ("imageScalePathName" in expt_config.keys()):
+        if expt_config['imageScalePathName'] is not None:
+            imageScalePathNameFull = os.path.join(config_path, 
+                                                  expt_config['imageScalePathName'])
+        else:
+            imageScalePathNameFull = config_path
+        expt_config['imageScaleLocation'] = os.path.join(imageScalePathNameFull, 
+                                             expt_config['imageScaleFilename'])            
+    else:
+        expt_config['imageScaleLocation'] = None    
 
     if ("arenaCentersFilename" in expt_config.keys()):
         if expt_config['arenaCentersFilename'] != None:
@@ -136,19 +211,18 @@ def load_expt_config(config_path, config_file):
     return expt_config
     
 
-def get_CSV_folder_and_filenames(expt_config, basePath, startString="results"):
+
+def get_CSV_filenames(basePath, expt_config, startString="results"):
     """
-    Get the folder path containing CSV files, either from the
-    configuration file, or asking user for the folder path
-    Also get list of all CSV files whose names start with 
-    startString, probably "results"
+    Select subgroup (if applicable) and get a list of all CSV files 
+    whose names start with 
+    startString, probably "results," in the basePath previously specified
 
     Inputs:
-        expt_config : dictionary containing dataPathMain (or None to ask user)
-                        as well as subGroup info (optional)
         basePath : folder containing folders with CSV files for analysis;
                     dataPathMain will be appended to this.
                     Required, even if dataPathFull overwrites it
+        expt_config : dictionary containing subGroup info (if it exists)
         startString : the string that all CSV files to be considered should
                         start with. Default "results"
     Returns:
@@ -160,31 +234,19 @@ def get_CSV_folder_and_filenames(expt_config, basePath, startString="results"):
     
     """
 
-    if (expt_config['dataPathMain'] == None) and \
-        (expt_config['dataPathFull'] == None):
-        # No path specified; prompt user
-        dataPath = input("Enter the folder for CSV files, or leave empty for cwd: ")
-        if dataPath=='':
-            dataPath = os.getcwd() # Current working directory
+    if ('subGroups' in expt_config.keys()) and (expt_config['subGroups'] != None):
+        print('\nSub-Experiments:')
+        for j, subGroup in enumerate(expt_config['subGroups']):
+            print(f'  {j}: {subGroup}')
+        subGroup_choice = input('Select sub-experiment (string or number): ')
+        try:
+            subGroupName = expt_config['subGroups'][int(subGroup_choice)]
+        except:
+            subGroupName = expt_config['subGroups'][subGroup_choice]
+        dataPath = os.path.join(basePath, subGroupName)
     else:
-        # Load path from config file
-        if expt_config['dataPathFull'] == None:
-            dataPathMain = os.path.join(basePath, expt_config['dataPathMain'])
-        else:
-            dataPathMain = expt_config['dataPathFull']
-        if ('subGroups' in expt_config.keys()):
-            print('\nSub-Experiments:')
-            for j, subGroup in enumerate(expt_config['subGroups']):
-                print(f'  {j}: {subGroup}')
-            subGroup_choice = input('Select sub-experiment (string or number): ')
-            try:
-                subGroupName = expt_config['subGroups'][int(subGroup_choice)]
-            except:
-                subGroupName = expt_config['subGroups'][subGroup_choice]
-            dataPath = os.path.join(dataPathMain, subGroupName)
-        else:
-            subGroupName = None
-            dataPath = dataPathMain
+        subGroupName = None
+        dataPath = basePath
         
     # Validate the folder path
     while not os.path.isdir(dataPath):
@@ -660,8 +722,8 @@ def get_imageScale(dataset_name, expt_config):
     Code partially from GPT3-5 (openAI)
     """
     
-    if ("imageScale" in expt_config.keys()):
-        if expt_config['imageScale'] != None:
+    if ("imageScale" in expt_config.keys()) and \
+        expt_config['imageScale'] != None:
             return expt_config['imageScale']
     else:
         # Read from CSV file

@@ -271,3 +271,70 @@ def calculate_value_autocorr_oneSet(dataset, keyName='speed_array_mm_s',
         autocorr[:, fish] = fish_autocorr
     
     return autocorr, t_lag
+
+
+
+def get_CSV_folder_and_filenames(expt_config, basePath, startString="results"):
+    """
+    Get the folder path containing CSV files, either from the
+    configuration file, or asking user for the folder path
+    Also get list of all CSV files whose names start with 
+    startString, probably "results"
+
+    Inputs:
+        expt_config : dictionary containing dataPathMain (or None to ask user)
+                        as well as subGroup info (optional)
+        basePath : folder containing folders with CSV files for analysis;
+                    dataPathMain will be appended to this.
+                    Required, even if dataPathFull overwrites it
+        startString : the string that all CSV files to be considered should
+                        start with. Default "results"
+    Returns:
+        A tuple containing
+        - dataPath : the folder path containing CSV files
+        - allCSVfileNames : a list of all CSV files with names 
+                            starting with startString (probably "results")
+        - subGroupName : Path name of the subGroup; None if no subgroups
+    
+    """
+
+    if (expt_config['dataPathMain'] == None) and \
+        (expt_config['dataPathFull'] == None):
+        # No path specified; prompt user
+        dataPath = input("Enter the folder for CSV files, or leave empty for cwd: ")
+        if dataPath=='':
+            dataPath = os.getcwd() # Current working directory
+    else:
+        # Load path from config file
+        if expt_config['dataPathFull'] == None:
+            dataPathMain = os.path.join(basePath, expt_config['dataPathMain'])
+        else:
+            dataPathMain = expt_config['dataPathFull']
+        if ('subGroups' in expt_config.keys()):
+            print('\nSub-Experiments:')
+            for j, subGroup in enumerate(expt_config['subGroups']):
+                print(f'  {j}: {subGroup}')
+            subGroup_choice = input('Select sub-experiment (string or number): ')
+            try:
+                subGroupName = expt_config['subGroups'][int(subGroup_choice)]
+            except:
+                subGroupName = expt_config['subGroups'][subGroup_choice]
+            dataPath = os.path.join(dataPathMain, subGroupName)
+        else:
+            subGroupName = None
+            dataPath = dataPathMain
+        
+    # Validate the folder path
+    while not os.path.isdir(dataPath):
+        print("Invalid data path. Please try again (manual entry).")
+        dataPath = input("Enter the folder path: ")
+
+    print("Selected folder path: ", dataPath)
+    
+    # Make a list of all relevant CSV files in the folder
+    allCSVfileNames = []
+    for filename in os.listdir(dataPath):
+        if (filename.endswith('.csv') and filename.startswith(startString)):
+            allCSVfileNames.append(filename)
+
+    return dataPath, allCSVfileNames, subGroupName

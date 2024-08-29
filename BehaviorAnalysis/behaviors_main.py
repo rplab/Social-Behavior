@@ -14,8 +14,8 @@
 import os
 import numpy as np
 import yaml
-from toolkit import get_basePath, get_valid_file, load_expt_config, \
-        get_CSV_folder_and_filenames, load_all_position_data, \
+from toolkit import get_basePath, load_expt_config, \
+        get_CSV_filenames, load_all_position_data, \
         make_frames_dictionary, get_edge_frames_dictionary, \
         get_badTracking_frames_dictionary, \
         write_output_files, write_pickle_file, \
@@ -29,7 +29,6 @@ from behavior_identification import extract_behaviors, \
 
 
     
-    
 def main():
     """
     Main function for calling data reading functions, 
@@ -37,24 +36,26 @@ def main():
     CSV files in a set.
     """
 
-    # The main folder containing configuration and parameter files.
-    # Default here; ask user whether to use this.
-    
-    basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs'
-    basePath = get_basePath(basePath)
-    
     cwd = os.getcwd() # Note the current working directory
 
+    # for Raghu -- troubleshooting. Don't modify this.
+    globalBasePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs'
+    global_config_file = 'all_expt_configs.yaml'
+    # expt_config = load_expt_config(basePath, config_file)
+    
+    # The main folder containing configuration and parameter files.
+    # Leave empty to ask user for the folder.
+    # Could hard-code this here, but not recommended.
+    basePath = get_basePath()
+    
     # Load experiment configuration file
-    config_file = 'all_expt_configs.yaml'
+    config_file = 'expt_config.yaml'
     expt_config = load_expt_config(basePath, config_file)
     
     # Get CSV column info from configuration file
     CSVinfo_file = 'CSVcolumns.yaml'
     CSVinfo_file_full = os.path.join(basePath, CSVinfo_file)
-    if not os.path.isfile(CSVinfo_file_full):
-        print(f"The config file '{CSVinfo_file_full}' does not exist.")
-        CSVinfo_file_full = get_valid_file(fileTypeString = 'CSV Info File')
+    # Note that we already checked if this exists
     with open(CSVinfo_file_full, 'r') as f:
         all_CSV = yaml.safe_load(f)
     CSVcolumns = all_CSV['CSVcolumns']
@@ -62,9 +63,7 @@ def main():
     # Get behavior analysis parameter info from configuration file
     params_file = 'analysis_parameters.yaml'
     params_file_full = os.path.join(basePath, params_file)
-    if not os.path.isfile(params_file_full):
-        print(f"The config file '{params_file_full}' does not exist.")
-        params_file_full = get_valid_file(fileTypeString = 'Analysis Params File')
+    # Note that we already checked if this exists
     with open(params_file_full, 'r') as f:
         all_param = yaml.safe_load(f)
     params = all_param['params']
@@ -73,7 +72,9 @@ def main():
     # Note that dataPath is the path containing CSVs, which 
     # may be a subgroup path
     dataPath, allCSVfileNames, subGroupName = \
-        get_CSV_folder_and_filenames(expt_config, basePath, startString="results") 
+        get_CSV_filenames(basePath, expt_config, startString="results")
+    if len(allCSVfileNames)==0:
+        raise ValueError("Error: Zero CSV files found! Check folder structure.")
     print(f'\n\n All {len(allCSVfileNames)} CSV files starting with "results": ')
     print(allCSVfileNames)
     
