@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, August 27, 2024
+Last modified by Rghuveer Parthasarathy, Sept. 5, 2024
 
 Description
 -----------
@@ -29,7 +29,6 @@ import numpy as np
 import csv
 import os
 import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
 from scipy.optimize import linear_sum_assignment
 import pickle
 import pandas as pd
@@ -41,8 +40,10 @@ from scipy import signal
 # Function to get a valid path from the user (base Path or config path)
 def get_basePath():
     """
-    Ask the user whether to use basePathDefault as the basePath; if not
-    get a path string either as text input or from a dialog box.
+    Ask the user for the "base" Path that either contains all the 
+    CSV trajectory files or that contains "subgroup" folders 
+    with the subgroup CSV files.  Either text input or, if blank,
+    provide a dialog box.
     Verify that the basePath contains:
         expt_config.yaml, analysis_parameters.yaml, CSVcolumns.yaml
 
@@ -62,7 +63,10 @@ def get_basePath():
             if not (os.path.isfile(os.path.join(selected_path, "expt_config.yaml")) and
                     os.path.isfile(os.path.join(selected_path, "analysis_parameters.yaml")) and
                     os.path.isfile(os.path.join(selected_path, "CSVcolumns.yaml"))):
-                print('\n\nFolder does not contain all three config files: expt_config.yaml, analysis_parameters.yaml, CSVcolumns.yaml')
+                print(f'\n\nFolder {selected_path} does not contain all three config files:')
+                print('      expt_config.yaml, analysis_parameters.yaml, CSVcolumns.yaml')
+                if not os.path.isfile(os.path.join(selected_path, "expt_config.yaml")):
+                    print('expt_config.yaml is missing; maybe the filename has an "s" at the end?')
                 print("Invalid path. Please try again.")
             else: 
                 # Check path name
@@ -186,13 +190,15 @@ def load_expt_config(config_path, config_file):
     else:
         expt_config = all_config[all_expt_names[0]]
 
-    # Image scale path, if specified
-    if ("imageScalePathName" in expt_config.keys()):
-        if expt_config['imageScalePathName'] is not None:
-            imageScalePathNameFull = os.path.join(config_path, 
-                                                  expt_config['imageScalePathName'])
-        else:
-            imageScalePathNameFull = config_path
+    # Image scale file name and path, if specified
+    if ("imageScaleFilename" in expt_config.keys()) and \
+        (expt_config['imageScaleFilename'] is not None):
+        if ("imageScalePathName" in expt_config.keys()):
+            if expt_config['imageScalePathName'] is not None:
+                imageScalePathNameFull = os.path.join(config_path, 
+                                                      expt_config['imageScalePathName'])
+            else:
+                imageScalePathNameFull = config_path
         expt_config['imageScaleLocation'] = os.path.join(imageScalePathNameFull, 
                                              expt_config['imageScaleFilename'])            
     else:
@@ -200,8 +206,15 @@ def load_expt_config(config_path, config_file):
 
     if ("arenaCentersFilename" in expt_config.keys()):
         if expt_config['arenaCentersFilename'] != None:
-            expt_config['arenaCentersLocation'] = os.path.join(config_path,
+            print(config_path)
+            print(expt_config['arenaCentersPathName'])
+            print(expt_config['arenaCentersFilename'])
+            if expt_config['arenaCentersPathName'] is not None:
+                expt_config['arenaCentersLocation'] = os.path.join(config_path,
                                                                expt_config['arenaCentersPathName'], 
+                                                               expt_config['arenaCentersFilename'])
+            else:
+                expt_config['arenaCentersLocation'] = os.path.join(config_path,
                                                                expt_config['arenaCentersFilename'])
         else:
             expt_config['arenaCentersLocation'] = None
@@ -552,6 +565,7 @@ def get_edge_frames_dictionary(datasets, params, arena_radius_mm, CSVcolumns):
     """ 
     identify frames in which the head position of one or more fish is close
     to the dish edge (within threshold)
+    Note that radial coordinate has already been calculated (get_polar_coords() )
     
     Inputs:
         datasets : all datasets, dictionary 
@@ -571,9 +585,9 @@ def get_edge_frames_dictionary(datasets, params, arena_radius_mm, CSVcolumns):
         # Identify frames in which one or both fish are too close to the edge
         # First keep as an array, then convert into a dictionary that includes
         #    durations of edge events, etc.
-        # Also keep Nframes x Nfish=2 array of distance to edge, mm
-        edge_frames, datasets[j]["d_to_edge_mm"] \
-            = get_edge_frames(datasets[j], params, arena_radius_mm, 
+        # Don't bother keeping array of distance to edge, 
+        #    since radial_position_mm and arena_radius contains this infomation
+        edge_frames = get_edge_frames(datasets[j], params, arena_radius_mm, 
                                       CSVcolumns["head_column_x"],
                                       CSVcolumns["head_column_y"])
         
@@ -589,33 +603,28 @@ def get_edge_frames(dataset, params, arena_radius_mm, xcol=3, ycol=4):
     """ 
     identify frames in which the head position of one or more fish is close
     to the dish edge (within threshold)
+    Note that radial coordinate has already been calculated (get_polar_coords() )
     
     Inputs:
         dataset : dataset dictionary. Note "all_data" is 
                   Nframes x data columns x Nfish
-        params : parameters
+        params : parameters, including edge-closeness threshold
         arena_radius_mm :arena_radius in mm
         xcol, ycol = column indices (0==first) of the x and y head 
                         position columns
         
     Output:
         near_edge_frames : array of frame numbers (not index numbers!)
-        d_to_edge_mm : r_edge - r_fish, Nframes x Nfish array, mm
     """
-    x = dataset["all_data"][:,xcol,:]
-    y = dataset["all_data"][:,ycol,:]
-    dx = x - dataset["arena_center"][0]
-    dy = y - dataset["arena_center"][1]
-    dr = np.sqrt(dx**2 + dy**2)
-    # r_edge - r_fish, Nframes x Nfish array, units = mm:
-    d_to_edge_mm = arena_radius_mm - dr*dataset["image_scale"]/1000.0
+
+    r_mm = dataset["radial_position_mm"] # distance from center, mm
     # True if close to edge
-    near_edge = d_to_edge_mm < params["arena_edge_threshold_mm"]
+    near_edge = (arena_radius_mm - r_mm) < params["arena_edge_threshold_mm"]
     near_edge = np.any(near_edge, axis=1)
 
     near_edge_frames = dataset["frameArray"][np.where(near_edge)]
     
-    return near_edge_frames, d_to_edge_mm
+    return near_edge_frames
 
 def get_ArenaCenter(dataset_name, expt_config):
     """ 
@@ -926,6 +935,13 @@ def get_bad_bodyTrack_frames(dataset, params, body_column_x_start=6,
     
     return bad_bodyTrack_frames
     
+def wrap_to_pi(x):
+    # shift values of numpy array "x" to [-pi, pi]
+    # x must be an array, not a single number
+    x_wrap=np.remainder(x, 2*np.pi)
+    mask = np.abs(x_wrap)>np.pi
+    x_wrap[mask] -= 2*np.pi * np.sign(x_wrap[mask])
+    return x_wrap
 
 
 def plotAllPositions(dataset, CSVcolumns, arena_radius_mm, 
@@ -966,7 +982,8 @@ def plotAllPositions(dataset, CSVcolumns, arena_radius_mm,
     plt.axis('equal')
 
 
-def write_pickle_file(list_for_pickle, dataPath, outputFolderName, pickleFileName):
+def write_pickle_file(list_for_pickle, dataPath, outputFolderName, 
+                      pickleFileName):
     """
     Write Pickle file containing datasets, etc., in the analysis folder
     
@@ -1139,7 +1156,10 @@ def write_basicMeasurements_txt_file(dataset):
         Speed of each fish (mm/s); frame-to-frame speed, recorded as 0 for the first frame. ["speed_array_mm_s"]
         Relative orientation, i.e. angle between heading and 
             head-to-head vector, for each fish (radians) ["relative_orientation"]
-        Distance to edge, each fish (mm); ["d_to_edge_mm"]
+        Relative orientation, i.e. angle between heading and 
+            head-to-head vector, for each fish (radians) ["relative_orientation"]
+        Relative_heading_angle: The difference in heading angle between the 
+            two fish (in range [0, pi]), radians. ["relative_heading_angle"]
         Edge flag (1 or 0) ["edge_frames"]
         Bad track (1 or 0) ["bad_bodyTrack_frames"]
 
@@ -1172,13 +1192,14 @@ def write_basicMeasurements_txt_file(dataset):
     # Create headers list
     headers = ["frame"]
     if Nfish == 2:
-        headers.extend(["head_head_distance_mm", "closest_distance_mm"])
+        headers.extend(["head_head_distance_mm", "closest_distance_mm",
+                       "relative_heading_angle"])
         for j in range(Nfish):
             headers.extend([f"rel_orientation_rad_Fish{j}"])
     for j in range(Nfish):
         headers.extend([f"speed_mm_s_Fish{j}"])
     for j in range(Nfish):
-        headers.extend([f"d_to_edge_mm_Fish{j}"])
+        headers.extend([f"r_fromCtr_mm_Fish{j}"])
     headers.extend(["edge flag", "bad tracking"])
 
     # Create a list of rows
@@ -1188,13 +1209,14 @@ def write_basicMeasurements_txt_file(dataset):
         row = ["{:d}".format(frames[j])]
         if Nfish == 2:
             row.extend(["{:.3f}".format(dataset["head_head_distance_mm"][j].item()),
-                        "{:.3f}".format(dataset["closest_distance_mm"][j].item())])
+                        "{:.3f}".format(dataset["closest_distance_mm"][j].item()),
+                        "{:.3f}".format(dataset["relative_heading_angle"][j].item())])
             for k in range(Nfish):
                 row.extend(["{:.3f}".format(dataset["relative_orientation"][j, k].item())])
         for k in range(Nfish):
             row.extend(["{:.3f}".format(dataset["speed_array_mm_s"][j, k].item())])
         for k in range(Nfish):
-            row.extend(["{:.3f}".format(dataset["d_to_edge_mm"][j, k].item())])
+            row.extend(["{:.3f}".format(dataset["radial_position_mm"][j, k].item())])
         row.extend(["{:d}".format(EdgeFlag[j]),
                     "{:d}".format(BadTrackFlag[j])])
         rows.append(",".join(row))
@@ -1706,7 +1728,6 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
     
     values_all_constrained = []
     
-    print(type(constraintRange))
     if constraintKey is None or constraintRange is None \
                              or len(constraintRange) != 2:
         # If constraintRange is empty or invalid, return all values,
@@ -1804,15 +1825,17 @@ def get_values_subset(values_all, idx):
 
 def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None], 
                            xlabelStr='x', titleStr='Probability density',
-                           yScaleType = 'log', flatten_dataset = False):
+                           yScaleType = 'log', flatten_dataset = False,
+                           ylim = None, polarPlot = False):
     """
     Plot the probability distribution (normalized histogram) 
     for each array in x_list (semi-transparent)
     and for the concatenated array of all items in x_list (black)
+    Can plot in polar coordinates – useful for angle distributions.
     Inputs:
        x_list : list of numpy arrays
        bin_width : bin width
-       bin_range : list of smallest and largest bin edge; if None
+       bin_range : list of smallest and largest bin edges; if None
                    use min and max of all arrays combine
        xlabelStr : string for x axis label
        titleStr : string for title
@@ -1820,6 +1843,10 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
        flatten_dataset : if true, flatten each dataset's array for 
                            individual dataset plots. If false, plot each
                            array column (fish, probably) separately
+       ylim : (optional) tuple of min, max y-axis limits
+       polarPlot : if True, use polar coordinates for the histogram.
+                   Will not plot x and y labels.
+                   Strongly reommended to set y limit (which will set r limit)
     """ 
     
     plt.figure(figsize=(12, 6))
@@ -1833,8 +1860,8 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
     if bin_range[1] is None:
         bin_range[1] = np.nanmax(x_all)
     
-    bin_edges = np.arange(bin_range[0] - bin_width/2.0, 
-                          bin_range[1] + 1.5*bin_width, bin_width)
+    Nbins = np.round((bin_range[1] - bin_range[0])/bin_width + 1).astype(int)
+    bin_edges = np.linspace(bin_range[0], bin_range[1], num=Nbins)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
     
     # Plot individual distributions
@@ -1847,26 +1874,36 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
             counts, _ = np.histogram(x.flatten(), bins=bin_edges)
             prob_dist = counts / np.sum(counts) / bin_width
             datasetLabel = f'Dataset {i+1}'
-            plt.plot(bin_centers, prob_dist, color='black', alpha=alpha_each, 
-                     label=datasetLabel)
+            if polarPlot:
+                plt.polar(bin_centers, prob_dist, color='black', 
+                          alpha=alpha_each, label=datasetLabel)
+            else:
+                plt.plot(bin_centers, prob_dist, color='black', 
+                         alpha=alpha_each, label=datasetLabel)
         else:
             Nsets = x.shape[1] # number of measures per dataset, e.g. number of fish
             for j in range(Nsets):
                 counts, _ = np.histogram(x[:,j].flatten(), bins=bin_edges)
                 prob_dist = counts / np.sum(counts) / bin_width
                 datasetLabel = f'Dataset {i+1}: {j+1}'
-                plt.plot(bin_centers, prob_dist, color='black', alpha=alpha_each, 
-                         label=datasetLabel)
+                if polarPlot:
+                    plt.polar(bin_centers, prob_dist, color='black', 
+                              alpha=alpha_each, label=datasetLabel)
+                else:
+                    plt.plot(bin_centers, prob_dist, color='black',
+                             alpha=alpha_each, label=datasetLabel)
     
     # Plot concatenated distribution
     counts_all, _ = np.histogram(x_all, bins=bin_edges)
     prob_dist_all = counts_all / np.sum(counts_all) / bin_width
     plt.plot(bin_centers, prob_dist_all, color='black', linewidth=2, 
              label='All Datasets')
-    
-    plt.xlabel(xlabelStr, fontsize=16)
-    plt.ylabel('Probability density', fontsize=16)
+    if not polarPlot:
+        plt.xlabel(xlabelStr, fontsize=16)
+        plt.ylabel('Probability density', fontsize=16)
     plt.title(titleStr, fontsize=18)
+    if ylim is not None:
+        plt.ylim(ylim)
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.yscale(yScaleType)
     plt.tick_params(axis='both', which='major', labelsize=12)
