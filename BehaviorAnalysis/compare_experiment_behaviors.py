@@ -482,7 +482,6 @@ if __name__ == '__main__':
                            "AngleXCorr_mean"]    
     exclude_from_ratio = exclude_from_all + also_exclude_from_ratio
     
-
     # Call the function for log-log plot of the comparison
     new_baseName = baseName + '_relBehaviorRatios' 
     outputFileName = os.path.join(outputPath, new_baseName + out_ext)

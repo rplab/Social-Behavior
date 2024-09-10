@@ -7,7 +7,7 @@
 # First version  : Estelle Trieu 9/19/2022
 # Re-written by : Raghuveer Parthasarathy (2023)
 # version ='2.0' Raghuveer Parthasarathy -- begun May 2023; see notes.
-# last modified: Raghuveer Parthasarathy, August 28, 2024
+# last modified: Raghuveer Parthasarathy, Sept. 1s, 2024
 # ---------------------------------------------------1------------------------
 """
 
@@ -15,12 +15,13 @@ import os
 import numpy as np
 import yaml
 from toolkit import get_basePath, load_expt_config, \
-        get_CSV_filenames, load_all_position_data, \
+        get_CSV_filenames, load_all_position_data, fix_heading_angles, \
         make_frames_dictionary, get_edge_frames_dictionary, \
         get_badTracking_frames_dictionary, \
         write_output_files, write_pickle_file, \
         add_statistics_to_excel
-from behavior_identification_single import get_single_fish_characterizations
+from behavior_identification_single import get_single_fish_characterizations, \
+        get_coord_characterizations
 from behavior_identification import extract_behaviors, \
     get_basic_two_fish_characterizations
 
@@ -28,12 +29,14 @@ from behavior_identification import extract_behaviors, \
 # ---------------------------------------------------------------------------
 
 
-    
 def main():
     """
     Main function for calling data reading functions, 
     basic analysis functions, and behavior analysis functions for all 
     CSV files in a set.
+    
+    Returns datasets: dictionary of all trajectory information and analysis
+    
     """
 
     cwd = os.getcwd() # Note the current working directory
@@ -101,7 +104,10 @@ def main():
     datasets = load_all_position_data(allCSVfileNames, expt_config, 
                                       CSVcolumns, dataPath, params, 
                                       showAllPositions)
-
+    
+    # Fix (recalculate) heading angles
+    datasets = fix_heading_angles(datasets, CSVcolumns)
+    
     # Check that the number of fish is the same for all datasets; note this
     Nfish_values = [dataset.get("Nfish") for dataset in datasets]
     if len(set(Nfish_values)) != 1:
@@ -125,6 +131,10 @@ def main():
                 print('Invalid index; *NOT* flipping')
                 input('Press enter to indicate acknowlegement: ')
 
+    # For each dataset, get simple coordinate characterizations
+    # (polar coordinates, radial alignment) 
+    datasets = get_coord_characterizations(datasets, CSVcolumns,
+                                                 expt_config, params)
         
     # Identify close-to-edge frames for each dataset
     # Call get_edge_frames for each datasets[j] and put results in a 
@@ -227,6 +237,7 @@ def main():
     # Return to original directory
     os.chdir(cwd)
     
+    return datasets
     
 if __name__ == '__main__':
-    main()
+    datasets = main()

@@ -3,10 +3,12 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Jul 10 18:09:34 2023
-Last modified on August 26, 2024
+Last modified on Sept. 1, 2024
 
 Description
 -----------
+
+Functions for loading data from a pickle file, and visualizing (diagnostics)
 
 Contains the functions 
     - visualize_fish for plotting fish body positions and trajectories
@@ -20,13 +22,21 @@ import matplotlib  # should replace this by just matplotlib.colormaps
 import matplotlib.pyplot as plt
 import os
 import pickle
+import tkinter as tk
+import tkinter.filedialog
 
 from toolkit import link_weighted, repair_disjoint_heads, repair_double_length_fish
 
 def loadAllFromPickle(pickleFileName = None, 
-                      basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs'):
+                      basePath = None):
     """
 
+    Load contents from Pickle file
+    Assumes pickle file contains datasets, CSVcolumns, expt_config
+    If pickleFileName is a full path name, load it
+    If pickleFileName is a fileName or partial path and basePath exists, join and load
+    If pickleFileName is empty, provide a dialog box
+    
     Parameters
     ----------
     pickleFileName : pickle file name; can include path to append to basePath
@@ -39,13 +49,30 @@ def loadAllFromPickle(pickleFileName = None,
     expt_config : contains fps, arena_radius_mm, etc.
     params : analysis parameters; see behaviors_main()
     """
-    
-    if pickleFileName == None:
-        #pickleFileName = input('Pickle file name; Will append .pickle: ')
-        #pickleFileName = pickleFileName + '.pickle'
-        pickleFileName = os.path.join(basePath, r'temp\temp.pickle')
-        # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files\2 week old - pairs\all_2week_light.pickle'
-        # pickleFileName  = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files\2 week old - pairs in the dark\all_2week_dark.pickle'
+
+    badFile = True # for verifying
+    while badFile:
+        if pickleFileName == None or pickleFileName == '':
+            root = tk.Tk()
+            root.withdraw()  # Hide the root window
+            titleString = 'Select pickle file'
+            pickleFileName = tk.filedialog.askopenfilename(title=titleString,
+                                                          filetypes=[("pickle files", "*.pickle")])
+        else:
+            if not os.path.isabs(pickleFileName):
+                # Get parent folder information
+                if basePath == None or basePath == '':
+                    # Get path from dialog
+                    root = tk.Tk()
+                    root.withdraw()  # Hide the root window
+                    basePath = tk.filedialog.askdirectory(title=f"Select folder containing specified pickle file, {pickleFileName}")
+                pickleFileName = os.path.join(basePath, pickleFileName)
+        if os.path.isfile(pickleFileName):
+            badFile = False
+        else:
+            print("\n\nInvalid pickle file path or name.")
+            print("Please try again; will force dialog box.")
+            pickleFileName = None
 
     with open(pickleFileName, 'rb') as handle:
         b = pickle.load(handle)
@@ -70,6 +97,7 @@ def visualize_fish(dataset, CSVcolumns, startFrame, endFrame):
     Color by frame, with Fish 0 markers in the "cool" colormap (cyan to magenta)
        and Fish 1 markers in the "summer_r" (reversed summer, yellow to green) 
        colormap
+    Also plot Arena Center (black circle)
          
     Marker for head = circle (Fish 0) and Diamond (Fish 1); 
        x's for bad frames
@@ -106,6 +134,9 @@ def visualize_fish(dataset, CSVcolumns, startFrame, endFrame):
                       frameArray, cmap1, relativej, isBadFrame, marker='o')
         plot_one_fish(fig, body_x[frameArray==j,:,1], body_y[frameArray==j,:,1], 
                       frameArray, cmap2, relativej, isBadFrame, marker='D')
+    # plot arena center
+    plt.scatter(dataset['arena_center'][0], -1.0*dataset['arena_center'][1],
+                marker='o', facecolor='gray', color='black', s = 140)
     ax.set_aspect('equal', adjustable='box')
     plt.draw()
     plt.title(f'{dataset["dataset_name"]}: frames {startFrame} to {endFrame}')
@@ -161,8 +192,7 @@ def flag_possible_IDswitch(dataset, CSVcolumns):
 
     """
     # All heading angles
-    angle_data = dataset["all_data"][:,CSVcolumns["angle_data_column"], :]
-    cos_diff_angle = np.cos(np.diff(angle_data, n=1, axis=0))
+    cos_diff_angle = np.cos(np.diff(dataset["heading_angle"], n=1, axis=0))
     #plt.figure()
     #plt.hist(cos_diff_angle[:,0], bins=50)
     #plt.hist(cos_diff_angle[:,1], bins=50)
@@ -263,8 +293,6 @@ if __name__ == '__main__':
     
     basePath = r'C:\Users\Raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs'
     
-    # picklePath  = basePath + r'\CSV files and outputs\2 week old - pairs\Analysis'
-    # pickleFileName = os.path.join(picklePath, r'all_2week_light.pickle')
     picklePath  = basePath + r'\2 week old - pairs TestSubset\Analysis'
     pickleFileName = os.path.join(picklePath, r'test.pickle')
     
@@ -328,9 +356,14 @@ if __name__ == '__main__':
 
 
     startFrame = 180
-    endFrame = 211
+    endFrame = 191
     visualize_fish(chosenSet, CSVcolumns, 
                    startFrame=startFrame, endFrame=endFrame) # 7430, 7490
+    print(f'Values at frame {startFrame}')
+    print('Radial position, each fish:', chosenSet["radial_position_mm"][startFrame,:])
+    print('Polar angle, each fish:', chosenSet["polar_angle_rad"][startFrame,:])
+    print('Heading angle, each fish:', chosenSet["all_data"][startFrame,5,:])
+    print('Radial alignment, each fish:', chosenSet["radial_alignment_rad"][startFrame,:])
     
     # (wrongID_head, wrongID_body) = flag_possible_IDswitch(chosenSet, CSVcolumns)
 

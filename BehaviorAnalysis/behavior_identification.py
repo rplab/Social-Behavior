@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified July 13, 2024 -- Raghu Parthasarathy
+Last modified Sept. 6, 2024 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -21,7 +21,7 @@ Module containing all zebrafish pair behavior identification functions:
 import matplotlib.pyplot as plt
 from time import perf_counter
 import numpy as np
-from toolkit import  make_frames_dictionary
+from toolkit import wrap_to_pi
 from scipy.stats import skew
 # from circle_fit_taubin import TaubinSVD
 
@@ -30,7 +30,8 @@ def get_basic_two_fish_characterizations(datasets, CSVcolumns,
                                              expt_config, params):
     """
     For each dataset, perform “basic” two-fish characterizations  
-        (e.g. inter-fish distance, relative orientation)
+        (e.g. inter-fish distance, relative orientation, 
+         relative heading alignment)
     
     Inputs:
         datasets : dictionaries for each dataset
@@ -61,10 +62,15 @@ def get_basic_two_fish_characterizations(datasets, CSVcolumns,
         # connecting vector). Nframes x Nfish==2 array; radians
         datasets[j]["relative_orientation"] = \
             get_relative_orientation(datasets[j], CSVcolumns)   
+
+        # Relative orientation of fish (angle between heading and
+        # connecting vector). Nframes x Nfish==2 array; radians
+        datasets[j]["relative_heading_angle"] = \
+            get_relative_heading_angle(datasets[j], CSVcolumns)   
         
         # Get the sliding window cross-correlation of heading angles
         datasets[j]["xcorr_array"] = \
-            calcOrientationXCorr(datasets[j]["all_data"], CSVcolumns, 
+            calcOrientationXCorr(datasets[j], CSVcolumns, 
                                  params["angle_xcorr_windowsize"])
         
     # For each dataset, exclude bad tracking frames from calculations of
@@ -179,7 +185,7 @@ def extract_behaviors(dataset, params, CSVcolumns):
     # Last dimension = fish (so arrays are Nframes x {1 or 2}, Nfish==2)
     head_pos_data = dataset["all_data"][:,CSVcolumns["head_column_x"]:CSVcolumns["head_column_y"]+1, :]
         # head_pos_data is Nframes x 2 (x and y positions) x 2 (Nfish) array of head positions
-    angle_data = dataset["all_data"][:,CSVcolumns["angle_data_column"], :]
+    angle_data = dataset["heading_angle"]
     # body_x and _y are the body positions, each of size Nframes x 10 x 2 (fish)
     body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
     body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
@@ -540,16 +546,15 @@ def calcOrientationXCorr(dataset, CSVcolumns, window_size = 25, makeDiagnosticPl
         [not important] Make functions and eliminate redundant code
 
     """
-    angle_data = dataset[:,CSVcolumns["angle_data_column"], :]
-    Nframes = np.shape(angle_data)[0] 
+    Nframes = np.shape(dataset["heading_angle"])[0] 
     
     # Cross-correlation of angles over a sliding window
     # (Method of sliding sums from
     #    https://stackoverflow.com/questions/12709853/python-running-cumulative-sum-with-a-given-window)
     # Should make this a function...
     # First unwrap to avoid large jumps
-    angles_u1 = np.unwrap(angle_data[:,0], axis=0).flatten()
-    angles_u2 = np.unwrap(angle_data[:,1], axis=0)
+    angles_u1 = np.unwrap(dataset["heading_angle"][:,0], axis=0).flatten()
+    angles_u2 = np.unwrap(dataset["heading_angle"][:,1], axis=0)
     # The running mean of each set of angles
     angles_1_mean = np.cumsum(angles_u1)
     angles_1_mean[window_size:] = angles_1_mean[window_size:] - angles_1_mean[:-window_size]
@@ -573,8 +578,8 @@ def calcOrientationXCorr(dataset, CSVcolumns, window_size = 25, makeDiagnosticPl
         xlimits =  (7000,8000) # (12000, 12050) #
 
         plt.figure()
-        plt.plot(range(Nframes), angle_data[:,0]*180/np.pi, color='magenta', label='Fish 1')
-        plt.plot(range(Nframes), angle_data[:,1]*180/np.pi, color='olivedrab', label='Fish 2')
+        plt.plot(range(Nframes), dataset["heading_angle"][:,0]*180/np.pi, color='magenta', label='Fish 1')
+        plt.plot(range(Nframes), dataset["heading_angle"][:,1]*180/np.pi, color='olivedrab', label='Fish 2')
         plt.title('Angles of fish 1, 2; degrees')
         plt.xlabel('Frame')
         plt.xlim(xlimits)
@@ -644,7 +649,7 @@ def get_approach_flee_frames(dataset, CSVcolumns,
     """
 
     # All body positions, as in C-bending function
-    angle_data = dataset["all_data"][:,CSVcolumns["angle_data_column"], :]
+    angle_data = dataset["heading_angle"]
     body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
     body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
     
@@ -760,8 +765,6 @@ def get_relative_orientation(dataset, CSVcolumns):
     """ 
     Calculate the relative orientation of each fish with respect to the
     head-to-head vector to the other fish.
-    Note that speed has previously been calculated 
-        (dataset['speed_array_mm_s'], Nframes x Nfish==2 array)
     Inputs:
         dataset: dataset dictionary of all behavior information for a given expt.
         CSVcolumns : information on what the columns of dataset["all_data"] are
@@ -770,7 +773,7 @@ def get_relative_orientation(dataset, CSVcolumns):
             relative orientation (phi), radians, for fish 0 and fish 1
     """
     # All heading angles
-    angle_data = dataset["all_data"][:,CSVcolumns["angle_data_column"], :]
+    angle_data = dataset["heading_angle"]
     # all head positions
     head_pos_data = dataset["all_data"][:,CSVcolumns["head_column_x"]:CSVcolumns["head_column_y"]+1, :]
         # head_pos_data is Nframes x 2 (x and y positions) x 2 (Nfish) array of head positions
@@ -795,4 +798,24 @@ def get_relative_orientation(dataset, CSVcolumns):
     
     return relative_orientation
 
+
+def get_relative_heading_angle(dataset, CSVcolumns):
+    """ 
+    Calculate the difference in heading angle between the two fish 
+    (in range [0, pi]).
+    Requires Nfish = 2 (verified)
+    Inputs:
+        dataset: dataset dictionary of all behavior information for a given expt.
+        CSVcolumns : information on what the columns of dataset["all_data"] are
+    Output : 
+        relative_heading_angle : numpy array of shape (Nframes,), radians
+    """
+    if dataset["Nfish"] != 2:
+        raise ValueError("Error for relative heading angle: Nfish must be 2")
+
+    # All heading angles
+    angle_data = dataset["heading_angle"]
     
+    relative_heading_angle = np.abs(wrap_to_pi(angle_data[:,1]-angle_data[:,0]))
+    
+    return relative_heading_angle

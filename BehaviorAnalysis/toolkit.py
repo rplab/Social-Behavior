@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, Sept. 5, 2024
+Last modified by Rghuveer Parthasarathy, Sept. 9, 2024
 
 Description
 -----------
@@ -394,6 +394,35 @@ def load_data(CSVfileName, N_columns):
         all_data[:, :, j] = id_data[sorted_indices]
 
     return all_data, frameArray
+
+
+def fix_heading_angles(datasets, CSVcolumns):
+    """ 
+    Fix the heading angles -- rather than the strangely quantized angles from
+    ZebraZoom, calculate the angle from arctan(y[1]-y[2], x[1]-x[2]) 
+    See notes Sept. 2024
+    
+    Inputs
+        datasets : list of all dataset dictionaries. 
+                    Note "all_data" is Nframes x data columns x Nfish
+        CSVcolumns : CSV column dictionary (what's in what column)
+                                            
+    Outputs
+        datasets: contains new "heading_angle" key in each dataset
+                    datasets[j]["heading_angle"]
+                                            
+    """
+    x2 = CSVcolumns["body_column_x_start"]+1 # x position #2
+    x3 = CSVcolumns["body_column_x_start"]+2 # x position #3
+    y2 = CSVcolumns["body_column_y_start"]+1 # y position #2
+    y3 = CSVcolumns["body_column_y_start"]+2 # y position #3
+    for j in range(len(datasets)):
+        datasets[j]['heading_angle'] = np.arctan2(datasets[j]["all_data"][:,y2,:]-datasets[j]["all_data"][:,y3,:], 
+                                                  datasets[j]["all_data"][:,x2,:]-datasets[j]["all_data"][:,x3,:])
+        # put in range [0, 2*pi]; not actually necessary
+        datasets[j]['heading_angle'][datasets[j]['heading_angle'] < 0.0] += 2*np.pi
+    return datasets
+
 
 
 def get_dataset_name(CSVfileName):
@@ -1058,7 +1087,8 @@ def write_output_files(params, dataPath, datasets):
 
     # Mark frames for each dataset
     # Create the ExcelWriter object
-    excel_file = os.path.join(output_path, params['allDatasets_markFrames_ExcelFile'])
+    excel_file = os.path.join(output_path, 
+                              params['allDatasets_markFrames_ExcelFile'])
     writer = pd.ExcelWriter(excel_file, engine='xlsxwriter')
     # Call the function to write frames for each dataset
     for j in range(N_datasets):
@@ -1076,6 +1106,7 @@ def write_output_files(params, dataPath, datasets):
     initial_keys = ["dataset_name", "fps", "image_scale",
                     "total_time_seconds",
                     "speed_mm_s_mean", "speed_whenMoving_mm_s_mean",
+                    "bout_rate_bpm", "bout_duration_s", "bout_ibi_s",
                     "fish_length_Delta_mm_mean", 
                     "head_head_distance_mm_mean", 
                     "AngleXCorr_mean"]
@@ -1083,9 +1114,12 @@ def write_output_files(params, dataPath, datasets):
                        "Image scale (um/s)",
                        "Total Time (s)", 
                        "Mean speed (mm/s)", "Mean moving speed (mm/s)", 
+                       "Mean bout rate (/min)", "Mean bout duration (s)",
+                       "Mean inter-bout interval (s)",
                        "Mean difference in fish lengths (mm)", 
                        "Mean head-head dist (mm)", 
                        "AngleXCorr_mean"]
+
     # Remove any keys that are not in the first dataset, for example
     # two-fish behaviors if that dataset was for single fish data
     # Also remove the corresponding strings
@@ -1119,20 +1153,28 @@ def write_behavior_txt_file(dataset, key_list):
     in Analysis output folder
 
     Inputs:
-        dataset : dictionary with all dataset info
-        key_list : list of dictionary keys corresponding to each behavior to write
+        dataset  : dictionary with all dataset info
+        key_list : list of dictionary keys corresponding to each 
+                   behavior to write frame information for
 
     Returns:
         N/A
     """
     with open(f"{dataset['dataset_name']}.txt", "w") as results_file:
         results_file.write(f"{dataset['dataset_name']}\n")
+        results_file.write("Experimental parameters\n")
         results_file.write(f"   Image scale (um/px): {dataset['image_scale']:.1f}\n")
         results_file.write(f"   frames per second: {dataset['fps']:.1f}\n")
         results_file.write(f"   Duration: {dataset['total_time_seconds']:.1f} s\n")
+        results_file.write("Basic Properties\n")
         results_file.write(f"   Mean fish length: {dataset['fish_length_mm_mean']:.3f} mm\n")
+        results_file.write(f"   Mean fish speed: {dataset['speed_mm_s_mean']:.3f} mm/s\n")
+        results_file.write(f"   Mean fish speed when moving > threshold: {dataset['speed_whenMoving_mm_s_mean']:.3f} mm/s\n")
+        results_file.write(f"   Bout rate: {dataset['bout_rate_bpm']:.1f} bouts/minute\n")
+        results_file.write(f"   Mean bout duration: {dataset['bout_duration_s']:.2f} seconds\n")
+        results_file.write(f"   Mean inter-bout interval: {dataset['bout_ibi_s']:.2f} seconds\n")
         if dataset["Nfish"]==2:
-            results_file.write(f"   Mean difference in length: {dataset['fish_length_Delta_mm_mean']:.3f} mm\n")
+            results_file.write(f"   Mean difference in fish length: {dataset['fish_length_Delta_mm_mean']:.3f} mm\n")
             results_file.write(f"   Mean head-to-head distance: {dataset['head_head_distance_mm_mean']:.3f} mm\n")
             results_file.write(f"   Mean closest distance: {dataset['closest_distance_mm_mean']:.3f} mm\n")
         for k in key_list:
@@ -1303,7 +1345,6 @@ def add_statistics_to_excel(file_path='behaviorCounts.xlsx'):
         df = pd.read_excel(xls, sheet_name=sheet_name)
         
         # Separate non-numeric and numeric columns
-        non_numeric_cols = df.select_dtypes(exclude=[np.number]).columns
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         
         # Calculate statistics for numeric columns
@@ -1517,7 +1558,7 @@ def repair_disjoint_heads(dataset, CSVcolumns, Dtol=3.0, tol=0.001):
                             (CSVcolumns["body_column_x_start"]+Npositions),:].copy()
     y = dataset["all_data"][:,CSVcolumns["body_column_y_start"] :
                             (CSVcolumns["body_column_y_start"]+Npositions),:].copy()
-    angles = dataset["all_data"][:, CSVcolumns["angle_data_column"], :].copy()
+    angles = dataset["heading_angle"].copy()
 
     # True if all x, y are nonzero; shape Nframes x Nfish
     good_bodyTrack = np.logical_and(np.all(np.abs(x)>tol, axis=1), 
@@ -1551,7 +1592,7 @@ def repair_disjoint_heads(dataset, CSVcolumns, Dtol=3.0, tol=0.001):
                         (CSVcolumns["body_column_x_start"]+Npositions),:] = x
     dataset_repaired["all_data"][:,CSVcolumns["body_column_y_start"] :
                         (CSVcolumns["body_column_y_start"]+Npositions),:] = y
-    dataset_repaired["all_data"][:, CSVcolumns["angle_data_column"], :] = angles
+    dataset_repaired["heading_angle"] = angles
     
     return dataset_repaired
 
@@ -1646,8 +1687,8 @@ def repair_double_length_fish(dataset, CSVcolumns,
                             (CSVcolumns["body_column_x_start"]+Npositions),1] = x1_new
         dataset_repaired["all_data"][frameIdx,CSVcolumns["body_column_y_start"] :
                             (CSVcolumns["body_column_y_start"]+Npositions),1] = y1_new
-        dataset_repaired["all_data"][:, CSVcolumns["angle_data_column"], 0] = angles0_new
-        dataset_repaired["all_data"][:, CSVcolumns["angle_data_column"], 1] = angles1_new
+        dataset_repaired["heading_angle"][:, 0] = angles0_new
+        dataset_repaired["heading_angle"][:, 1] = angles1_new
     
     return dataset_repaired
  
@@ -1689,16 +1730,14 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
     ----------
     datasets : list of dictionaries containing all analysis.
     keyName : the key to combine (e.g. "speed_array_mm_s")
-    keyIdx : integer or string, or None
-                    If datasets[j][keyName] is a multidimensional array, 
-                    return the full array (minus bad frames, constraints)
-                    if keyIdx is None.
-                    If keyIdx is an integer, extract that column
-                    (e.g. datasets[12]["speed_array_mm_s"][:,keyIdx])
-                    If keyIdx is a string , use the operation "min", "max",
-                    or "mean", along axis==1
-                     if constraintIdx is "max")
-                    If None, won't apply constraint
+    keyIdx : integer or string, or None, used by get_values_subset(). 
+                If keyIdx is:
+                    None: If datasets[j][keyName] is a multidimensional array, 
+                       return the full array (minus bad frames, constraints)
+                    an integer: extract that column
+                       (e.g. datasets[12]["speed_array_mm_s"][:,keyIdx])
+                    a string , use the operation "min", "max",
+                       or "mean", along axis==1 (e.g. for fastest fish)
     constraintKey : the key to use for the constraint (e.g. "interfish_distance_mm")
                     datasets[j][constraintKey] should be a single, 1D numpy array
                     or should be a (N, Nfish) numpy array with the column
@@ -1785,11 +1824,16 @@ def get_values_subset(values_all, idx):
                  of shape (N,) or shape (N,1), or (N, Nfish)
                  If shape[1]=1, output values_all_constrained = values_all
                  
-    idx : either an integer or a string, probably from constraintIdx.
-                if an integer, the column of values_all to use as the 
-                constraint array. If a string, "min" or "max" to use min or 
-                max along axis=1, or "mean" for mean, or "all" to use "all"
+    idx : either an integer or a string, probably from keyIdx or constraintIdx.
+          If idx is:
+             None: ignore idx; don't apply constraint; return values_all
+             an integer: the column of values_all to use as the 
+                constraint array
+             a string, use the operation "min", "max", or "mean", 
+                along axis==1 (e.g. for fastest fish), or or "all" to use 
+                "all" (same as idx==None)
           if None, ignore idx; don't apply constraint
+
     Returns
     -------
     values_all_constrained : numpy array, the subset of values_all,
@@ -1813,7 +1857,7 @@ def get_values_subset(values_all, idx):
             elif idx == 'all':
                 values_all_constrained = values_all
             else:
-                raise ValueError(f"Indalid index string {idx}")
+                raise ValueError(f"Invalid index string {idx}")
         else:
             if (idx+1) > values_all.shape[1]:
                 raise ValueError(f"subset index {idx} is too large for the size" + 
@@ -1836,7 +1880,9 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
        x_list : list of numpy arrays
        bin_width : bin width
        bin_range : list of smallest and largest bin edges; if None
-                   use min and max of all arrays combine
+                   use min and max of all arrays combined. 
+                   Or if None and polarPlot==True use nearest
+                   integer multiple of pi below/above min and max 
        xlabelStr : string for x axis label
        titleStr : string for title
        yScaleType : either "log" or "linear"
@@ -1849,16 +1895,25 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
                    Strongly reommended to set y limit (which will set r limit)
     """ 
     
-    plt.figure(figsize=(12, 6))
+    fig = plt.figure(figsize=(12, 6))
+    ax = fig.add_subplot(polar=polarPlot)
     
     # Concatenate all arrays for the overall, combined plot
     x_all = np.concatenate([arr.flatten() for arr in x_list])
     
+    slight_theta_shift = 0.01 # for axis range of polar plots
     # Determine bin range if not provided
     if bin_range[0] is None:
-        bin_range[0] = x_all.min()
+        if polarPlot==True:
+            bin_range[0] = (np.nanmin(x_all) // np.pi)*np.pi  - bin_width/2.0 # floor * pi, -half-bin
+        else:
+            bin_range[0] = x_all.min()
     if bin_range[1] is None:
-        bin_range[1] = np.nanmax(x_all)
+        if polarPlot==True:
+            bin_range[1] = (((np.nanmax(x_all)-slight_theta_shift) // np.pi)+1)*np.pi \
+                + bin_width/2.0 # next mult of pi, + half-bin (though 360=0) 
+        else:
+            bin_range[1] = np.nanmax(x_all)
     
     Nbins = np.round((bin_range[1] - bin_range[0])/bin_width + 1).astype(int)
     bin_edges = np.linspace(bin_range[0], bin_range[1], num=Nbins)
@@ -1874,24 +1929,18 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
             counts, _ = np.histogram(x.flatten(), bins=bin_edges)
             prob_dist = counts / np.sum(counts) / bin_width
             datasetLabel = f'Dataset {i+1}'
-            if polarPlot:
-                plt.polar(bin_centers, prob_dist, color='black', 
-                          alpha=alpha_each, label=datasetLabel)
-            else:
-                plt.plot(bin_centers, prob_dist, color='black', 
-                         alpha=alpha_each, label=datasetLabel)
+            ax.plot(bin_centers, prob_dist, color='black', 
+                    alpha=alpha_each, label=datasetLabel)
         else:
             Nsets = x.shape[1] # number of measures per dataset, e.g. number of fish
             for j in range(Nsets):
                 counts, _ = np.histogram(x[:,j].flatten(), bins=bin_edges)
                 prob_dist = counts / np.sum(counts) / bin_width
                 datasetLabel = f'Dataset {i+1}: {j+1}'
-                if polarPlot:
-                    plt.polar(bin_centers, prob_dist, color='black', 
-                              alpha=alpha_each, label=datasetLabel)
-                else:
-                    plt.plot(bin_centers, prob_dist, color='black',
-                             alpha=alpha_each, label=datasetLabel)
+
+                ax.plot(bin_centers, prob_dist, color='black', 
+                        alpha=alpha_each, label=datasetLabel)
+
     
     # Plot concatenated distribution
     counts_all, _ = np.histogram(x_all, bins=bin_edges)
@@ -1902,6 +1951,8 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
         plt.xlabel(xlabelStr, fontsize=16)
         plt.ylabel('Probability density', fontsize=16)
     plt.title(titleStr, fontsize=18)
+    if polarPlot:
+        ax.set_thetalim(bin_range[0], bin_range[1])
     if ylim is not None:
         plt.ylim(ylim)
     plt.grid(True, linestyle='--', alpha=0.7)
@@ -2201,12 +2252,14 @@ def make_2D_histogram(datasets, keyNames = ('speed_array_mm_s', 'head_head_dista
     datasets (list): List of dictionaries containing the analysis data.
     keyNames (tuple of 2 str): Key names for the first and second values to plot.
     keyIdx : tuple of 2 items, integer or string or None indicating subset of 
-                    value array, using get_values_subset(datasets[j][keyName], keyIdx)
-                    If None, return the full array (minus bad frames, constraints)
-                    If keyIdx is an integer, extract that column
-                    If keyIdx is a string , use the operation "min", "max",
-                    or "mean", along axis==1
-                see get_values_subset()
+             value array, using get_values_subset(datasets[j][keyName], keyIdx)
+            If keyIdx is:
+                None: If datasets[j][keyName] is a multidimensional array, 
+                   return the full array (minus bad frames, constraints)
+                an integer: extract that column
+                   (e.g. datasets[12]["speed_array_mm_s"][:,keyIdx])
+                a string , use the operation "min", "max",
+                   or "mean", along axis==1 (e.g. for fastest fish)
     constraintKey (str): Key name for the constraint, 
         or None to use no constraint. Apply the same constraint to both keys.
         see combine_all_values_constrained()
@@ -2316,76 +2369,115 @@ def make_2D_histogram(datasets, keyNames = ('speed_array_mm_s', 'head_head_dista
     
 
                       
-def average_bout_trajectory_oneSet(dataset, t_range_s=(-0.5, 2.0), 
+def average_bout_trajectory_oneSet(dataset, keyName = "speed_array_mm_s", 
+                                   keyIdx = None, t_range_s=(-0.5, 2.0), 
                                    makePlot=False, 
                                    constraintKey=None,
                                    constraintRange=None,
                                    constraintIdx = None):
     """
-    Tabulates speed information from dataset["speed_array_mm_s"] 
-    around each onset of a bout ("isMoving" == True) in the
-    time interval specified by t_range_s. Averages these for all bouts for
-    a given fish; considers each fish in dataset.
-    Optional: only consider bouts for which the value of constraintKey 
+    Tabulates some quantity from a dataset, typically speed
+    dataset["speed_array_mm_s"], around each onset of a bout 
+    ("isMoving" == True) in the time interval specified by t_range_s. 
+    Consider each fish in the dataset, and combines the 
+    bout information for that fish unless keyIdx is not None
+    (see below; recommended to keep as None!).
+    Optional: Only consider bouts for which the value of constraintKey 
     at the start frame (first isMoving frame) is between constraintRange[0]
     and constraintRange[1]. Calls get_values_subset(); can apply operations
-    like mean on constraint
+    like mean on constraint, or particular index for constraint array
     
     Parameters:
         dataset : single dictionary containing the analysis data.
+        keyName : the key to combine (default speed, "speed_array_mm_s")
+        keyIdx  : integer or string, or None, used by get_values_subset(). 
+                  **Note:** recommended to use keyIdx==None; if not, think
+                  carefully about the output. Note that "other" is an 
+                  additional keyIdx possibility not used by get_values_subset()
+                  If keyIdx is:
+                    None: If datasets[j][keyName] is a multidimensional array, 
+                       return the full array (minus bad frames, constraints)
+                    an integer: extract that column
+                       (e.g. datasets[12]["speed_array_mm_s"][:,keyIdx])
+                    the string "min", "max", or "mean"; perform this operation
+                       along axis==1 (e.g. max for the fastest fish)
+                    the string "other": If Nfish == 2, extract the value
+                       for the *other* fish, i.e. fish 1 for fish0 bouts
+                       and fish 0 for fish1 bouts. 
         t_range_s : time interval, seconds, around bout offset around which to tabulate data
         makePlot : if True, plot for each fish speed vs. time relative to bout start
-
         constraintKey (str): Key name for the constraint, 
             or None to use no constraint. Apply the same constraint to both keys.
             see combine_all_values_constrained()
         constraintRange (np.ndarray): Numpy array with two elements specifying the constraint range, or None to use no constraint.
-        constraintIdx : integer or string.
-                        If the constraint is a multidimensional array, will use
-                        dimension constraintIdx if constraintIdx is an integer 
-                        or the "operation" if constraintIdx is a string,
-                        "min", "max", or "mean",
-                        If None, won't apply constraint    
+        constraintIdx : integer or string, or None, used by get_values_subset(). 
+                    If constraintIdx is:
+                        None: won't apply constraint
+                        an integer: if the constraint is a multidimensional 
+                            array, will use that column (e.g. fish # constraintIdx)
+                        a string: use the operation "min", "max",
+                           or "mean", along axis==1 (e.g. for fastest fish)
                         see combine_all_values_constrained()
-    
+
     Returns:
-        avg_speed_mm_s : list of length Nfish, each of which contains
-            mean (column 0) and sem (column 1) of the speed in the time 
-            interval around a bout start
+        avg_values : list of length Nfish, each of which contains
+            mean (column 0) and sem (column 1) of the values (typically
+            speed) in the time interval around a bout start
     """
-    
+        
     Nfish = dataset["Nfish"]
+    if keyIdx.lower() == 'other' and Nfish != 2:
+        raise ValueError('Error: Nfish must be 2 for keyIdx being "other".')
+
     fps = dataset["fps"]
     t_min_s, t_max_s = t_range_s
     frames_to_plot = int((t_max_s - t_min_s) * fps + 1)
     start_offset = int(t_min_s * fps)
+
+    if (keyIdx is not None) and (keyIdx.lower() != 'other') :
+        print('Warning: keyIdx is not None (or "other"), so bout trajectory will not')
+        print("         match the fish that is moving. Be sure you know what you're doing!")
     
     if constraintKey is not None and constraintRange is not None:
         if len(constraintRange) != 2 or not all(isinstance(x, (int, float)) for x in constraintRange):
             raise ValueError("constraintRange must be a numpy array with two numerical elements")
     
-    avg_speed_mm_s = []
+    avg_values = []
     
     for k in range(Nfish):
+        # Start frames and durations for bouts (i.e. motion)
         moving_frameInfo = dataset[f"isMoving_Fish{k}"]["combine_frames"]
         
-        # Remove columns based on conditions
-        print(moving_frameInfo.shape)
+        # Remove columns based on conditions (start and end of dataset)
         valid_columns = (
             (moving_frameInfo[0,:] + (t_max_s * fps + 1) <= dataset["Nframes"]) &
             (moving_frameInfo[0,:] + (t_min_s * fps) >= 1)
         )
         moving_frameInfo = moving_frameInfo[:, valid_columns]
         
+        # Number of events
         N_events = moving_frameInfo.shape[1]
         
-        all_speeds_mm_s = []
+        all_values = []
         
-        if (constraintKey is not None) and (constraintIdx is not None):
+        # Get the values, e.g. speed, for the moving fish
+        if keyIdx is None:
+            # Consider the fish that's moving (recommended!)
+            thisKeyIdx = k
+        elif keyIdx.lower() == 'other':
+            # already checked that Nfish = 2.
+            # Choose the other fish
+            tempFish = np.arange(0, Nfish)
+            thisKeyIdx = tempFish[tempFish != k][0]
+        else:
+            thisKeyIdx = keyIdx
+        values_fullRange = get_values_subset(dataset[keyName], thisKeyIdx)
+        
+        if constraintKey is not None:
             # constraint key may be multidimensional
             constraint_array = get_values_subset(dataset[constraintKey], 
                                                  constraintIdx)
-            
+        
         for j in range(N_events):
             start_frame = moving_frameInfo[0,j] + start_offset
             end_frame = start_frame + frames_to_plot
@@ -2395,47 +2487,62 @@ def average_bout_trajectory_oneSet(dataset, t_range_s=(-0.5, 2.0),
                 constraint_value = constraint_array[moving_frameInfo[0,j]]
                 if not (constraintRange[0] <= constraint_value <= constraintRange[1]):
                     continue
-            
-            speeds = dataset["speed_array_mm_s"][start_frame:end_frame, k]
-            all_speeds_mm_s.append(speeds)
-        print('Number of events: ', N_events)
+            if values_fullRange.ndim > 1:
+                # Not recommended; probably won't happen
+                values = values_fullRange[start_frame:end_frame, thisKeyIdx]
+            else:
+                values = values_fullRange[start_frame:end_frame]
+            all_values.append(values)
         
-        if all_speeds_mm_s:
-            print('   events meeting criteria: ', len(all_speeds_mm_s))
-            all_speeds_mm_s = np.array(all_speeds_mm_s)
-            mean_speed = np.mean(all_speeds_mm_s, axis=0)
-            std_error = np.std(all_speeds_mm_s, axis=0) / np.sqrt(len(all_speeds_mm_s))
+        if all_values:
+            if constraintKey is not None:
+                print(f'{N_events} events; {len(all_values)} meeting criteria.')
+            else:
+                print(f'{N_events} events.')
+            all_values = np.array(all_values)
+            mean_value = np.mean(all_values, axis=0)
+            std_error = np.std(all_values, axis=0) / np.sqrt(len(all_values))
             
-            avg_speed_mm_s.append(np.column_stack((mean_speed, std_error)))
+            avg_values.append(np.column_stack((mean_value, std_error)))
             
             if makePlot:
                 time_array_s = np.linspace(t_min_s, t_max_s, frames_to_plot)
                 plt.figure(figsize=(10, 6))
-                plt.plot(time_array_s, mean_speed, 'k-', label=f'Fish {k}')
-                plt.fill_between(time_array_s, mean_speed - std_error, mean_speed + std_error, alpha=0.3)
+                plt.plot(time_array_s, mean_value, 'k-', label=f'Fish {k}')
+                plt.fill_between(time_array_s, mean_value - std_error, mean_value + std_error, alpha=0.3)
                 plt.xlabel('Time from bout start (s)', fontsize=18)
-                plt.ylabel('Speed (mm/s)', fontsize=18)
-                plt.title(f'Avg. Bout Speed, Fish {k}, band=SEM', fontsize=18)
+                if keyName == 'speed_array_mm_s':
+                    ylabelStr = 'Speed (mm/s)'
+                    titleStr = f'Avg. Bout Speed, Fish {k}, band=SEM'
+                else:
+                    ylabelStr = keyName
+                    titleStr = f'Avg. {keyName}, Fish {k}, band=SEM'
+                plt.ylabel(ylabelStr, fontsize=18)
+                plt.title(titleStr, fontsize=18)
                 plt.legend()
                 plt.show()
         else:
-            avg_speed_mm_s.append(np.array([]))
+            avg_values.append(np.array([]))
     
-    return avg_speed_mm_s
+    return avg_values
 
 
 
 def average_bout_trajectory_allSets(datasets, t_range_s=(-0.5, 2.0), 
-                                    constraintKey=None,
+                                    keyName = "speed_array_mm_s", 
+                                    keyIdx = None, constraintKey=None,
                                     constraintRange=None,
                                     constraintIdx = None,
                                     makePlot=False, 
                                     ylim = None, titleStr = None):
     """
-    For all datasets, call average_bout_trajectory_allSets() 
-    to tabulate speed information around each onset of a bout 
+    For all datasets, call average_bout_trajectory_oneSet() 
+    to tabulate some quantity, typically speed
+    dataset["speed_array_mm_s"], around each onset of a bout 
     ("isMoving" == True) in the time interval specified by t_range_s. 
-    Averages these for all bouts, each fish and each dataset
+    Note that this considers each fish in the dataset, and combines
+    the bout information for that fish unless keyIdx is not None
+    (see below; recommended to keep as None!).
     
     Optional: only consider bouts for which the value of constraintKey 
     at the start frame (first isMoving frame) is between constraintRange[0]
@@ -2444,73 +2551,102 @@ def average_bout_trajectory_allSets(datasets, t_range_s=(-0.5, 2.0),
     
     Parameters:
         datasets (list): List of dictionaries containing the analysis data.
+        keyName : the key to combine (default speed, "speed_array_mm_s")
+        keyIdx  : integer or string, or None, used by get_values_subset(). 
+                  **Note:** recommended to use keyIdx==None; if not, think
+                  carefully about the output. Note that "other" is an 
+                  additional keyIdx possibility not used by get_values_subset()
+                  If keyIdx is:
+                    None: If datasets[j][keyName] is a multidimensional array, 
+                       return the full array (minus bad frames, constraints)
+                    an integer: extract that column
+                       (e.g. datasets[12]["speed_array_mm_s"][:,keyIdx])
+                    the string "min", "max", or "mean"; perform this operation
+                       along axis==1 (e.g. max for the fastest fish)
+                    the string "other": If Nfish == 2, extract the value
+                       for the *other* fish, i.e. fish 1 for fish0 bouts
+                       and fish 0 for fish1 bouts. 
         t_range_s : time interval, seconds, around bout offset around which to tabulate data
         constraintKey (str): Key name for the constraint, 
             or None to use no constraint. Apply the same constraint to both keys.
             see combine_all_values_constrained()
         constraintRange (np.ndarray): Numpy array with two elements specifying the constraint range, or None to use no constraint.
-        constraintIdx : integer or string.
-                        If the constraint is a multidimensional array, will use
-                        dimension constraintIdx if constraintIdx is an integer 
-                        or the "operation" if constraintIdx is a string,
-                        "min", "max", or "mean",
-                        If None, won't apply constraint    
+        constraintIdx : integer or string, or None, used by get_values_subset(). 
+                    If constraintIdx is:
+                        None: won't apply constraint
+                        an integer: if the constraint is a multidimensional 
+                            array, will use that column (e.g. fish # constraintIdx)
+                        a string: use the operation "min", "max",
+                           or "mean", along axis==1 (e.g. for fastest fish)
                         see combine_all_values_constrained()
         makePlot : if True, plot avg speed vs. time relative to bout start
         ylim : Optional ymin, ymax for plot
         titleStr : title string for plot
     
     Returns:
-        avg_speed_all_mm_s : numpy array with mean, standard deviation, 
+        avg_values : numpy array with mean, standard deviation, 
             and s.e.m. as columns.
     """
 
-    all_mean_speeds = []
+    all_mean_values = []
     all_fps = [] # To check if all fps are the same
     
     for dataset in datasets:
-        avg_speed_mm_s = average_bout_trajectory_oneSet(dataset, t_range_s, makePlot=False, 
+        avg_value_dataset = average_bout_trajectory_oneSet(dataset, 
+                                                        keyName = keyName, 
+                                                        keyIdx = keyIdx,
+                                                        t_range_s = t_range_s,
+                                                        makePlot=False, 
                                                         constraintKey=constraintKey, 
                                                         constraintRange=constraintRange)
         all_fps.append(dataset["fps"])
         
-        for fish_speeds in avg_speed_mm_s:
-            if fish_speeds.size > 0:  # Check if the array is not empty
-                all_mean_speeds.append(fish_speeds[:, 0])  # Append only the mean speeds
+        for fish_values in avg_value_dataset:
+            if fish_values.size > 0:  # Check if the array is not empty
+                all_mean_values.append(fish_values[:, 0])  # Append only the mean speeds
     
-    if not all_mean_speeds:
+    if not all_mean_values:
         return np.array([])  # Return empty array if no valid speeds were found
 
     if np.std(all_fps) / np.mean(all_fps) > 0.001:
         raise ValueError("fps not the same for all datasets!")
     fps = np.mean(all_fps)
 
-    all_mean_speeds = np.array(all_mean_speeds)
+    all_mean_values = np.array(all_mean_values)
     
-    mean_speed = np.mean(all_mean_speeds, axis=0)
-    std_dev = np.std(all_mean_speeds, axis=0)
-    sem = std_dev / np.sqrt(len(all_mean_speeds))
+    mean_values = np.mean(all_mean_values, axis=0)
+    std_dev = np.std(all_mean_values, axis=0)
+    sem = std_dev / np.sqrt(len(all_mean_values))
     
-    avg_speed_all_mm_s = np.column_stack((mean_speed, std_dev, sem))
+    avg_values = np.column_stack((mean_values, std_dev, sem))
 
     if makePlot:
         if titleStr is None:
-            titleStr = 'Avg. Bout Speed, all datasets'
+            if keyName == 'speed_array_mm_s':
+                ylabelStr = 'Speed (mm/s)'
+                titleStr = 'Avg. Bout Speed, all datasets'
+            else:
+                ylabelStr = keyName
+                titleStr = f'Avg. {keyName}, all datasets'        
+        if keyName == 'speed_array_mm_s':
+            ylabelStr = 'Speed (mm/s)'
+        else:
+            ylabelStr = keyName
         t_min_s, t_max_s = t_range_s
         frames_to_plot = int((t_max_s - t_min_s) * fps + 1)
         time_array = np.linspace(t_min_s, t_max_s, frames_to_plot) #array of time points to consider
         plt.figure(figsize=(10, 6))
-        plt.plot(time_array, mean_speed, 'k-')
-        plt.fill_between(time_array, mean_speed - std_dev, mean_speed + std_dev, alpha=0.2)
-        plt.fill_between(time_array, mean_speed - sem, mean_speed + sem, alpha=0.4)
+        plt.plot(time_array, mean_values, 'k-')
+        plt.fill_between(time_array, mean_values - std_dev, mean_values + std_dev, alpha=0.2)
+        plt.fill_between(time_array, mean_values - sem, mean_values + sem, alpha=0.4)
         plt.xlabel('Time from bout start (s)', fontsize=18)
-        plt.ylabel('Speed (mm/s)', fontsize=18)
+        plt.ylabel(ylabelStr, fontsize=18)
         plt.title(titleStr, fontsize=18)
         if ylim is not None:
             plt.ylim(ylim)
         plt.show()
 
-    return avg_speed_all_mm_s
+    return avg_values
 
 
 def behaviorFrameCount_one(dataset, keyList, normalizeCounts = False):
