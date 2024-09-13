@@ -1017,7 +1017,6 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
                                     titleStr = 'Bout Speed', makePlot=True,
                                     outputFileName = outputFileName)
 
-
     # speed autocorrelation function
     if outputFileNameBase is not None:
         outputFileName = outputFileNameBase + '_speedAutocorr' + '.' + outputFileNameExt
