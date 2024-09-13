@@ -21,7 +21,8 @@ Module containing all zebrafish pair behavior identification functions:
 import matplotlib.pyplot as plt
 from time import perf_counter
 import numpy as np
-from toolkit import wrap_to_pi
+from toolkit import wrap_to_pi, combine_all_values_constrained, \
+    plot_probability_distr
 from scipy.stats import skew
 # from circle_fit_taubin import TaubinSVD
 
@@ -819,3 +820,63 @@ def get_relative_heading_angle(dataset, CSVcolumns):
     relative_heading_angle = np.abs(wrap_to_pi(angle_data[:,1]-angle_data[:,0]))
     
     return relative_heading_angle
+
+
+def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
+                           outputFileNameExt = 'png'):
+    """
+    makes several useful "pair" plots -- i.e. plots of characteristics 
+    of pairs of fish.
+    Note that there are lots of parameter values that are hard-coded; this
+    function is probably more useful to read than to run, pasting and 
+    modifying its code.
+    
+    Inputs:
+        datasets : dictionaries for each dataset
+        outputFileNameBase : base file name for figure output; if None,
+                             won't save a figure file
+        outputFileNameExt : extension for figure output (e.g. 'eps' or 'png')
+
+    Outputs:
+
+    """
+    
+    verifyPairs = True
+    for j in range(len(datasets)):
+        if datasets[j]["Nfish"] != 2:
+            verifyPairs = False
+    if verifyPairs==False:
+        raise ValueError('Error in make_pair_fish_plots; Nfish must be 2 !')
+
+
+    # head-head distance histogram
+    head_head_mm_all = combine_all_values_constrained(datasets, 
+                                                     keyName='head_head_distance_mm', 
+                                                     dilate_plus1 = False)
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_distance_head_head' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    plot_probability_distr(head_head_mm_all, bin_width = 0.5, 
+                           bin_range = [0, None], yScaleType = 'linear',
+                           xlabelStr = 'Head-head distance (mm)', 
+                           titleStr = 'Probability distribution: head-head distance (mm)',
+                           outputFileName = outputFileName)
+
+
+    # Heading angle histogram
+    relative_heading_angle_all = combine_all_values_constrained(datasets, 
+                                                 keyName='relative_heading_angle', 
+                                                 dilate_plus1 = False)
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_rel_heading_angle' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    bin_width = np.pi/30
+    plot_probability_distr(relative_heading_angle_all, bin_width = bin_width,
+                           bin_range=[None, None], yScaleType = 'linear',
+                           polarPlot = True,
+                           titleStr = 'Relative Heading Angle',
+                           ylim = (0, 0.6),
+                           outputFileName = outputFileName)
+    
