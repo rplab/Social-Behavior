@@ -81,6 +81,27 @@ def main():
     print(f'\n\n All {len(allCSVfileNames)} CSV files starting with "results": ')
     print(allCSVfileNames)
     
+    # Add subgroup name (if it exists) and the experiment name (i.e.
+    # folder name) to the output Excel file names, appending these to
+    # (1) "behavior_counts.xlsx" (or whatever params["allDatasets_ExcelFile"]
+    #     is) for summary statistics of each behavior for each dataset
+    # (2) "behaviors_in_each_frame.xlsx" (or whatever params["allDatasets_markFrames_ExcelFile"])
+    #     is for marking behaviors in each frame
+    baseFolder = os.path.basename(basePath)
+    base_name, extension = os.path.splitext(params["allDatasets_ExcelFile"])
+    if subGroupName is None:
+        params["allDatasets_ExcelFile"] = f"{base_name}_{baseFolder}{extension}"
+    else:
+        params["allDatasets_ExcelFile"] = f"{base_name}_{subGroupName}_{baseFolder}{extension}"
+    print(f"Modifying output allDatasets_ExcelFile file name to be: {params['allDatasets_ExcelFile']}")
+    base_name, extension = os.path.splitext(params["allDatasets_markFrames_ExcelFile"])
+    if subGroupName is None:
+        params["allDatasets_markFrames_ExcelFile"] = f"{base_name}_{baseFolder}{extension}"
+    else:
+        params["allDatasets_markFrames_ExcelFile"] = f"{base_name}_{subGroupName}_{baseFolder}{extension}"
+    print(f"Modifying output allDatasets_markFrames_ExcelFile file name to be: {params['allDatasets_markFrames_ExcelFile']}")
+    
+    
     # If there are subgroups, modify the output Excel file name for
     # summary statistics of each behavior for each dataset -- instead
     # of "behavior_counts.xlsx" (or whatever params["allDatasets_ExcelFile"]

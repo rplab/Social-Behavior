@@ -2247,7 +2247,7 @@ def make_2D_histogram(datasets, keyNames = ('speed_array_mm_s', 'head_head_dista
                       keyIdx = (None, None), 
                       constraintKey=None, constraintRange=None, constraintIdx = 0,
                       dilate_plus1=True, bin_ranges=None, Nbins=(20,20),
-                      titleStr = None, colorRange = None):
+                      titleStr = None, colorRange = None, outputFileName = None):
     """
     Create a 2D histogram plot of the values from two keys in the 
     given datasets. Combine all the values across datasets.
@@ -2282,7 +2282,8 @@ def make_2D_histogram(datasets, keyNames = ('speed_array_mm_s', 'head_head_dista
     Nbins (tuple): Optional tuple of two integers, number of bins for value1 and value2
     titleStr : title string; if None use Key names
     colorRange : Optional tuple of (vmin, vmax) for the histogram "v axis" range
-    
+    outputFileName : if not None, save the figure with this filename 
+                     (include extension)    
     Returns:
     None
     """
@@ -2372,7 +2373,8 @@ def make_2D_histogram(datasets, keyNames = ('speed_array_mm_s', 'head_head_dista
     ax.set_title(titleStr, fontsize=18)
     cbar.set_label('Normalized Count')
     plt.show()
-    
+    if outputFileName != None:
+        plt.savefig(outputFileName, bbox_inches='tight')
 
 
 def behaviorFrameCount_one(dataset, keyList, normalizeCounts = False):
@@ -2423,6 +2425,9 @@ def behaviorFrameCount_all(datasets, keyList,
                     
     Returns: 
         datasets (list): List of dictionaries containing the analysis data.
+            This is the same as the input dataset, with an additional key
+            "behaviorLabel" of the counts of the given behaviors.
+            Note that this does not copy datasets!
         
     """
     for dataset in datasets:

@@ -22,7 +22,9 @@ import matplotlib.pyplot as plt
 from time import perf_counter
 import numpy as np
 from toolkit import wrap_to_pi, combine_all_values_constrained, \
-    plot_probability_distr
+    plot_probability_distr, make_2D_histogram,calculate_value_corr_all, \
+    plot_function_allSets, behaviorFrameCount_all
+from behavior_identification_single import average_bout_trajectory_allSets
 from scipy.stats import skew
 # from circle_fit_taubin import TaubinSVD
 
@@ -863,8 +865,21 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
                            titleStr = 'Probability distribution: head-head distance (mm)',
                            outputFileName = outputFileName)
 
+    # closest distance histogram
+    closest_distance_mm_all = combine_all_values_constrained(datasets, 
+                                                     keyName='closest_distance_mm', 
+                                                     dilate_plus1 = False)
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_distance_closest' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    plot_probability_distr(closest_distance_mm_all, bin_width = 0.5, 
+                           bin_range = [0, None], yScaleType = 'linear',
+                           xlabelStr = 'Closest distance (mm)', 
+                           titleStr = 'Probability distribution: closest distance (mm)',
+                           outputFileName = outputFileName)
 
-    # Heading angle histogram
+    # Relative heading angle histogram
     relative_heading_angle_all = combine_all_values_constrained(datasets, 
                                                  keyName='relative_heading_angle', 
                                                  dilate_plus1 = False)
@@ -879,4 +894,109 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
                            titleStr = 'Relative Heading Angle',
                            ylim = (0, 0.6),
                            outputFileName = outputFileName)
+
+    # Relative orientation angle histogram
+    relative_orientation_angle_all = combine_all_values_constrained(datasets, 
+                                                 keyName='relative_orientation', 
+                                                 dilate_plus1 = False)
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_rel_orientation' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    bin_width = np.pi/30
+    plot_probability_distr(relative_orientation_angle_all, bin_width = bin_width,
+                           bin_range=[None, None], yScaleType = 'linear',
+                           polarPlot = True,
+                           titleStr = 'Relative Orientation Angle',
+                           ylim = (0, 0.6),
+                           outputFileName = outputFileName)
+
+    # 2D histogram of speed and head-head distance
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_speed_distance_2D' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    make_2D_histogram(datasets, keyNames = ('speed_array_mm_s', 
+                                            'head_head_distance_mm'), 
+                          keyIdx = (None, None), 
+                          dilate_plus1=True, bin_ranges=None, Nbins=(20,20),
+                          titleStr = 'speed and hh distance', 
+                          colorRange = (0, 0.01),
+                          outputFileName = outputFileName)
+
+
+    # 2D histogram of heading alignment and head-head distance
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_heading_distance_2D' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    make_2D_histogram(datasets, keyNames = ('relative_heading_angle', 
+                                            'head_head_distance_mm'), 
+                          keyIdx = (None, None), 
+                          dilate_plus1=True, bin_ranges=None, Nbins=(20,20),
+                          titleStr = 'heading angle and hh distance', outputFileName = outputFileName)
+
+    # 2D histogram of relative orientation and head-head distance
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_orientation_distance_2D' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    make_2D_histogram(datasets, keyNames = ('relative_orientation', 
+                                            'head_head_distance_mm'), 
+                          keyIdx = (None, None), 
+                          dilate_plus1=True, bin_ranges=None, Nbins=(20,20),
+                          titleStr = 'orientation angle and hh distance', outputFileName = outputFileName)
+
+
+    # Speed of the "other" fish vs. time for bouts
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_boutSpeed_other' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    average_bout_trajectory_allSets(datasets, keyName = "speed_array_mm_s", 
+                                    keyIdx = 'other', t_range_s=(-1.0, 2.0), 
+                                    titleStr = 'Bout Speed, other fish', makePlot=True,
+                                    outputFileName = outputFileName)
+
+    # Speed vs. time for bouts, distance constraint
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_boutSpeed_close' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    max_d = 5.0 # mm, for constraint
+    average_bout_trajectory_allSets(datasets, keyName = "speed_array_mm_s", 
+                                    keyIdx = None, t_range_s=(-1.0, 2.0), 
+                                    constraintKey='head_head_distance_mm', 
+                                    constraintRange=(0, 5.0), 
+                                    titleStr = f'Bout Speed, d < {max_d:.1f} mm', 
+                                    makePlot=True,
+                                    outputFileName = outputFileName)
+    
+    # Speed cross-correlation function
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_speedCrosscorr' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    speed_cc_all, t_lag = \
+        calculate_value_corr_all(datasets, keyName = 'speed_array_mm_s',
+                                 corr_type='cross', dilate_plus1 = True, 
+                                 t_max = 3.0, t_window = 10.0, fpstol = 1e-6)
+    plot_function_allSets(speed_cc_all, t_lag, xlabelStr='time (s)', 
+                          ylabelStr='Speed Cross-correlation', 
+                          titleStr='Speed Cross-correlation', 
+                          average_in_dataset = True,
+                          outputFileName = outputFileName)
+    
+    # 2D histogram of C- and J-bend frequencies (combined) vs head-head distance
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_CJ_distance_2D' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    keyList = ['Cbend_any', 'Jbend_any']
+    datasets = behaviorFrameCount_all(datasets, keyList, 'CJcombined')
+    make_2D_histogram(datasets, keyNames = ('head_head_distance_mm', 
+                      'CJcombined'), Nbins=(15,10), 
+                      constraintKey='CJcombined', constraintRange=(0.5,100), 
+                      colorRange=(0, 0.001), outputFileName = outputFileName)
+
     

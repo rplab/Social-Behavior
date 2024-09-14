@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Fri Dec. 1, 2023
-Last modified on July 9, 2024
+Last modified on September 14, 2024
 
 Description
 -----------
@@ -24,6 +24,7 @@ Inputs:
     
 Outputs:
     - Makes, saves graphs
+    - Outputs a CSV file of statistics for experiments
 
 """
 
@@ -31,6 +32,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import pandas as pd
+from scipy import stats
+import csv
 
 import tkinter as tk
 from tkinter import filedialog
@@ -409,7 +412,7 @@ def ratio_with_sim_uncertainty(x, sigx, y, sigy, n_samples=10000):
 
 
 def getOutputPath():
-    # Ask user for the output path (for plots)
+    # Ask user for the output path (for plots and CSV file)
     # If empty, dialog box
     
     outputPath = input('Enter the path (folder) for output, or leave blank to use a dialog box: ')
@@ -421,6 +424,118 @@ def getOutputPath():
         root.withdraw()
         outputPath = filedialog.askdirectory(title="Select a folder")
         return outputPath
+
+def preprocess_dataframe(df):
+    """
+    Remove the "Dataset" column from the dataframe and keep only the 
+    rows to the blank line. Ignore the previously calculated statistics;
+    will re-calculate
+
+    Parameters
+    ----------
+    df : dataframe read from Excel file
+
+    Returns
+    -------
+    df : dataframe, modified
+
+    """
+    # Exclude 'Dataset' column
+    df = df.drop('Dataset', axis=1)
+    
+    # Find the index of the first blank row
+    blank_row_index = df.index[df.isnull().all(axis=1)].min()
+    
+    if pd.isna(blank_row_index):
+        # If no blank row found, use all rows
+        return df
+    else:
+        # Use only rows before the blank row
+        return df.iloc[:blank_row_index]
+
+def analyze_dataframes(df1, df2, exclude_columns):
+    """ 
+    Compare dataframes df1, df2. Consider each column and calculate statistics
+    For each dataframe, statistical tests comparing the corresponding
+    columns; Mann-Whitney U test (tests the median being different) and 
+    Kolmogorov-Smirnov test (distributions being different)
+    Returns all results, as a list
+    
+    Parameters:
+        df2 and df2: processed dataframes (see preprocess_dataframe())
+        exclude_columns: list of columns to ignore for comparison
+    
+    Returns:
+        results : list of column name, mean1, std1, std1, std2, \
+            sem1, sem2, p_mwu, p_ks
+        headers : list of strings to use for CSV output headers.
+            Write this here so that if we modify the stats, we don't 
+            forget to modify the headers
+    """
+    # Preprocess dataframes; Remove the "Dataset" column from the 
+    # dataframe and keep only the rows to the blank line.
+    df1 = preprocess_dataframe(df1)
+    df2 = preprocess_dataframe(df2)
+    
+    results = []
+    
+    for column in df1.columns:
+        if column not in exclude_columns:
+            # Calculate statistics for df1
+            mean1 = df1[column].mean()
+            n1 = df1[column].count()
+            std1 = df1[column].std()
+            sem1 = stats.sem(df1[column].dropna())
+            
+            # Calculate statistics for df2
+            mean2 = df2[column].mean()
+            n2 = df2[column].count()
+            std2 = df2[column].std()
+            sem2 = stats.sem(df2[column].dropna())
+            
+            # Perform Mann-Whitney U test
+            _, p_mwu = stats.mannwhitneyu(df1[column].dropna(), df2[column].dropna())
+            
+            # Perform Kolmogorov-Smirnov test
+            _, p_ks = stats.ks_2samp(df1[column].dropna(), df2[column].dropna())
+            
+            # Append results
+            results.append([
+                column, mean1, mean2, n1, n2, std1, std2, \
+                    sem1, sem2, p_mwu, p_ks
+            ])
+
+    # Corresponding headers to use for CSV output
+    headers = ['column_name', 'mean_df1', 'mean_df2', 'N_df1', 'N_df2', 
+               'std_df1', 'std_df2', 'sem_df1', 'sem_df2', 'p_MWU', 'p_KS']    
+    return results, headers
+
+
+
+def write_results_to_csv(results, output_file, headers):
+    """ 
+    Writes stats results (analyze_dataframes()) and headers to a CSV file
+    
+    Parameters:
+        results : list of column name, mean1, std1, std1, std2, \
+            sem1, sem2, p_mwu, p_ks
+        headers : list of strings to use for CSV output headers.
+            Write this here so that if we modify the stats, we don't 
+            forget to modify the headers
+    """
+
+    with open(output_file, 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(headers)
+        
+        for row in results:
+            formatted_row = [row[0]]  # Keep the first column (column name) as is
+            # Format all other columns to 'G' format with 3 decimal places
+            formatted_row.extend(['{:.3G}'.format(val) \
+                                  if isinstance(val, (int, float)) \
+                                      else val for val in row[1:]])
+            writer.writerow(formatted_row)
+
 
     
 #%%
@@ -442,8 +557,14 @@ if __name__ == '__main__':
     file_paths = (file_path1, file_path2)
     dataLabels = [data_label1, data_label2]
 
-    # Output plot, and location
+
+    # Output location
     outputPath = getOutputPath()
+
+    # Output CSV file name
+    fileNameCSV = input('Output CSV file name, including ".csv", e.g. "compare_stats.csv"): ')
+
+    # Output plot "base" file name
     baseName0 = input('Base file name for comparison outputs.\n' + \
                        '    Include image extension (e.g. "exptGraphs.eps"): ')
     baseName, out_ext = os.path.splitext(baseName0)
@@ -470,7 +591,6 @@ if __name__ == '__main__':
                                  'perp_smaller_fish_sees',
                                  'contact_larger_fish_head',
                                  'contact_smaller_fish_head',
-                                 'Cbend_Fish0', 'Cbend_Fish1',
                                  'bad_bodyTrack_frames'])
         
     also_exclude_from_loglog = ['Mean difference in fish lengths (mm)',
@@ -481,6 +601,16 @@ if __name__ == '__main__':
                            'Mean head-head dist (mm)',
                            "AngleXCorr_mean"]    
     exclude_from_ratio = exclude_from_all + also_exclude_from_ratio
+    
+    
+    # Analyze (compare + stats)
+    stats_output_file = os.path.join(outputPath, fileNameCSV)
+    results, headers = analyze_dataframes(df1, df2, exclude_from_all)
+    write_results_to_csv(results, output_file = stats_output_file, 
+                         headers = headers)
+    
+    
+    # Plots
     
     # Call the function for log-log plot of the comparison
     new_baseName = baseName + '_relBehaviorRatios' 
@@ -503,3 +633,4 @@ if __name__ == '__main__':
                                   (dataLabels[1], dataLabels[0]),
                                   showLegend = False,
                                   outputFileName = outputFileName)
+
