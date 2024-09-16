@@ -1068,19 +1068,32 @@ def write_output_files(params, dataPath, datasets):
     # and summary CSV file
 
     # behaviors (events) to write. (Superset)
+    Nfish = datasets[0]["Nfish"] # number of fish, take from the first set;
+                             # don't bother checking if same for all
     key_list = ["perp_noneSee", 
                 "perp_oneSees", "perp_bothSee", 
                 "perp_larger_fish_sees", 
                 "perp_smaller_fish_sees", 
                 "contact_any", "contact_head_body", 
                 "contact_larger_fish_head", "contact_smaller_fish_head", 
-                "contact_inferred", "tail_rubbing", 
-                "Cbend_Fish0", "Cbend_Fish1", "Jbend_Fish0", "Jbend_Fish1",
-                "approaching_Fish0", "approaching_Fish1", 
-                "fleeing_Fish0", "fleeing_Fish1", 
-                "isMoving_Fish0", "isMoving_Fish1", 
-                "isMoving_any", "isMoving_all", 
-                "edge_frames", "bad_bodyTrack_frames"]
+                "contact_inferred", "tail_rubbing"]
+    for j in range(Nfish):
+        key_list.extend([f"Cbend_Fish{j}"])
+    if Nfish > 1:
+        key_list.extend(["Cbend_any"])
+    for j in range(Nfish):
+        key_list.extend([f"Jbend_Fish{j}"])
+    if Nfish > 1:
+        key_list.extend(["Jbend_any"])
+    for j in range(Nfish):
+        key_list.extend([f"approaching_Fish{j}"])
+    for j in range(Nfish):
+        key_list.extend([f"fleeing_Fish{j}"])
+    for j in range(Nfish):
+        key_list.extend([f"isMoving{j}"])
+    if Nfish > 1:
+        key_list.extend(["isMoving_any", "isMoving_all"])
+    key_list.extend(["edge_frames", "bad_bodyTrack_frames"])
     # Remove any keys that are not in the first dataset, for example
     # two-fish behaviors if that dataset was for single fish data
     key_list_revised = [key for key in key_list if key in datasets[0]]
