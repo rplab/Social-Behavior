@@ -1090,7 +1090,7 @@ def write_output_files(params, dataPath, datasets):
     for j in range(Nfish):
         key_list.extend([f"fleeing_Fish{j}"])
     for j in range(Nfish):
-        key_list.extend([f"isMoving_{j}"])
+        key_list.extend([f"isMoving_Fish{j}"])
     if Nfish > 1:
         key_list.extend(["isMoving_any", "isMoving_all"])
     key_list.extend(["edge_frames", "bad_bodyTrack_frames"])
