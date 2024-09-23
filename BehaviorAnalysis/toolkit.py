@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, Sept. 12, 2024
+Last modified by Rghuveer Parthasarathy, Sept. 23, 2024
 
 Description
 -----------
@@ -1090,7 +1090,7 @@ def write_output_files(params, dataPath, datasets):
     for j in range(Nfish):
         key_list.extend([f"fleeing_Fish{j}"])
     for j in range(Nfish):
-        key_list.extend([f"isMoving{j}"])
+        key_list.extend([f"isMoving_{j}"])
     if Nfish > 1:
         key_list.extend(["isMoving_any", "isMoving_all"])
     key_list.extend(["edge_frames", "bad_bodyTrack_frames"])
