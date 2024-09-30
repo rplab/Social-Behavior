@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified Sept. 6, 2024 -- Raghu Parthasarathy
+Last modified Sept. 29, 2024 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -23,7 +23,7 @@ from time import perf_counter
 import numpy as np
 from toolkit import wrap_to_pi, combine_all_values_constrained, \
     plot_probability_distr, make_2D_histogram,calculate_value_corr_all, \
-    plot_function_allSets, behaviorFrameCount_all
+    plot_function_allSets, behaviorFrameCount_all, make_frames_dictionary
 from behavior_identification_single import average_bout_trajectory_allSets
 from scipy.stats import skew
 # from circle_fit_taubin import TaubinSVD
@@ -61,6 +61,24 @@ def get_basic_two_fish_characterizations(datasets, CSVcolumns,
             get_interfish_distance(datasets[j]["all_data"], CSVcolumns,
                                    datasets[j]["image_scale"])
         
+        # Get frames in which the inter-fish distance is small (i.e. less
+        # than the threshold value of the "proximity_threshold_mm" parameter)
+        close_pair_frames =  get_close_pair_frames(datasets[j]["closest_distance_mm"],
+                                                  datasets[j]["frameArray"], 
+                                                  proximity_threshold_mm = params["proximity_threshold_mm"])
+        # make a dictionary containing frames, removing frames with 
+        # "bad" elements. Also makes a 2xN array of initial frames and durations, 
+        # as usual for these behavior dictionaries
+        badTrackFrames = np.array(datasets[j]["bad_bodyTrack_frames"]["raw_frames"]).astype(int)
+        datasets[j]["close_pair"] = make_frames_dictionary(close_pair_frames,
+                                      badTrackFrames,
+                                      behavior_name = "close_pair",
+                                      Nframes=datasets[j]['Nframes'])
+        # Fraction of time that the pairs are close (excluding bad tracking)
+        datasets[j]["close_pair_fraction"] = len(datasets[j]["close_pair"]["edit_frames"]) \
+                                             / (datasets[j]['Nframes'] - 
+                                                len(datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+
         # Relative orientation of fish (angle between heading and
         # connecting vector). Nframes x Nfish==2 array; radians
         datasets[j]["relative_orientation"] = \
@@ -77,11 +95,11 @@ def get_basic_two_fish_characterizations(datasets, CSVcolumns,
                                  params["angle_xcorr_windowsize"])
         
     # For each dataset, exclude bad tracking frames from calculations of
-    # the mean and std. absolute difference in fish length
-    # the mean inter-fish distance
+    # - the mean and std. absolute difference in fish length
+    # - the mean inter-fish distance
     # exclude bad tracking frames from the 
-    # calculation of the mean angle-heading cross-correlation
-    # if the bad frames occur anywhere in the sliding window
+    #    calculation of the mean angle-heading cross-correlation
+    #    if the bad frames occur anywhere in the sliding window
     for j in range(N_datasets):
         print('Dataset: ', datasets[j]["dataset_name"])
         print('   Removing bad frames from stats for inter-fish distance')
@@ -162,6 +180,34 @@ def get_interfish_distance(all_data, CSVcolumns, image_scale):
     
     return head_head_distance_mm, closest_distance_mm
 
+
+
+def get_close_pair_frames(distance_mm, frameArray, proximity_threshold_mm):
+    """ 
+    Find frames in which the fish are close to each other (closest distance <
+        proximity_threshold_mm)
+    Note that inter-fish distance has previously been calculated 
+    Inputs:
+        distance_mm: inter-fish distance array , mm
+                    (either dataset["closest_distance_mm"]
+                     or dataset["head_head_distance_mm"]: the inter-fish distance calculated as the closest distance between any inter-fish positions in each frame; mm; array of length Nframes)
+        frameArray : Array of frames for this dataset
+        proximity_threshold_mm : proximity threshold, mm
+    Output : 
+        close_pair_frames : numpy array of frames in which inter-fish 
+                            distance is < threshold
+    """
+
+    # Check that frameArray and distance have the same size
+    if len(distance_mm) != len(frameArray):
+        raise ValueError("Error: inter-fish distance and frameArray don't have the same size.")
+
+    close_pair_frames = frameArray.flatten()[distance_mm.flatten() < 
+                                             proximity_threshold_mm]
+    return close_pair_frames
+
+
+    
 def extract_behaviors(dataset, params, CSVcolumns): 
     """
     Calls functions to identify frames corresponding to each two-fish
@@ -177,7 +223,9 @@ def extract_behaviors(dataset, params, CSVcolumns):
             perp_noneSee, perp_oneSees, 
             perp_bothSee, contact_any, contact_head_body, 
             contact_larger_fish_head, contact_smaller_fish_head,
-            contact_inferred, tail_rubbing_frames
+            contact_inferred, tail_rubbing_frames,
+            approaching_frames, approaching_frames_any, approaching_frames_all,
+            fleeing_frames, fleeing_frames_any, fleeing_frames_all
 
     """
     
@@ -243,11 +291,13 @@ def extract_behaviors(dataset, params, CSVcolumns):
     t1_5 = perf_counter()
     print(f'   t1_5 start approaching / fleeing analysis: {t1_5 - t1_start:.2f} seconds')
     # Approaching or fleeing
-    (approaching_frames, fleeing_frames) = get_approach_flee_frames(dataset, 
-                                                CSVcolumns, 
-                                                speed_threshold_mm_s = params["approach_speed_threshold_mm_second"],
-                                                min_frame_duration = params["approach_min_frame_duration"],
-                                                cos_angle_thresh = params["approach_cos_angle_thresh"])
+    (approaching_frames, fleeing_frames, approaching_frames_any, \
+        approaching_frames_all, fleeing_frames_any, fleeing_frames_all) = \
+             get_approach_flee_frames(dataset, 
+                                      CSVcolumns, 
+                                      speed_threshold_mm_s = params["approach_speed_threshold_mm_second"],
+                                      min_frame_duration = params["approach_min_frame_duration"],
+                                      cos_angle_thresh = params["approach_cos_angle_thresh"])
 
 
     t1_end = perf_counter()
@@ -260,7 +310,9 @@ def extract_behaviors(dataset, params, CSVcolumns):
         perp_smaller_fish_sees, \
         contact_any, contact_head_body, contact_larger_fish_head, \
         contact_smaller_fish_head, contact_inferred_frames, \
-        tail_rubbing_frames, approaching_frames, fleeing_frames
+        tail_rubbing_frames, \
+        approaching_frames, approaching_frames_any, approaching_frames_all, \
+        fleeing_frames, fleeing_frames_any, fleeing_frames_all
 
     
 
@@ -606,6 +658,7 @@ def calcOrientationXCorr(dataset, CSVcolumns, window_size = 25, makeDiagnosticPl
    
     return xcorr
 
+
 def get_approach_flee_frames(dataset, CSVcolumns, 
                            speed_threshold_mm_s = 20, 
                            cos_angle_thresh = 0.5,
@@ -649,6 +702,8 @@ def get_approach_flee_frames(dataset, CSVcolumns,
         fleeinging_frames : dictionary with two keys, 0 and 1, each of 
                        which contains a numpy array of frames in which
                        fish 0 is fleeing and fish 1 is fleeing, resp.
+        approaching_frames_any, _all : frames in which any fish, all fish are approaching
+        fleeing_frames_any, _all : frames in which any fish, all fish are fleeing
     """
 
     # All body positions, as in C-bending function
@@ -723,6 +778,18 @@ def get_approach_flee_frames(dataset, CSVcolumns,
     fleeing_frames = {0: np.array(np.where(fleeing[:,0])).flatten() + 1, 
                          1: np.array(np.where(fleeing[:,1])).flatten() + 1}
     
+    # Approaching and fleeing for "any" and "all" fish (Boolean)
+    # any fish
+    approaching_any  = np.any(approaching, axis=1)
+    approaching_frames_any = np.where(approaching_any)[0] + 1
+    fleeing_any  = np.any(fleeing, axis=1)
+    fleeing_frames_any = np.where(fleeing_any)[0] + 1
+    # all fish
+    approaching_all  = np.all(approaching, axis=1)
+    approaching_frames_all = np.where(approaching_all)[0] + 1
+    fleeing_all  = np.all(fleeing, axis=1)
+    fleeing_frames_all = np.where(fleeing_all)[0] + 1
+
     makeDiagnosticPlots = False
     if makeDiagnosticPlots:
         
@@ -761,7 +828,8 @@ def get_approach_flee_frames(dataset, CSVcolumns,
         plt.legend()
         plt.xlim(xlimits[0], xlimits[1])
 
-    return approaching_frames, fleeing_frames
+    return approaching_frames, fleeing_frames, approaching_frames_any, \
+        approaching_frames_all, fleeing_frames_any, fleeing_frames_all
     
 
 def get_relative_orientation(dataset, CSVcolumns):

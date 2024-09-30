@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, Sept. 23, 2024
+Last modified by Rghuveer Parthasarathy, Sept. 29, 2024
 
 Description
 -----------
@@ -190,6 +190,10 @@ def load_expt_config(config_path, config_file):
     else:
         expt_config = all_config[all_expt_names[0]]
 
+    # Experiment Name; None if this isn't specified 
+    if ("expt_name" not in expt_config.keys()):
+        expt_config['expt_name'] = None
+    
     # Image scale file name and path, if specified
     if ("imageScaleFilename" in expt_config.keys()) and \
         (expt_config['imageScaleFilename'] is not None):
@@ -206,9 +210,11 @@ def load_expt_config(config_path, config_file):
 
     if ("arenaCentersFilename" in expt_config.keys()):
         if expt_config['arenaCentersFilename'] != None:
-            print(config_path)
-            print(expt_config['arenaCentersPathName'])
-            print(expt_config['arenaCentersFilename'])
+            print('config_path: ', config_path)
+            print('for arenaCentersPathName: ', 
+                  expt_config['arenaCentersPathName'])
+            print('for arenaCentersFilename: ', 
+                  expt_config['arenaCentersFilename'])
             if expt_config['arenaCentersPathName'] is not None:
                 expt_config['arenaCentersLocation'] = os.path.join(config_path,
                                                                expt_config['arenaCentersPathName'], 
@@ -1021,7 +1027,7 @@ def write_pickle_file(list_for_pickle, dataPath, outputFolderName,
     list_for_pickle : list of datasets to save in the Pickle file
     dataPath : CSV data path
     outputFolderName : output path, should be params['output_subFolder']
-    pickleFileName : string, filename -- will append .pickle
+    pickleFileName : string, filename, including .pickle
 
     Returns
     -------
@@ -1035,7 +1041,6 @@ def write_pickle_file(list_for_pickle, dataPath, outputFolderName,
     if not os.path.exists(pickle_folder):
         os.makedirs(pickle_folder)
 
-    pickleFileName = pickleFileName + '.pickle'
     print(f'\nWriting pickle file: {pickleFileName}\n')
     with open(os.path.join(pickle_folder, pickleFileName), 'wb') as handle:
         pickle.dump(list_for_pickle, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -1070,29 +1075,31 @@ def write_output_files(params, dataPath, datasets):
     # behaviors (events) to write. (Superset)
     Nfish = datasets[0]["Nfish"] # number of fish, take from the first set;
                              # don't bother checking if same for all
-    key_list = ["perp_noneSee", 
+    key_list = ["close_pair", "perp_noneSee", 
                 "perp_oneSees", "perp_bothSee", 
-                "perp_larger_fish_sees", 
-                "perp_smaller_fish_sees", 
+                "perp_larger_fish_sees", "perp_smaller_fish_sees", 
                 "contact_any", "contact_head_body", 
                 "contact_larger_fish_head", "contact_smaller_fish_head", 
                 "contact_inferred", "tail_rubbing"]
     for j in range(Nfish):
         key_list.extend([f"Cbend_Fish{j}"])
-    if Nfish > 1:
-        key_list.extend(["Cbend_any"])
+    key_list.extend(["Cbend_any"])  # formerly had a condition "if Nfish > 1:"
     for j in range(Nfish):
         key_list.extend([f"Jbend_Fish{j}"])
-    if Nfish > 1:
-        key_list.extend(["Jbend_any"])
+    key_list.extend(["Jbend_any"]) # formerly had a condition "if Nfish > 1:"
     for j in range(Nfish):
         key_list.extend([f"approaching_Fish{j}"])
+    if Nfish > 1:
+        key_list.extend(["approaching_any"])
+        key_list.extend(["approaching_all"])
     for j in range(Nfish):
         key_list.extend([f"fleeing_Fish{j}"])
+    if Nfish > 1:
+        key_list.extend(["fleeing_any"])
+        key_list.extend(["fleeing_all"])
     for j in range(Nfish):
         key_list.extend([f"isMoving_Fish{j}"])
-    if Nfish > 1:
-        key_list.extend(["isMoving_any", "isMoving_all"])
+    key_list.extend(["isMoving_any", "isMoving_all"]) # formerly had a condition "if Nfish > 1:"
     key_list.extend(["edge_frames", "bad_bodyTrack_frames"])
     # Remove any keys that are not in the first dataset, for example
     # two-fish behaviors if that dataset was for single fish data
@@ -1117,7 +1124,7 @@ def write_output_files(params, dataPath, datasets):
     print('File for collecting all behavior counts: ', 
           params['allDatasets_ExcelFile'])
     initial_keys = ["dataset_name", "fps", "image_scale",
-                    "total_time_seconds",
+                    "total_time_seconds", "close_pair_fraction", 
                     "speed_mm_s_mean", "speed_whenMoving_mm_s_mean",
                     "bout_rate_bpm", "bout_duration_s", "bout_ibi_s",
                     "fish_length_Delta_mm_mean", 
@@ -1125,7 +1132,7 @@ def write_output_files(params, dataPath, datasets):
                     "AngleXCorr_mean"]
     initial_strings = ["Dataset", "Frames per sec", 
                        "Image scale (um/s)",
-                       "Total Time (s)", 
+                       "Total Time (s)", "Fraction of time in proximity", 
                        "Mean speed (mm/s)", "Mean moving speed (mm/s)", 
                        "Mean bout rate (/min)", "Mean bout duration (s)",
                        "Mean inter-bout interval (s)",
@@ -1190,6 +1197,7 @@ def write_behavior_txt_file(dataset, key_list):
             results_file.write(f"   Mean difference in fish length: {dataset['fish_length_Delta_mm_mean']:.3f} mm\n")
             results_file.write(f"   Mean head-to-head distance: {dataset['head_head_distance_mm_mean']:.3f} mm\n")
             results_file.write(f"   Mean closest distance: {dataset['closest_distance_mm_mean']:.3f} mm\n")
+            results_file.write(f"   Fraction of time in proximity: {dataset['close_pair_fraction']:.3f}\n")
         for k in key_list:
             outString = f'{k} N_events: {dataset[k]["combine_frames"].shape[1]}\n' + \
                     f'{k} Total N_frames: {dataset[k]["total_duration"]}\n' + \

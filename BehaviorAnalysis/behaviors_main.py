@@ -7,7 +7,7 @@
 # First version  : Estelle Trieu 9/19/2022
 # Re-written by : Raghuveer Parthasarathy (2023)
 # version ='2.0' Raghuveer Parthasarathy -- begun May 2023; see notes.
-# last modified: Raghuveer Parthasarathy, Sept. 1s, 2024
+# last modified: Raghuveer Parthasarathy, Sept. 27, 2024
 # ---------------------------------------------------1------------------------
 """
 
@@ -55,6 +55,14 @@ def main():
     config_file = 'expt_config.yaml'
     expt_config = load_expt_config(basePath, config_file)
     
+    # Get experiment name
+    if (expt_config['expt_name'] is None) or (expt_config['expt_name'] == ''):
+        expt_config['expt_name'] = input('Enter the experiment name, to append to outputs: ')
+    else:
+        expt_name_prompt = input(f'Enter the experiment name, or Press Enter for {expt_config["expt_name"]}: ')
+        if expt_name_prompt != '':
+            expt_config["expt_name"] = expt_name_prompt
+            
     # Get CSV column info from configuration file
     CSVinfo_file = 'CSVcolumns.yaml'
     CSVinfo_file_full = os.path.join(basePath, CSVinfo_file)
@@ -70,8 +78,9 @@ def main():
     with open(params_file_full, 'r') as f:
         all_param = yaml.safe_load(f)
     params = all_param['params']
-    
+
     # Get folder containing CSV files, and all "results" CSV filenames
+    # Also get subgroup name
     # Note that dataPath is the path containing CSVs, which 
     # may be a subgroup path
     dataPath, allCSVfileNames, subGroupName = \
@@ -81,24 +90,31 @@ def main():
     print(f'\n\n All {len(allCSVfileNames)} CSV files starting with "results": ')
     print(allCSVfileNames)
     
+    # Append experiment and subGroup names to Analysis output folder
+    if subGroupName is None:
+        params['output_subFolder'] =  expt_config['expt_name'] + '_' + \
+            params['output_subFolder']
+    else:
+        params['output_subFolder'] =  expt_config['expt_name'] + '_' + \
+            subGroupName + '_' + params['output_subFolder']
+    
     # Add subgroup name (if it exists) and the experiment name (i.e.
     # folder name) to the output Excel file names, appending these to
     # (1) "behavior_counts.xlsx" (or whatever params["allDatasets_ExcelFile"]
     #     is) for summary statistics of each behavior for each dataset
     # (2) "behaviors_in_each_frame.xlsx" (or whatever params["allDatasets_markFrames_ExcelFile"])
     #     is for marking behaviors in each frame
-    baseFolder = os.path.basename(basePath)
     base_name, extension = os.path.splitext(params["allDatasets_ExcelFile"])
     if subGroupName is None:
-        params["allDatasets_ExcelFile"] = f"{base_name}_{baseFolder}{extension}"
+        params["allDatasets_ExcelFile"] = f"{expt_config['expt_name']}_{base_name}{extension}"
     else:
-        params["allDatasets_ExcelFile"] = f"{base_name}_{subGroupName}_{baseFolder}{extension}"
+        params["allDatasets_ExcelFile"] = f"{expt_config['expt_name']}_{subGroupName}_{base_name}{extension}" 
     print(f"Modifying output allDatasets_ExcelFile file name to be: {params['allDatasets_ExcelFile']}")
     base_name, extension = os.path.splitext(params["allDatasets_markFrames_ExcelFile"])
     if subGroupName is None:
-        params["allDatasets_markFrames_ExcelFile"] = f"{base_name}_{baseFolder}{extension}"
+        params["allDatasets_markFrames_ExcelFile"] = f"{expt_config['expt_name']}_{base_name}{extension}"
     else:
-        params["allDatasets_markFrames_ExcelFile"] = f"{base_name}_{subGroupName}_{baseFolder}{extension}"
+        params["allDatasets_markFrames_ExcelFile"] = f"{expt_config['expt_name']}_{subGroupName}_{base_name}{extension}"
     print(f"Modifying output allDatasets_markFrames_ExcelFile file name to be: {params['allDatasets_markFrames_ExcelFile']}")
     
     
@@ -111,8 +127,18 @@ def main():
         params["allDatasets_ExcelFile"] = f"{base_name}_{subGroupName}{extension}"
         print(f"Modifying output allDatasets_ExcelFile file name to be: {params['allDatasets_ExcelFile']}")
     
-    print('\nEnter the filename for an output pickle file (w/ all datasets).')
-    pickleFileName = input('   Will append .pickle. Leave blank for none.: ')
+    print('\nEnter the filename for an output pickle file (w/ all datasets);')
+    print('   Include ".pickle" at the end!')
+    print('   Enter "none" to skip pickle output.')
+    # Append experiment and subGroup names to Analysis output folder
+    if subGroupName is None:
+        defaultPickleFileName =  expt_config['expt_name'] + '.pickle'
+    else:
+        defaultPickleFileName =  expt_config['expt_name'] + '_' + \
+            subGroupName + '.pickle'
+    pickleFileName = input(f'   Press Enter for default {defaultPickleFileName}: ')
+    if pickleFileName == '':
+        pickleFileName = defaultPickleFileName
     
     # Number of datasets
     N_datasets = len(allCSVfileNames)
@@ -198,7 +224,8 @@ def main():
                     contact_head_body_frames, \
                     contact_larger_fish_head, contact_smaller_fish_head, \
                     contact_inferred_frames, tail_rubbing_frames, \
-                    approaching_frames, fleeing_frames \
+                    approaching_frames, approaching_frames_any, approaching_frames_all, \
+                    fleeing_frames, fleeing_frames_any, fleeing_frames_all, \
                     = extract_behaviors(datasets[j], params, CSVcolumns)
             # removed "circling_frames," from the list
             
@@ -216,7 +243,9 @@ def main():
                              'contact_larger_fish_head', 'contact_smaller_fish_head',
                              'contact_inferred', 'tail_rubbing',
                              'approaching_Fish0', 'approaching_Fish1',
-                             'fleeing_Fish0', 'fleeing_Fish1')
+                             'approaching_any', 'approaching_all',
+                             'fleeing_Fish0', 'fleeing_Fish1',
+                             'fleeing_any', 'fleeing_all',)
             behavior_arrays = (perp_noneSee_frames, perp_oneSees_frames, 
                          perp_bothSee_frames,
                          perp_larger_fish_sees_frames,
@@ -225,7 +254,9 @@ def main():
                          contact_larger_fish_head, contact_smaller_fish_head,
                          contact_inferred_frames, tail_rubbing_frames,
                          approaching_frames[0], approaching_frames[1],
-                         fleeing_frames[0], fleeing_frames[1])
+                         approaching_frames_any, approaching_frames_all,
+                         fleeing_frames[0], fleeing_frames[1],
+                         fleeing_frames_any, fleeing_frames_all)
     
             for b_key, b_array in zip(behavior_keys, behavior_arrays):
                 datasets[j][b_key] = make_frames_dictionary(b_array,
@@ -235,7 +266,7 @@ def main():
                                                Nframes=datasets[j]['Nframes'])
 
     # Write pickle file containing all datasets (optional)
-    if pickleFileName != '':
+    if pickleFileName.lower() != 'none':
         list_for_pickle = [datasets, CSVcolumns, expt_config, params]
         write_pickle_file(list_for_pickle, dataPath, 
                           params['output_subFolder'], pickleFileName)

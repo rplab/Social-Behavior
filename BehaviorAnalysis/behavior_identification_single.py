@@ -131,8 +131,8 @@ def get_single_fish_characterizations(datasets, CSVcolumns,
         iMe_arrays = [isMoving_frames_each[key] for key in sorted(isMoving_frames_each.keys())]
         iM_arrays = iMe_arrays + [isMoving_frames_any] + [isMoving_frames_all] 
         # Create the second tuple of strings
-        iM_keys = tuple(f'isMoving_Fish{i}' for i in range(len(isMoving_frames_each))) + ('isMoving_any',) \
-                  + ('isMoving_all', )
+        iM_keys = tuple(f'isMoving_Fish{i}' for i in range(len(isMoving_frames_each))) \
+            + ('isMoving_any',)  + ('isMoving_all', )
 
         for iM_key, iM_array in zip(iM_keys, iM_arrays):
             badTrFramesRaw = np.array(datasets[j]["bad_bodyTrack_frames"]["raw_frames"]).astype(int)
@@ -519,6 +519,52 @@ def get_polar_coords(all_data, CSVcolumns, arena_center, image_scale):
     
     return radial_position_mm, polar_angle_rad
 
+
+def calc_bend_angle(x, y, M=None):
+    """
+    Calculate the best-fit line from points (x[M], y[M]) to (x[0], y[0]) 
+    and the best-fit line from points (x[M], y[M]) to (x[-1], y[-1]), 
+    Return the angle between these points in the range [0, pi].
+    x and y are multidimensional -- see inputs below
+    
+    inputs
+    (x, y) each of shape (Nframes, N, Nfish); calculate angle for each
+        frame and fish,
+    M : the index of the midpoint; will use N/2 if not input
+    
+    output
+    angle : in range [0, pi]; shape (Nframes, Nfish)
+    """
+    
+    Nframes, N, Nfish = x.shape
+    if M is None:
+        M = round(N/2)
+    
+    def best_fit_slope(x, y):
+        x_mean = np.mean(x, axis=0)
+        y_mean = np.mean(y, axis=0)
+        numerator = np.sum((x - x_mean) * (y - y_mean), axis=0)
+        denominator = np.sum((x - x_mean)**2, axis=0)
+        return np.where(denominator != 0, numerator / denominator, np.inf)
+    
+    # Prepare output array
+    angle = np.zeros((Nframes, Nfish))
+    
+    for j in range(Nframes):
+        # Calculate best-fit line for first segment
+        slope1 = best_fit_slope(x[j, M::-1, :], y[j, M::-1, :])
+        
+        # Calculate best-fit line for second segment
+        slope2 = best_fit_slope(x[j, M:, :], y[j, M:, :])
+        
+        # Calculate angle between lines
+        angle[j] = np.abs(np.arctan(slope1) - np.arctan(slope2))
+    
+    # Ensure angle is in [0, pi]
+    angle = np.where(angle > np.pi, 2*np.pi - angle, angle)
+    
+    return angle
+
 def get_Cbend_frames(dataset, CSVcolumns, Cbend_threshold = 2/np.pi):
     """ 
     Find frames in which a fish is sharply bent (C-bend)
@@ -545,6 +591,12 @@ def get_Cbend_frames(dataset, CSVcolumns, Cbend_threshold = 2/np.pi):
     
     body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
     body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+    
+    #angle = calc_bend_angle(body_x, body_y)
+    #plt.figure()
+    #plt.scatter(np.arange(0, angle.shape[0]), angle[:,0])
+    #plt.title(dataset["CSVfilename"])
+    
     fish_head_tail_distance = np.sqrt((body_x[:,0,:]-body_x[:,-1,:])**2 + 
                                       (body_y[:,0,:]-body_y[:,-1,:])**2) # Nframes x Nfish array
     Cbend_ratio = fish_head_tail_distance/fish_length_px # Nframes x Nfish==2 array
