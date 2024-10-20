@@ -7,7 +7,7 @@
 # First version  : Estelle Trieu 9/19/2022
 # Re-written by : Raghuveer Parthasarathy (2023)
 # version ='2.0' Raghuveer Parthasarathy -- begun May 2023; see notes.
-# last modified: Raghuveer Parthasarathy, Sept. 27, 2024
+# last modified: Raghuveer Parthasarathy, Oct. 16, 2024
 # ---------------------------------------------------1------------------------
 """
 
@@ -16,6 +16,7 @@ import numpy as np
 import yaml
 from toolkit import get_basePath, load_expt_config, \
         get_CSV_filenames, load_all_position_data, fix_heading_angles, \
+        repair_head_positions, \
         make_frames_dictionary, get_edge_frames_dictionary, \
         get_badTracking_frames_dictionary, \
         write_output_files, write_pickle_file, \
@@ -152,6 +153,10 @@ def main():
                                       CSVcolumns, dataPath, params, 
                                       showAllPositions)
     
+    # Fix (recalculate) head positions, based on indexes 1-3 
+    #(i.e. the 2nd, third, and fourth positions), linearly interpolating
+    datasets = repair_head_positions(datasets, CSVcolumns)
+
     # Fix (recalculate) heading angles
     datasets = fix_heading_angles(datasets, CSVcolumns)
     

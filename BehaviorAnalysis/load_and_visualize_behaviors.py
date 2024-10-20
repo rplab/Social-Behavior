@@ -25,7 +25,8 @@ import pickle
 import tkinter as tk
 import tkinter.filedialog
 
-from toolkit import link_weighted, repair_disjoint_heads, repair_double_length_fish
+from toolkit import link_weighted, repair_disjoint_heads, \
+    repair_double_length_fish, repair_head_positions
 
 def loadAllFromPickle(pickleFileName = None, 
                       basePath = None):
@@ -373,6 +374,28 @@ if __name__ == '__main__':
     # visualize_fish(chosenSet, CSVcolumns, 
     #                startFrame=startFrame, endFrame=endFrame) 
 
+    print('Repair Head Positions')
+    print('Angle 2107 1:', chosenSet["all_data"][2107,5,1])
+    repair_heads = True
+    if repair_heads:
+        j = 345
+        print('Before ...')
+        print(chosenSet["all_data"][j,CSVcolumns["body_column_x_start"],0])
+        x0 = chosenSet["all_data"][:,CSVcolumns["body_column_x_start"],0].copy()
+        chosenSet = repair_head_positions(chosenSet, CSVcolumns, tol=0.001)
+        print('After ...')
+        print(chosenSet["all_data"][j,CSVcolumns["body_column_x_start"],0])
+        x = chosenSet["all_data"][:,CSVcolumns["body_column_x_start"],0]
+        angle = chosenSet["heading_angle"][:,0]
+        print(f'Mean x[0] difference: {np.mean(x-x0):.2f} px')
+        print(f'Std. dev. of x[0] difference: {np.std(x-x0):.2f} px')
+        plt.figure()
+        plt.scatter(x0, x-x0)
+        plt.xlabel('Original x[0]')
+        plt.ylabel('Repaired x[0] - Original x[0]')
+
+
+
     print('Here 0')
     print('Angle 2107 1:', chosenSet["all_data"][2107,5,1])
     # Fix disjoint heads
@@ -421,7 +444,9 @@ if __name__ == '__main__':
 
 
     # Fix IDs
-    IDs, newIDs = link_weighted(chosenSet["all_data"], CSVcolumns)
+    fixIDs = False
+    if fixIDs:        
+        IDs, newIDs = link_weighted(chosenSet["all_data"], CSVcolumns)
     
     # Find frames in which both fish are approaching each other
     findApproaching = False
@@ -439,12 +464,14 @@ if __name__ == '__main__':
     d1 = np.median(dx, axis=0)[1]
     print('dx: ', d0, d1)
 
-    startFrame = 2105
-    endFrame = 2112
-    visualize_fish(chosenSet, CSVcolumns, 
-                   startFrame=startFrame, endFrame=endFrame) 
-    print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0])
-    print(chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),0])
-    print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1])
-    print(chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),1])
-    
+    vizFish = False
+    if vizFish:
+        startFrame = 2105
+        endFrame = 2112
+        visualize_fish(chosenSet, CSVcolumns, 
+                       startFrame=startFrame, endFrame=endFrame) 
+        print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0])
+        print(chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),0])
+        print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1])
+        print(chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),1])
+        

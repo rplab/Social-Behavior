@@ -77,7 +77,7 @@ def get_single_fish_characterizations(datasets, CSVcolumns,
                                              expt_config, params):
     """
     For each dataset, characterizations that involve single fish
-        (e.g. fish length, bending, speed)
+        (e.g. fish length, bending angle, C-bend or J-bend, speed)
     
     Inputs:
         datasets : dictionaries for each dataset
@@ -167,7 +167,10 @@ def get_single_fish_characterizations(datasets, CSVcolumns,
             getTailAngle(datasets[j]["all_data"], CSVcolumns, 
                          datasets[j]["heading_angle"])
         
-
+        # Calculate the bending angle: complement of the angle between 
+        # the front half and the back half
+        datasets[j]["bend_angle"] = calc_bend_angle(datasets[j], CSVcolumns)
+        
         # Get frames with C-bends and J-bends; each is a dictionary with two 
         # keys, one for each fish, each containing a numpy array of frames
         Cbend_frames_each = get_Cbend_frames(datasets[j], CSVcolumns, 
@@ -520,50 +523,119 @@ def get_polar_coords(all_data, CSVcolumns, arena_center, image_scale):
     return radial_position_mm, polar_angle_rad
 
 
-def calc_bend_angle(x, y, M=None):
+def fit_y_eq_Bx_simple(x, y):
     """
-    Calculate the best-fit line from points (x[M], y[M]) to (x[0], y[0]) 
+    function to fit the equation y = Bx to arrays [x], [y] 
+    (i.e. a line with intercept at the origin)
+    Called by calc_bend_angle()
+    Acts on dimension 0; applies to all dimensions
+    Based on Raghu's fityeqbx.m
+    Returns B only; not uncertainty. 
+    No y uncertainties.
+    Doesn't check that x is nonzero (But returns inf if zero)
+    A simple function!
+    Inputs:
+        x : x array; acts on dimension 0
+        y : y array
+    Outputs
+        B : slope
+    """
+    sxx = np.sum(x**2, axis=0)
+    sxy = np.sum(x*y, axis=0)
+    return np.where(sxx != 0, sxy / sxx, np.inf)
+    
+    
+def calc_bend_angle(dataset, CSVcolumns, M=None):
+    """
+    Calculate the bending angle for each fish in each frame, as
+    the best-fit line from points (x[M], y[M]) to (x[0], y[0]) 
     and the best-fit line from points (x[M], y[M]) to (x[-1], y[-1]), 
     Return the angle between these points in the range [0, pi].
-    x and y are multidimensional -- see inputs below
+    
+    Bend angle defined as pi minus opening angle, 
+    so that a straight fish has angle 0.
     
     inputs
-    (x, y) each of shape (Nframes, N, Nfish); calculate angle for each
-        frame and fish,
-    M : the index of the midpoint; will use N/2 if not input
-    
+        dataset: dataset dictionary of all behavior information for a given expt.
+        CSVcolumns : information on what the columns of dataset["all_data"] are
+        M : the index of the midpoint; will use N/2 if not input
+     
     output
-    angle : in range [0, pi]; shape (Nframes, Nfish)
+        bend_angle : in range [0, pi]; shape (Nframes, Nfish)
     """
     
+    x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+
     Nframes, N, Nfish = x.shape
     if M is None:
         M = round(N/2)
     
-    def best_fit_slope(x, y):
-        x_mean = np.mean(x, axis=0)
-        y_mean = np.mean(y, axis=0)
-        numerator = np.sum((x - x_mean) * (y - y_mean), axis=0)
-        denominator = np.sum((x - x_mean)**2, axis=0)
-        return np.where(denominator != 0, numerator / denominator, np.inf)
-    
     # Prepare output array
     angle = np.zeros((Nframes, Nfish))
     
+    # Calculate the opening angle
     for j in range(Nframes):
-        # Calculate best-fit line for first segment
-        slope1 = best_fit_slope(x[j, M::-1, :], y[j, M::-1, :])
+        # Calculate best-fit line for first segment, for each fish
+        x1 = x[j, M::-1, :] # shape (N/2, Nfish)
+        y1 = -1.0*y[j, M::-1, :] # shape (N/2, Nfish); -1 since increasing down
+        slope1 = fit_y_eq_Bx_simple(x1-x1[0,:], y1-y1[0,:])
+        # determine four-quadrant angle from sign of avg step (not elegant!)
+        signx = np.sign(np.mean(np.diff(x1, axis=0), axis=0))
+        signy = np.sign(np.mean(np.diff(y1, axis=0), axis=0))
+        vector1 = np.vstack([signx, signy*np.abs(slope1)])/np.sqrt(1 + slope1**2)  # shape: (2, Nfish)
         
         # Calculate best-fit line for second segment
-        slope2 = best_fit_slope(x[j, M:, :], y[j, M:, :])
-        
+        x2 = x[j, M:, :] # shape (N/2, Nfish)
+        y2 = -1.0*y[j, M:, :] # shape (N/2, Nfish); -1 since increasing down
+        slope2 = fit_y_eq_Bx_simple(x2-x2[0,:], y2-y2[0,:])
+        # determine four-quadrant angle (not elegant!)
+        signx = np.sign(np.mean(np.diff(x2, axis=0), axis=0))
+        signy = np.sign(np.mean(np.diff(y2, axis=0), axis=0))
+        vector2 = np.vstack([signx, signy*np.abs(slope2)])/np.sqrt(1 + slope2**2)  # shape: (2, Nfish)
+
         # Calculate angle between lines
-        angle[j] = np.abs(np.arctan(slope1) - np.arctan(slope2))
+        # note that arccos is in range [0, pi]
+        angle[j, :] = np.arccos(np.sum(vector1 * vector2, axis=0))
     
-    # Ensure angle is in [0, pi]
-    angle = np.where(angle > np.pi, 2*np.pi - angle, angle)
+    bend_angle = np.pi - angle
     
-    return angle
+    return bend_angle
+
+
+def get_isBending_frames(dataset, bend_angle_threshold_deg = 10.0):
+    """ 
+    Find frames in which one or more fish have an above-threshold bend angle.
+    Inputs:
+        dataset: dataset dictionary of all behavior information for a given expt.
+        bend_angle_threshold_deg : bend angle threshold, degrees
+    Output : 
+        isBending_frames...
+           _each:  dictionary with a key for each fish, 
+                   each containing a numpy array of frames in which 
+                   that fish has bend_angle > threshold
+           _any : numpy array of frames in which any fish has bend_angle > threshold
+           _all : numpy array of frames in which all fish have bend_angle > threshold
+    """
+    
+    bend_angle = dataset["bend_angle"] # Nframes x Nfish array of speeds
+    Nfish = dataset["Nfish"]
+    isBending = bend_angle > (np.pi/180)*bend_angle_threshold_deg
+
+    # Dictionary containing "is Bending" frames for each fish
+    isBending_frames_each = {}
+    for fish in range(Nfish):
+        isBending_frames_each[fish] = np.array(np.where(isBending[:, fish])).flatten() + 1
+    
+    # any fish
+    any_fish_bending  = np.any(isBending, axis=1)
+    isBending_frames_any = np.where(any_fish_bending)[0] + 1
+    
+    # all fish
+    all_fish_bending  = np.all(isBending, axis=1)
+    isBending_frames_all = np.where(all_fish_bending)[0] + 1
+
+    return isBending_frames_each, isBending_frames_any, isBending_frames_all
 
 def get_Cbend_frames(dataset, CSVcolumns, Cbend_threshold = 2/np.pi):
     """ 
@@ -591,12 +663,7 @@ def get_Cbend_frames(dataset, CSVcolumns, Cbend_threshold = 2/np.pi):
     
     body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
     body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
-    
-    #angle = calc_bend_angle(body_x, body_y)
-    #plt.figure()
-    #plt.scatter(np.arange(0, angle.shape[0]), angle[:,0])
-    #plt.title(dataset["CSVfilename"])
-    
+        
     fish_head_tail_distance = np.sqrt((body_x[:,0,:]-body_x[:,-1,:])**2 + 
                                       (body_y[:,0,:]-body_y[:,-1,:])**2) # Nframes x Nfish array
     Cbend_ratio = fish_head_tail_distance/fish_length_px # Nframes x Nfish==2 array

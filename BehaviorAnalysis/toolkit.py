@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, Sept. 29, 2024
+Last modified by Rghuveer Parthasarathy, Oct. 17, 2024
 
 Description
 -----------
@@ -1542,6 +1542,102 @@ def link_weighted(pos_input, CSVcolumns, tol=0.001):
     print("Frames for switched IDs (==index + 1)\n", switchIndexes+1)
     return IDs, newIDs
         
+
+def repair_head_positions(datasets, CSVcolumns, tol=0.001):
+    """ 
+    Ignore "Index 0" head position and replace it with the interpolated 
+    position from "Index 1-3" body positions. (Fixing ZebraZoom's unreliable
+    head positions.) 
+    Could use to replace the heading angle with the interpolated angle
+    (see commented code), but there are offset issues, and I'll just use the
+    previously-written fix_heading_angles()
+    
+    Check that body positions aren't zero; ignore otherwise
+    Redundant code with get_bad_bodyTrack_frames(), for determining 
+       nonzero position data
+       
+    Inputs:
+        datasets : list of all dataset dictionaries. 
+                    Note "all_data" is Nframes x data columns x Nfish
+        CSVcolumns: information on what the columns of dataset["all_data"] are
+        tol : tolerance for "zero" (bad tracking), pixels
+
+    Output:
+        datasets_repaired: In each, new ["all_data"] with 
+                            repaired head positions in both "head_column_{x,y}"
+                            and the first body column for x, y (same)
+                                            
+    """
+
+    Npositions = CSVcolumns["body_Ncolumns"]
+    
+    # Create a new list for the repaired datasets
+    # Avoiding confusing copy-in-place. Necessary?
+    datasets_repaired = []
+
+    for j in range(len(datasets)):
+        dataset = datasets[j]
+    
+        # x and y are shape Nframes x Npositions x Nfish
+        x = dataset["all_data"][:,CSVcolumns["body_column_x_start"] : 
+                                (CSVcolumns["body_column_x_start"]+Npositions),:]
+        y = dataset["all_data"][:,CSVcolumns["body_column_y_start"] :
+                                (CSVcolumns["body_column_y_start"]+Npositions),:]
+    
+        # True if all x, y are nonzero; shape Nframes x Nfish
+        good_bodyTrack = np.logical_and(np.all(np.abs(x)>tol, axis=1), 
+                                        np.all(np.abs(y)>tol, axis=1))
+        
+        # Interpolation code, Claude.
+       
+        # Create the design matrix for linear regression
+        X = np.array([1, 2, 3])
+        X_design = np.vstack([np.ones_like(X), X]).T
+        
+        # Compute the pseudoinverse of X_design
+        X_pinv = np.linalg.pinv(X_design)
+        
+        # Perform linear regression for x where mask is True
+        beta_x = np.einsum('ij,kjl->kil', X_pinv, x[:, 1:4, :])
+        x_interp = beta_x[:, 0, :] + beta_x[:, 1, :] * 0  # Interpolate at index 0
+        x[:, 0, :] = np.where(good_bodyTrack, x_interp, x[:, 0, :])
+        
+        # Perform linear regression for y where mask is True
+        beta_y = np.einsum('ij,kjl->kil', X_pinv, y[:, 1:4, :])
+        y_interp = beta_y[:, 0, :] + beta_y[:, 1, :] * 0  # Interpolate at index 0
+        y[:, 0, :] = np.where(good_bodyTrack, y_interp, y[:, 0, :])
+        
+        # Repair head position
+        # Keeping same column redundancy as ZebraZoom
+        dataset_repaired = dataset.copy()
+        dataset_repaired["all_data"][:,CSVcolumns["body_column_x_start"],:] = x[:, 0, :]
+        dataset_repaired["all_data"][:,CSVcolumns["body_column_y_start"],:] = y[:, 0, :]  
+        dataset_repaired["all_data"][:,CSVcolumns["head_column_x"],:] = x[:, 0, :]
+        dataset_repaired["all_data"][:,CSVcolumns["head_column_y"],:] = y[:, 0, :]    
+        '''
+        # Calculate heading angle using slopes from linear regression
+        
+        See Oct. 2024 notes
+        Offset issue I don't feel like fixing (Oct. 16, 2024)
+        # Get mean differences to determine quadrant
+        mean_diff_x = np.mean(np.diff(x[:, 1:4, :], axis=1), axis=1)
+        mean_diff_y = np.mean(np.diff(y[:, 1:4, :], axis=1), axis=1)
+        
+        # Calculate heading angle using arctan2 with both slopes and mean differences
+        heading_angle = np.arctan2(beta_y[:, 1, :], beta_x[:, 1, :])
+        heading_angle[heading_angle < 0.0] += 2*np.pi
+            
+        # Apply the mask to heading angle
+        heading_angle = np.where(good_bodyTrack, heading_angle, np.nan)
+    
+        # Repair
+        dataset_repaired["heading_angle"] = heading_angle
+        '''
+        
+        datasets_repaired.append(dataset_repaired)
+    
+    return datasets_repaired
+
     
 def repair_disjoint_heads(dataset, CSVcolumns, Dtol=3.0, tol=0.001):
     """ 
