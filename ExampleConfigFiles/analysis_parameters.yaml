@@ -14,16 +14,16 @@ params:
   tailrub_maxTailDist_mm: 2.0
   tailrub_maxHeadDist_mm: 12.5
   cos_theta_antipar: -0.8
-  Cbend_threshold: 0.63661977  # 2/np.pi
-  Jbend_rAP: 0.98
-  Jbend_cosThetaN: 0.34
-  Jbend_cosThetaNm1: 0.7
+  bend_min_deg: 10  
+  bend_Jmax_deg: 50 
+  bend_Cmin_deg: 100 
   angle_xcorr_windowsize: 25
   approach_speed_threshold_mm_second: 20
   approach_cos_angle_thresh: 0.5
   approach_min_frame_duration: [2,2]
   motion_speed_threshold_mm_second: 9
+  proximity_threshold_mm: 7
   # Output files, path
-  output_subFolder: Analysis
+  output_subFolder: Analysis # will append expt name, group name
   allDatasets_ExcelFile: behavior_counts.xlsx 
   allDatasets_markFrames_ExcelFile:  behaviors_in_each_frame.xlsx

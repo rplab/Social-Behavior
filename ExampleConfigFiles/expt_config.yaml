@@ -1,19 +1,17 @@
-# Experiment paths and parameters
+# experiment_paths_and_parameters
 
-SingleFish_Light_July2024:
+TwoWeek2023_test:
+  expt_name: TwoWeek2023_test  # experiment name
   fps: 25.0  # frames per second
   arena_radius_mm: 25.0  # arena radius, mm
-  imageScale: # (optional) image scale, um/px, global (for all in this experiment) or leave empty to load from file for each dataset
-  imageScalePathName:  # Optional; leave empty if location is this folder (basePath). Path name of folder containing the CSV with image scale for each dataset; will append to basePath.
-  imageScaleFilename: SocPref_4a-b_AnalysisRaghu.csv # Optional; File name of CSV with image scale for each dataset, if loading from file (i.e. if imageScale is empty).
-  imageScaleColumn: 3 # column (0-indexed) with image scale
+  imageScalePathName:
+  imageScaleFilename: ArenaCenters_SocPref_3456.csv
+  imageScaleColumn: 4 # column (0-indexed) with image scale
   datasetColumns:  [0] # columns to concatenate to match dataset name 
   datasetRemoveStrings: ['results_', 'SocPref_', '_ALL', '_light', '_dark', '_2wpf', '_SocPref'] # strings to remove from filenames and first column of the imageScale CSV to find matches. 
+  # Arena center location information
+  arenaCentersPathName:
+  arenaCentersFilename: ArenaCenters_SocPref_3456.csv
+  arenaCentersColumns: [5,6] # columns (0-indexed) with x,y arena centers
+  # filename of CSV file *in each data folder* with image offset filename
   offsetPositionsFilename: wellOffsetPositionsCSVfile.csv
-  # Arena center location information 
-  # Items below: Arena center location information (optional; empty to estimate from well offset positions)
-  arenaCentersPathName:  # Path name of folder containing the arena centers file; will append to basePath. Leave empty to estimate from well offset positions
-  arenaCentersFilename: # CSV file name containing arena centers information
-  arenaCentersColumns: 
-  subGroups:  # optional, strings of subFolder names of sub-experiments with the same overall parameters
-  
