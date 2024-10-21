@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, Oct. 17, 2024
+Last modified by Rghuveer Parthasarathy, Oct. 20, 2024
 
 Description
 -----------
@@ -1085,6 +1085,9 @@ def write_output_files(params, dataPath, datasets):
         key_list.extend([f"Cbend_Fish{j}"])
     key_list.extend(["Cbend_any"])  # formerly had a condition "if Nfish > 1:"
     for j in range(Nfish):
+        key_list.extend([f"Rbend_Fish{j}"])
+    key_list.extend(["Rbend_any"])  
+    for j in range(Nfish):
         key_list.extend([f"Jbend_Fish{j}"])
     key_list.extend(["Jbend_any"]) # formerly had a condition "if Nfish > 1:"
     for j in range(Nfish):
@@ -1100,11 +1103,17 @@ def write_output_files(params, dataPath, datasets):
     for j in range(Nfish):
         key_list.extend([f"isMoving_Fish{j}"])
     key_list.extend(["isMoving_any", "isMoving_all"]) # formerly had a condition "if Nfish > 1:"
+    for j in range(Nfish):
+        key_list.extend([f"isBending_Fish{j}"])
+    key_list.extend(["isBending_any", "isBending_all"]) # formerly had a condition "if Nfish > 1:"
+    for j in range(Nfish):
+        key_list.extend([f"isActive_Fish{j}"])
+    key_list.extend(["isActive_any", "isActive_all"]) # formerly had a condition "if Nfish > 1:"
     key_list.extend(["edge_frames", "bad_bodyTrack_frames"])
     # Remove any keys that are not in the first dataset, for example
     # two-fish behaviors if that dataset was for single fish data
     key_list_revised = [key for key in key_list if key in datasets[0]]
-
+    
     # Mark frames for each dataset
     # Create the ExcelWriter object
     excel_file = os.path.join(output_path, 
@@ -1120,7 +1129,18 @@ def write_output_files(params, dataPath, datasets):
     # Save and close the Excel file
     writer.close()
 
-    # Excel workbook for summary of all behavior counts, durations
+    # For each dataset, summary  text file and basic measurements    
+    for j in range(N_datasets):
+        
+        # Write for this dataset: summary in text file
+        write_behavior_txt_file(datasets[j], key_list_revised)
+        
+        # Write for this dataset: frame-by-frame "basic measurements"
+        write_basicMeasurements_txt_file(datasets[j])
+        
+        
+    # Excel workbook for summary of all behavior counts, durations,
+    # relative durations, and relative durations normalized to activity
     print('File for collecting all behavior counts: ', 
           params['allDatasets_ExcelFile'])
     initial_keys = ["dataset_name", "fps", "image_scale",
@@ -1155,14 +1175,7 @@ def write_output_files(params, dataPath, datasets):
                               datasets, key_list_revised, 
                               initial_keys_revised, initial_strings_revised)
 
-    # For each dataset, summary  text file and basic measurements    
-    for j in range(N_datasets):
-        
-        # Write for this dataset: summary in text file
-        write_behavior_txt_file(datasets[j], key_list_revised)
-        
-        # Write for this dataset: frame-by-frame "basic measurements"
-        write_basicMeasurements_txt_file(datasets[j])
+
 
         
 def write_behavior_txt_file(dataset, key_list):
@@ -1324,6 +1337,45 @@ def mark_behavior_frames_Excel(writer, dataset, key_list, sheet_name):
 
 def write_behaviorCounts_Excel(ExcelFileName, datasets, key_list, 
                               initial_keys, initial_strings):
+    """
+    Creates an Excel with summary statistics of each behavior for each dataset, 
+    indicating the number of events, duration (number of frames), 
+    and relative duration of each of the behaviors. 
+    
+    The function also calculates durations relative to the number of 
+    "active" frames, both for "isActive_any" and "isActive_all". 
+    These are not saved outside this function.
+    
+    Each row is one dataset. Each column is one behavior; 
+    the first few columns are general dataset properties. 
+    In addition, separated by a blank row, each sheet contains 
+    statistics over the datasets (mean, std. dev., and s.e.m.).
+        
+    Output text file name: dataset_name + _basicMeasurements.txt, 
+    one per dataset, in Analysis output folder
+
+    Inputs:
+        ExcelFileName : File name to write
+        datasets : list of dictionaries with behavior information,
+        key_list : list of behavior dictionary keys to write; note that each 
+                    contains Nframes, durations, and relative durations
+        initial_keys : keys to write that are single values, not behavior
+                    dictionaries 
+        initial_strings : column header strings corresponding to initial_keys
+
+    Returns:
+        N/A
+    """
+    Ndatasets = len(datasets)
+
+    # Durations relative to the number of "active" frames.
+    for j in range(Ndatasets):
+        for key in key_list:
+            datasets[j][key]['rel_duration_active_any'] = \
+                datasets[j][key]["total_duration"] / datasets[j]["isActive_any"]["total_duration"] 
+            datasets[j][key]['rel_duration_active_all'] = \
+                datasets[j][key]["total_duration"] / datasets[j]["isActive_all"]["total_duration"] 
+    
     # Create a new Excel writer object
     writer = pd.ExcelWriter(ExcelFileName, engine='xlsxwriter')
 
@@ -1331,13 +1383,15 @@ def write_behaviorCounts_Excel(ExcelFileName, datasets, key_list,
     sheets = {
         "N_events": "N_events",
         "Durations (frames)": "total_duration",
-        "Relative Durations": "relative_duration"
+        "Relative Durations": "relative_duration",
+        "Durations rel Any Active": "rel_duration_active_any",
+        "Durations rel All Active": "rel_duration_active_all"
     }
 
     for sheet_name, data_key in sheets.items():
         # Prepare data for the current sheet
         data = []
-        for j in range(len(datasets)):
+        for j in range(Ndatasets):
             row = [datasets[j][key] for key in initial_keys]
             for key in key_list:
                 row.append(datasets[j][key][data_key])

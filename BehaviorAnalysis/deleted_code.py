@@ -35,6 +35,132 @@ Misc. deleted code
         "circle_fit_threshold" : 0.25,
         "circle_distance_threshold": 240,
 
+#%%
+
+# Replaced with different J-bend Method, Oct. 20, 2024
+
+def get_Jbend_frames(dataset, CSVcolumns, JbendThresholds = (0.98, 0.34, 0.70)):
+    """ 
+    Find frames in which one or more fish have a J-bend: straight anterior
+    and bent posterior.
+    A J-bend is defined by:
+        - body points 1-5 are linearly correlated: |Pearson r| > JbendThresholds[0]  
+          Note that this avoids chord / arc distance issues with point #2
+          sometimes being anterior of #1
+        - cos(angle) between (points 9-10) and heading angle < JbendThresholds[1]
+        - cos(angle) between (points 8-9) and heading angle < JbendThresholds[2]
+    Inputs:
+        dataset: dataset dictionary of all behavior information for a given expt.
+        CSVcolumns : information on what the columns of dataset["all_data"] are
+        JbendThresholds : see J-bend definition above
+    Output : 
+        Jbend_frames : dictionary with two keys, 0 and 1, each of which
+                       contains a numpy array of frames with 
+                       identified J-bend frames for fish 0 and fish 1
+
+    """
+    
+    midColumn = int(CSVcolumns["body_Ncolumns"]/2)
+    # print('midColumn should be 5: ', midColumn)
+    
+    # All body positions, as in C-bending function
+    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+    
+    angle_data = dataset["heading_angle"]
+    Nfish = angle_data.shape[1]
+
+    # Angle between each pair of points and the heading angle
+    segment_angles = np.zeros((body_x.shape[0], body_x.shape[1]-1, body_x.shape[2]))
+    for j in range(segment_angles.shape[1]):
+        segment_angles[:, j, :] = np.arctan2(body_y[:,j+1,:]-body_y[:,j,:], 
+                          body_x[:,j+1,:]-body_x[:,j,:])
+    
+    # mean values, repeated to allow subtraction
+    mean_x = np.mean(body_x[:,0:midColumn,:], axis=1)
+    mean_x = np.swapaxes(np.tile(mean_x, (midColumn, 1, 1)), 0, 1)
+    mean_y = np.mean(body_y[:,0:midColumn,:], axis=1)
+    mean_y = np.swapaxes(np.tile(mean_y, (midColumn, 1, 1)), 0, 1)
+    Npts = midColumn # number of points
+    cov_xx = np.sum((body_x[:,0:midColumn,:]-mean_x)*(body_x[:,0:midColumn,:]-mean_x), 
+                    axis=1)/(Npts-1)
+    cov_yy = np.sum((body_y[:,0:midColumn,:]-mean_y)*(body_y[:,0:midColumn,:]-mean_y), 
+                    axis=1)/(Npts-1)
+    cov_xy = np.sum((body_x[:,0:midColumn,:]-mean_x)*(body_y[:,0:midColumn,:]-mean_y), 
+                    axis=1)/(Npts-1)
+    Tr = cov_xx + cov_yy
+    DetCov = cov_xx*cov_yy - cov_xy**2
+    
+    # Two eigenvalues for each frame, each fish
+    eig_array = np.zeros((Tr.shape[0], Tr.shape[1], 2))
+    eig_array[:,:,0]  = Tr/2.0 + np.sqrt((Tr**2)/4.0 - DetCov)
+    eig_array[:,:,1] = Tr/2.0 - np.sqrt((Tr**2)/4.0 - DetCov)
+    anterior_straight_var = np.max(eig_array, axis=2)/np.sum(eig_array, axis=2)
+    anterior_straight_criterion = anterior_straight_var \
+        > JbendThresholds[0] # Nframes x Nfish==2 array; Boolean 
+
+    # Evaluate angle between last pair of points and the heading angle
+    cos_angle_last_heading = np.cos(segment_angles[:,-1,:] - angle_data)
+    cos_angle_last_criterion = np.abs(cos_angle_last_heading) < JbendThresholds[1]
+
+    # Evaluate the angle between second-last pair of points and the heading angle
+    cos_angle_2ndlast_heading = np.cos(segment_angles[:,-2,:] - angle_data)
+    cos_angle_2ndlast_criterion = np.abs(cos_angle_2ndlast_heading) < JbendThresholds[2]
+    
+    allCriteria = np.all(np.stack((anterior_straight_criterion, 
+                           cos_angle_last_criterion, cos_angle_2ndlast_criterion), 
+                           axis=2), axis=2) # for each fish, all criteria must be true    
+
+    # Dictionary containing Jbend_frames frames for each fish
+    Jbend_frames = {}
+    for fish in range(Nfish):
+        Jbend_frames[fish] = np.array(np.where(allCriteria[:, fish])).flatten() + 1
+
+    return Jbend_frames
+
+
+#%%
+
+def get_Cbend_frames(dataset, CSVcolumns, Cbend_threshold = 2/np.pi):
+    """ 
+    Find frames in which a fish is sharply bent (C-bend)
+    Bending is determined by ratio of head to tail-end distance / overall 
+    fish length (sum of segments); bend = ratio < threshold
+    Inputs:
+        dataset: dataset dictionary of all behavior information for a given expt.
+        CSVcolumns : information on what the columns of dataset["all_data"] are
+        Cbend_threshold : consider a fish bent if chord/arc < this threshold
+                         Default 2/pi (0.637) corresponds to a semicircle shape
+                         For a circle, chord/arc = sin(theta/2) / (theta/2)
+    Output : 
+        Cbend_frames : dictionary with a number of keys equal to the 
+                       number of fish, each of which
+                       contains a numpy array of frames with 
+                       identified C-bend frames, 
+                       i.e. with bending < Cbend_threshold
+    """
+    
+    # length in each frame, Nframes x Nfish array, mm so convert
+    # to px using image scale (um/px)
+    fish_length_px = dataset["fish_length_array_mm"] * 1000.0 / dataset["image_scale"]  
+    Nfish = fish_length_px.shape[1]
+    
+    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+        
+    fish_head_tail_distance = np.sqrt((body_x[:,0,:]-body_x[:,-1,:])**2 + 
+                                      (body_y[:,0,:]-body_y[:,-1,:])**2) # Nframes x Nfish array
+    Cbend_ratio = fish_head_tail_distance/fish_length_px # Nframes x Nfish==2 array
+    Cbend = Cbend_ratio < Cbend_threshold # # True if fish is bent; Nframes x Nfish array
+    
+    # Dictionary containing Cbend_frames frames for each fish
+    Cbend_frames = {}
+    for fish in range(Nfish):
+        Cbend_frames[fish] = np.array(np.where(Cbend[:, fish])).flatten() + 1
+
+    return Cbend_frames
+
+
 
 #%%
 

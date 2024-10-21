@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Split from behavior_identification.py on July 22, 2024
-Last modified Sept. 12, 2024 -- Raghu Parthasarathy
+Last modified Oct. 20, 2024 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -113,11 +113,32 @@ def get_single_fish_characterizations(datasets, CSVcolumns,
         #     each containing a numpy array of frames in which that fish is moving
         # "_any" is a numpy array of frames in which any fish is moving
         # "_all" is a numpy array of frames in which all fish are moving
-        
         isMoving_frames_each, isMoving_frames_any, isMoving_frames_all = \
             get_isMoving_frames(datasets[j], params["motion_speed_threshold_mm_second"])
+
+        
+        # Calculate the bending angle: supplement of the angle between 
+        # the front half and the back half
+        datasets[j]["bend_angle"] = calc_bend_angle(datasets[j], CSVcolumns)
+
+        isBending_frames_each, isBending_frames_any, isBending_frames_all = \
+            get_isBending_frames(datasets[j], params["bend_min_deg"])
             
-        # For movement indicator, for each fish and for "any" and "all" fish,
+        # Calculate "isActive" for each fish as *either* moving or bending
+        isActive_frames_each = {}
+        for k in isMoving_frames_each.keys():
+            # Concatenate the two arrays of frames
+            combined_frames = np.concatenate([isMoving_frames_each[k], 
+                                              isBending_frames_each[k]])
+            # Get unique frames and store in new dictionary
+            isActive_frames_each[k] = np.unique(combined_frames)     
+        isActive_frames_any = np.unique(np.concatenate([isMoving_frames_any, 
+                                             isBending_frames_any]))
+        isActive_frames_all = np.unique(np.concatenate([isMoving_frames_all, 
+                                             isBending_frames_all]))
+            
+        # For movement indicator, and acticity indicator,
+        # for each fish and for "any" and "all" fish,
         # make a dictionary containing frames, removing frames with 
         # "bad" elements. Unlike other characteristics, need to "dilate"
         # bad tracking frames, since each bad tracking frame j affects 
@@ -126,22 +147,92 @@ def get_single_fish_characterizations(datasets, CSVcolumns,
         # for these dictionaries
         # Code to allow an arbitrary number of fish, and consequently an 
         #    arbitrary number of elements isMoving_frames_each dictionary
-        
-        
         iMe_arrays = [isMoving_frames_each[key] for key in sorted(isMoving_frames_each.keys())]
-        iM_arrays = iMe_arrays + [isMoving_frames_any] + [isMoving_frames_all] 
+        iAe_arrays = [isActive_frames_each[key] for key in sorted(isActive_frames_each.keys())]
+        iMA_arrays = iMe_arrays + [isMoving_frames_any] + [isMoving_frames_all] \
+                   + iAe_arrays + [isActive_frames_any] + [isActive_frames_all]
         # Create the second tuple of strings
-        iM_keys = tuple(f'isMoving_Fish{i}' for i in range(len(isMoving_frames_each))) \
-            + ('isMoving_any',)  + ('isMoving_all', )
+        iMA_keys = tuple(f'isMoving_Fish{i}' for i in range(len(isMoving_frames_each))) \
+            + ('isMoving_any',)  + ('isMoving_all', ) \
+            + tuple(f'isActive_Fish{i}' for i in range(len(isActive_frames_each))) \
+            + ('isActive_any',)  + ('isActive_all', ) 
 
-        for iM_key, iM_array in zip(iM_keys, iM_arrays):
+        for iMA_key, iMA_array in zip(iMA_keys, iMA_arrays):
             badTrFramesRaw = np.array(datasets[j]["bad_bodyTrack_frames"]["raw_frames"]).astype(int)
             dilate_badTrackFrames = dilate_frames(badTrFramesRaw, 
                                                   dilate_frames=np.array([1]))
-            datasets[j][iM_key] = make_frames_dictionary(iM_array,
+            datasets[j][iMA_key] = make_frames_dictionary(iMA_array,
                                           dilate_badTrackFrames,
-                                          behavior_name = iM_key,
+                                          behavior_name = iMA_key,
                                           Nframes=datasets[j]['Nframes'])
+
+        # For bending indicator, for each fish and for "any" and "all" fish,
+        # make a dictionary containing frames, removing frames with 
+        # "bad" elements. Like "isMoving" arrays
+        iBe_arrays = [isBending_frames_each[key] for key in sorted(isBending_frames_each.keys())]
+        iB_arrays = iBe_arrays + [isBending_frames_any] + [isBending_frames_all] 
+        # Create the second tuple of strings
+        iB_keys = tuple(f'isBending_Fish{i}' for i in range(len(isBending_frames_each))) \
+            + ('isBending_any',)  + ('isBending_all', )
+
+        for iB_key, iB_array in zip(iB_keys, iB_arrays):
+            datasets[j][iB_key] = make_frames_dictionary(iB_array,
+                                          np.array(datasets[j]["bad_bodyTrack_frames"]["raw_frames"]).astype(int),
+                                          behavior_name = iB_key,
+                                          Nframes=datasets[j]['Nframes'])
+            
+        # Get frames with the various categories of bends
+        # C-bends, R-bends, and J-bends; each is a dictionary with Nfish 
+        # keys, one for each fish, each containing a numpy array of frames
+        # Note that "isBending" (minimal threshold) has already been determined
+        Cbend_frames_each = get_Cbend_frames(datasets[j], CSVcolumns, 
+                                             params["bend_Cmin_deg"])
+        Rbend_frames_each = get_Rbend_frames(datasets[j], CSVcolumns, 
+                                             (params["bend_Jmax_deg"], 
+                                              params["bend_Cmin_deg"]))
+        Jbend_frames_each = get_Jbend_frames(datasets[j], CSVcolumns, 
+                                             (params["bend_min_deg"], 
+                                              params["bend_Jmax_deg"]))
+        # numpy array of frames with C-bend for *any* fish
+        Cbend_frames_any = np.unique(np.concatenate(list(Cbend_frames_each.values())))
+        # numpy array of frames with R-bend for *any* fish
+        Rbend_frames_any = np.unique(np.concatenate(list(Rbend_frames_each.values())))
+        # numpy array of frames with J-bend for *any* fish
+        Jbend_frames_any = np.unique(np.concatenate(list(Jbend_frames_each.values())))
+        
+        # For C-bends, R-bends, and J-bends, for each fish and for any fish,
+        # make a dictionary containing frames, 
+        # remove frames with "bad" elements
+        # Also makes a 2xN array of initial frames and durations, though
+        # the duration of bends is probably 1 almost always
+        # Code to allow an arbitrary number of fish, and consequently an 
+        #    arbitrary number of elements in the Cbend_frames_each, 
+        #    RBend_frames_each, and Jbend_frames_each dictionaries
+
+        Ce_arrays = [Cbend_frames_each[key] for key in sorted(Cbend_frames_each.keys())]
+        Re_arrays = [Rbend_frames_each[key] for key in sorted(Rbend_frames_each.keys())]
+        Je_arrays = [Jbend_frames_each[key] for key in sorted(Jbend_frames_each.keys())]
+        CRJ_arrays = Ce_arrays + [Cbend_frames_any] + Re_arrays + [Rbend_frames_any] \
+                     + Je_arrays + [Jbend_frames_any] 
+        # Create the second tuple of strings
+        CRJ_keys = tuple(f'Cbend_Fish{i}' for i in range(len(Cbend_frames_each))) + ('Cbend_any',) \
+                  + tuple(f'Rbend_Fish{i}' for i in range(len(Rbend_frames_each))) + ('Rbend_any',) \
+                  + tuple(f'Jbend_Fish{i}' for i in range(len(Jbend_frames_each))) + ('Jbend_any',)
+
+        for CRJ_key, CRJ_array in zip(CRJ_keys, CRJ_arrays):
+            datasets[j][CRJ_key] = make_frames_dictionary(CRJ_array,
+                                          datasets[j]["bad_bodyTrack_frames"]["raw_frames"],
+                                          behavior_name = CRJ_key,
+                                          Nframes=datasets[j]['Nframes'])
+        # Average speed (averaged over fish), and average speed only in 
+        # moving frames. get_mean_speed() will dilate bad tracks by +1
+        speed_mean_all, speed_mean_moving = \
+            get_mean_speed(datasets[j]["speed_array_mm_s"], 
+                           isMoving_frames_each, datasets[j]["bad_bodyTrack_frames"]["raw_frames"])
+        # average over fish, since ID is unreliable
+        datasets[j]["speed_mm_s_mean"] = np.mean(speed_mean_all)
+        datasets[j]["speed_whenMoving_mm_s_mean"] = np.mean(speed_mean_moving)
+
 
         # Bout statistics.
         bouts_N, bout_duration_s,  bout_rate_bpm, bout_ibi_s = \
@@ -152,66 +243,16 @@ def get_single_fish_characterizations(datasets, CSVcolumns,
         datasets[j]["bout_rate_bpm"] = np.mean(bout_rate_bpm)
         datasets[j]["bout_ibi_s"] = np.mean(bout_ibi_s)
 
-        # Average speed (averaged over fish), and average speed only in moving frames
-        speed_mean_all, speed_mean_moving = \
-            get_mean_speed(datasets[j]["speed_array_mm_s"], 
-                           isMoving_frames_each, datasets[j]["bad_bodyTrack_frames"]["raw_frames"])
-        # average over fish, since ID is unreliable
-        datasets[j]["speed_mm_s_mean"] = np.mean(speed_mean_all)
-        datasets[j]["speed_whenMoving_mm_s_mean"] = np.mean(speed_mean_moving)
-
-
         # Get tail angle of each fish in each frame 
         # Nframes x Nfish array
+        # (Oct. 20, 2024: Not doing anything with this.)
         datasets[j]["tail_angle_rad"] = \
             getTailAngle(datasets[j]["all_data"], CSVcolumns, 
                          datasets[j]["heading_angle"])
+       
         
-        # Calculate the bending angle: complement of the angle between 
-        # the front half and the back half
-        datasets[j]["bend_angle"] = calc_bend_angle(datasets[j], CSVcolumns)
-        
-        # Get frames with C-bends and J-bends; each is a dictionary with two 
-        # keys, one for each fish, each containing a numpy array of frames
-        Cbend_frames_each = get_Cbend_frames(datasets[j], CSVcolumns, 
-                                             params["Cbend_threshold"])
-        Jbend_frames_each = get_Jbend_frames(datasets[j], CSVcolumns, 
-                                             (params["Jbend_rAP"], 
-                                              params["Jbend_cosThetaN"], 
-                                              params["Jbend_cosThetaNm1"]))
-        # numpy array of frames with C-bend for *any* fish
-        Cbend_frames_any = np.unique(np.concatenate(list(Cbend_frames_each.values())))
-        # numpy array of frames with J-bend for *any* fish
-        Jbend_frames_any = np.unique(np.concatenate(list(Jbend_frames_each.values())))
-        
-        # For C-bends and J-bends, for each fish and for any fish,
-        # make a dictionary containing frames, 
-        # remove frames with "bad" elements
-        # Also makes a 2xN array of initial frames and durations, though
-        # the duration of bends is probably 1 almost always
-        # Code to allow an arbitrary number of fish, and consequently an 
-        #    arbitrary number of elements in the Cbend_frames_each and 
-        #    Jbend_frames_each dictionaries
-
-        Ce_arrays = [Cbend_frames_each[key] for key in sorted(Cbend_frames_each.keys())]
-        Je_arrays = [Jbend_frames_each[key] for key in sorted(Jbend_frames_each.keys())]
-        CJ_arrays = Ce_arrays + [Cbend_frames_any] + Je_arrays + [Jbend_frames_any] 
-        # Create the second tuple of strings
-        CJ_keys = tuple(f'Cbend_Fish{i}' for i in range(len(Cbend_frames_each))) + ('Cbend_any',) \
-                  + tuple(f'Jbend_Fish{i}' for i in range(len(Jbend_frames_each))) + ('Jbend_any',)
-
-        for CJ_key, CJ_array in zip(CJ_keys, CJ_arrays):
-            datasets[j][CJ_key] = make_frames_dictionary(CJ_array,
-                                          (datasets[j]["edge_frames"]["raw_frames"],
-                                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"]),
-                                          behavior_name = CJ_key,
-                                          Nframes=datasets[j]['Nframes'])
-
     # For each dataset, exclude bad tracking frames from calculation of
     # the mean fish length
-    # Also exclude bad tracking, dilated one frame as in isMoving,
-    #    from calculation of mean speed (over-cautious: if any fish tracking 
-    #    is bad, ignore the frame for mean speed calculation)
     for j in range(N_datasets):
         print('Removing bad frames from stats for fish length, for Dataset: ', 
               datasets[j]["dataset_name"])
@@ -292,15 +333,15 @@ def get_isMoving_frames(dataset, motion_speed_threshold_mm_s = 10.0):
     # Dictionary containing "is moving" frames for each fish
     isMoving_frames_each = {}
     for fish in range(Nfish):
-        isMoving_frames_each[fish] = np.array(np.where(isMoving[:, fish])).flatten() + 1
-    
+        isMoving_frames_each[fish] = dataset['frameArray'][isMoving[:, fish]] 
+        
     # any fish
     any_fish_moving  = np.any(isMoving, axis=1)
-    isMoving_frames_any = np.where(any_fish_moving)[0] + 1
+    isMoving_frames_any = dataset['frameArray'][any_fish_moving]
     
     # all fish
     all_fish_moving  = np.all(isMoving, axis=1)
-    isMoving_frames_all = np.where(all_fish_moving)[0] + 1
+    isMoving_frames_all = dataset['frameArray'][all_fish_moving]
 
     return isMoving_frames_each, isMoving_frames_any, isMoving_frames_all
 
@@ -447,8 +488,8 @@ def getTailCurvature(all_data, CSVcolumns, image_scale):
 def get_bout_statistics(dataset):
     """
     Calculate basic properties of bouts, defined as frames in which the
-    "moving" criterion is met (isMoving_Fish{j})
-    Note that "isMoving" already disregards bad tracking frames
+    "moving" or "bending" criterion is met (isActive_Fish{j})
+    Note that "isActive" already disregards bad tracking frames
     Calculates:
         # Number of bouts for each fish
 		# Mean Duration of bouts for each fishk, seconds
@@ -459,7 +500,7 @@ def get_bout_statistics(dataset):
     
     Inputs:
         dataset : single dictionary containing the analysis data, including
-                    key "isMoving_Fish{j}" for each fish j; also fps and
+                    key "isActive_Fish{j}" for each fish j; also fps and
                     total duration
     Outputs: 
         Tuple of
@@ -477,7 +518,7 @@ def get_bout_statistics(dataset):
   
     for k in range(Nfish):
         # Start frames and durations for bouts (i.e. motion)
-        moving_frameInfo = dataset[f"isMoving_Fish{k}"]["combine_frames"]
+        moving_frameInfo = dataset[f"isActive_Fish{k}"]["combine_frames"]
 
         # Number of bouts for fish k
         bouts_N[k] = moving_frameInfo.shape[1]
@@ -618,141 +659,104 @@ def get_isBending_frames(dataset, bend_angle_threshold_deg = 10.0):
            _all : numpy array of frames in which all fish have bend_angle > threshold
     """
     
-    bend_angle = dataset["bend_angle"] # Nframes x Nfish array of speeds
+    bend_angle = dataset["bend_angle"] # Nframes x Nfish array of bend angles
     Nfish = dataset["Nfish"]
     isBending = bend_angle > (np.pi/180)*bend_angle_threshold_deg
 
     # Dictionary containing "is Bending" frames for each fish
     isBending_frames_each = {}
     for fish in range(Nfish):
-        isBending_frames_each[fish] = np.array(np.where(isBending[:, fish])).flatten() + 1
-    
+        isBending_frames_each[fish] = dataset['frameArray'][isBending[:, fish]]
+        
     # any fish
     any_fish_bending  = np.any(isBending, axis=1)
-    isBending_frames_any = np.where(any_fish_bending)[0] + 1
+    isBending_frames_any = dataset['frameArray'][any_fish_bending]
     
     # all fish
     all_fish_bending  = np.all(isBending, axis=1)
-    isBending_frames_all = np.where(all_fish_bending)[0] + 1
+    isBending_frames_all = dataset['frameArray'][all_fish_bending] 
 
     return isBending_frames_each, isBending_frames_any, isBending_frames_all
 
-def get_Cbend_frames(dataset, CSVcolumns, Cbend_threshold = 2/np.pi):
+
+def get_Cbend_frames(dataset, CSVcolumns, Cbend_threshold = 100.0):
     """ 
-    Find frames in which a fish is sharply bent (C-bend)
-    Bending is determined by ratio of head to tail-end distance / overall 
-    fish length (sum of segments); bend = ratio < threshold
+    Find frames in which one or more fish have a JC-bend: bend angle above
+        the threshols.
     Inputs:
         dataset: dataset dictionary of all behavior information for a given expt.
+                 Must include 'bend_angle' (radians) and 'frameArray'
         CSVcolumns : information on what the columns of dataset["all_data"] are
-        Cbend_threshold : consider a fish bent if chord/arc < this threshold
-                         Default 2/pi (0.637) corresponds to a semicircle shape
-                         For a circle, chord/arc = sin(theta/2) / (theta/2)
+        Cbend_threshold : min bend angle, *degrees*
     Output : 
-        Cbend_frames : dictionary with a number of keys equal to the 
-                       number of fish, each of which
-                       contains a numpy array of frames with 
-                       identified C-bend frames, 
-                       i.e. with bending < Cbend_threshold
+        Cbend_frames : dictionary with keys for each fish number (typically
+                       0, 1) each of which contains a numpy array of frames with 
+                       identified C-bend frames for each fish
     """
     
-    # length in each frame, Nframes x Nfish array, mm so convert
-    # to px using image scale (um/px)
-    fish_length_px = dataset["fish_length_array_mm"] * 1000.0 / dataset["image_scale"]  
-    Nfish = fish_length_px.shape[1]
-    
-    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
-    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
-        
-    fish_head_tail_distance = np.sqrt((body_x[:,0,:]-body_x[:,-1,:])**2 + 
-                                      (body_y[:,0,:]-body_y[:,-1,:])**2) # Nframes x Nfish array
-    Cbend_ratio = fish_head_tail_distance/fish_length_px # Nframes x Nfish==2 array
-    Cbend = Cbend_ratio < Cbend_threshold # # True if fish is bent; Nframes x Nfish array
-    
-    # Dictionary containing Cbend_frames frames for each fish
+    Cbend_threshold_radians = Cbend_threshold*(np.pi/180.0)
+    isCbend = dataset['bend_angle'] > Cbend_threshold_radians
+
+    # Dictionary containing Jbend_frames frames for each fish
+    Nfish = dataset['bend_angle'].shape[1]
     Cbend_frames = {}
     for fish in range(Nfish):
-        Cbend_frames[fish] = np.array(np.where(Cbend[:, fish])).flatten() + 1
+        Cbend_frames[fish] = dataset['frameArray'][isCbend[:, fish]]
 
     return Cbend_frames
 
 
-def get_Jbend_frames(dataset, CSVcolumns, JbendThresholds = (0.98, 0.34, 0.70)):
+def get_Rbend_frames(dataset, CSVcolumns, Rbend_thresholds = (50, 100)):
     """ 
-    Find frames in which one or more fish have a J-bend: straight anterior
-    and bent posterior.
-    A J-bend is defined by:
-        - body points 1-5 are linearly correlated: |Pearson r| > JbendThresholds[0]  
-          Note that this avoids chord / arc distance issues with point #2
-          sometimes being anterior of #1
-        - cos(angle) between (points 9-10) and heading angle < JbendThresholds[1]
-        - cos(angle) between (points 8-9) and heading angle < JbendThresholds[2]
+    Find frames in which one or more fish have a "routine term": 
+        bend angle between the thresholds.
     Inputs:
         dataset: dataset dictionary of all behavior information for a given expt.
+                 Must include 'bend_angle' (radians) and 'frameArray'
         CSVcolumns : information on what the columns of dataset["all_data"] are
-        JbendThresholds : see J-bend definition above
+        Rbend_thresholds : min and max bend angles, *degrees*
     Output : 
-        Jbend_frames : dictionary with two keys, 0 and 1, each of which
-                       contains a numpy array of frames with 
-                       identified J-bend frames for fish 0 and fish 1
-
+        Rbend_frames : dictionary with keys for each fish number (typically
+                       0, 1) each of which contains a numpy array of frames with 
+                       identified R-bend frames for each fish
     """
     
-    midColumn = int(CSVcolumns["body_Ncolumns"]/2)
-    # print('midColumn should be 5: ', midColumn)
-    
-    # All body positions, as in C-bending function
-    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
-    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
-    
-    angle_data = dataset["heading_angle"]
-    Nfish = angle_data.shape[1]
-
-    # Angle between each pair of points and the heading angle
-    segment_angles = np.zeros((body_x.shape[0], body_x.shape[1]-1, body_x.shape[2]))
-    for j in range(segment_angles.shape[1]):
-        segment_angles[:, j, :] = np.arctan2(body_y[:,j+1,:]-body_y[:,j,:], 
-                          body_x[:,j+1,:]-body_x[:,j,:])
-    
-    # mean values, repeated to allow subtraction
-    mean_x = np.mean(body_x[:,0:midColumn,:], axis=1)
-    mean_x = np.swapaxes(np.tile(mean_x, (midColumn, 1, 1)), 0, 1)
-    mean_y = np.mean(body_y[:,0:midColumn,:], axis=1)
-    mean_y = np.swapaxes(np.tile(mean_y, (midColumn, 1, 1)), 0, 1)
-    Npts = midColumn # number of points
-    cov_xx = np.sum((body_x[:,0:midColumn,:]-mean_x)*(body_x[:,0:midColumn,:]-mean_x), 
-                    axis=1)/(Npts-1)
-    cov_yy = np.sum((body_y[:,0:midColumn,:]-mean_y)*(body_y[:,0:midColumn,:]-mean_y), 
-                    axis=1)/(Npts-1)
-    cov_xy = np.sum((body_x[:,0:midColumn,:]-mean_x)*(body_y[:,0:midColumn,:]-mean_y), 
-                    axis=1)/(Npts-1)
-    Tr = cov_xx + cov_yy
-    DetCov = cov_xx*cov_yy - cov_xy**2
-    
-    # Two eigenvalues for each frame, each fish
-    eig_array = np.zeros((Tr.shape[0], Tr.shape[1], 2))
-    eig_array[:,:,0]  = Tr/2.0 + np.sqrt((Tr**2)/4.0 - DetCov)
-    eig_array[:,:,1] = Tr/2.0 - np.sqrt((Tr**2)/4.0 - DetCov)
-    anterior_straight_var = np.max(eig_array, axis=2)/np.sum(eig_array, axis=2)
-    anterior_straight_criterion = anterior_straight_var \
-        > JbendThresholds[0] # Nframes x Nfish==2 array; Boolean 
-
-    # Evaluate angle between last pair of points and the heading angle
-    cos_angle_last_heading = np.cos(segment_angles[:,-1,:] - angle_data)
-    cos_angle_last_criterion = np.abs(cos_angle_last_heading) < JbendThresholds[1]
-
-    # Evaluate the angle between second-last pair of points and the heading angle
-    cos_angle_2ndlast_heading = np.cos(segment_angles[:,-2,:] - angle_data)
-    cos_angle_2ndlast_criterion = np.abs(cos_angle_2ndlast_heading) < JbendThresholds[2]
-    
-    allCriteria = np.all(np.stack((anterior_straight_criterion, 
-                           cos_angle_last_criterion, cos_angle_2ndlast_criterion), 
-                           axis=2), axis=2) # for each fish, all criteria must be true    
+    Rbend_thresholds_radians = np.array(Rbend_thresholds)*(np.pi/180.0)
+    isRbend = np.logical_and(dataset['bend_angle'] > Rbend_thresholds_radians[0],
+                             dataset['bend_angle'] <= Rbend_thresholds_radians[1])
 
     # Dictionary containing Jbend_frames frames for each fish
+    Nfish = dataset['bend_angle'].shape[1]
+    Rbend_frames = {}
+    for fish in range(Nfish):
+        Rbend_frames[fish] = dataset['frameArray'][isRbend[:, fish]]
+
+    return Rbend_frames
+
+def get_Jbend_frames(dataset, CSVcolumns, Jbend_thresholds = (10, 50)):
+    """ 
+    Find frames in which one or more fish have a J-bend: bend angle between
+        the thresholds.
+    Inputs:
+        dataset: dataset dictionary of all behavior information for a given expt.
+                 Must include 'bend_angle' (radians) and 'frameArray'
+        CSVcolumns : information on what the columns of dataset["all_data"] are
+        Jbend_thresholds : min and max bend angles, *degrees*
+    Output : 
+        Jbend_frames : dictionary with keys for each fish number (typically
+                       0, 1) each of which contains a numpy array of frames with 
+                       identified J-bend frames for each fish
+    """
+    
+    Jbend_thresholds_radians = np.array(Jbend_thresholds)*(np.pi/180.0)
+    isJbend = np.logical_and(dataset['bend_angle'] > Jbend_thresholds_radians[0],
+                             dataset['bend_angle'] <= Jbend_thresholds_radians[1])
+
+    # Dictionary containing Jbend_frames frames for each fish
+    Nfish = dataset['bend_angle'].shape[1]
     Jbend_frames = {}
     for fish in range(Nfish):
-        Jbend_frames[fish] = np.array(np.where(allCriteria[:, fish])).flatten() + 1
+        Jbend_frames[fish] = dataset['frameArray'][isJbend[:, fish]]
 
     return Jbend_frames
 
@@ -767,12 +771,12 @@ def average_bout_trajectory_oneSet(dataset, keyName = "speed_array_mm_s",
     """
     Tabulates some quantity from a dataset, typically speed
     dataset["speed_array_mm_s"], around each onset of a bout 
-    ("isMoving" == True) in the time interval specified by t_range_s. 
+    ("isActive" == True) in the time interval specified by t_range_s. 
     Consider each fish in the dataset, and combines the 
     bout information for that fish unless keyIdx is not None
     (see below; recommended to keep as None!).
     Optional: Only consider bouts for which the value of constraintKey 
-    at the start frame (first isMoving frame) is between constraintRange[0]
+    at the start frame (first isActive frame) is between constraintRange[0]
     and constraintRange[1]. Calls get_values_subset(); can apply operations
     like mean on constraint, or particular index for constraint array
     
@@ -835,7 +839,7 @@ def average_bout_trajectory_oneSet(dataset, keyName = "speed_array_mm_s",
     
     for k in range(Nfish):
         # Start frames and durations for bouts (i.e. motion)
-        moving_frameInfo = dataset[f"isMoving_Fish{k}"]["combine_frames"]
+        moving_frameInfo = dataset[f"isActive{k}"]["combine_frames"]
         
         # Remove columns based on conditions (start and end of dataset)
         valid_columns = (
@@ -931,13 +935,13 @@ def average_bout_trajectory_allSets(datasets, t_range_s=(-0.5, 2.0),
     For all datasets, call average_bout_trajectory_oneSet() 
     to tabulate some quantity, typically speed
     dataset["speed_array_mm_s"], around each onset of a bout 
-    ("isMoving" == True) in the time interval specified by t_range_s. 
+    ("isActive" == True) in the time interval specified by t_range_s. 
     Note that this considers each fish in the dataset, and combines
     the bout information for that fish unless keyIdx is not None
     (see below; recommended to keep as None!).
     
     Optional: only consider bouts for which the value of constraintKey 
-    at the start frame (first isMoving frame) is between constraintRange[0]
+    at the start frame (first isActive frame) is between constraintRange[0]
     and constraintRange[1]. Calls get_values_subset(); can apply operations
     like mean on constraint
     
