@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Fri Dec. 1, 2023
-Last modified on September 19, 2024
+Last modified on Oct. 25, 2024
 
 Description
 -----------
@@ -34,7 +34,6 @@ import os
 import pandas as pd
 from scipy import stats
 import csv
-
 import tkinter as tk
 from tkinter import filedialog
 
@@ -107,15 +106,15 @@ def get_data_label_and_higher_folder(file_path):
             break
     path_components.reverse()  # Reverse to get top-level folders first
     
-    # Check if the lowermost folder is "Analysis" (case-insensitive)
-    if len(path_components) >= 2 and path_components[-2].lower() == "analysis":
-        data_label = path_components[-3] if len(path_components) >= 3 else None
+    # Check if the folder name ends with "_Analysis" (case-insensitive)
+    if len(path_components) >= 2 and path_components[-2].lower().endswith("_analysis"):
+        data_label = path_components[-2][:-9]  # Remove "_Analysis" from the folder name
         print(f"Extracted dataLabel: {data_label}")
     else:
-        data_label = input("The lowermost folder is not 'Analysis'. Please enter a string for dataLabel: ")
-    
+        data_label = input("The folder name does not end with '_Analysis'. Please enter a string for dataLabel: ")
+        
     # Get the name of the folder two levels above "Analysis"
-    if len(path_components) >= 5 and path_components[-2].lower() == "analysis":
+    if len(path_components) >= 5 and path_components[-2].lower().endswith("_analysis"):
         higher_folder_path_list = path_components[:-3]
         higher_folder_path = ''
         for f in higher_folder_path_list:
@@ -126,20 +125,135 @@ def get_data_label_and_higher_folder(file_path):
     
     return data_label, higher_folder_path
 
-
-def read_behavior_Excel(file_path):
+def read_excel_sheets(file_path):
     """
-    Reads an Excel file, loading the sheet called "Relative Durations" 
-    into dataframe df:
-    In addition, first checks that "Relative Durations" exists. 
+    Reads all sheets from an Excel file into a dictionary of dataframes.
+    
+    Parameters
+    ----------
+    file_path : str
+        Path to the Excel file
+        
+    Returns
+    -------
+    dict
+        Dictionary with sheet names as keys and dataframes as values
+    """
+    try:
+        # Read all sheets into a dictionary of dataframes
+        excel_file = pd.ExcelFile(file_path)
+        dfs = {}
+        for sheet_name in excel_file.sheet_names:
+            dfs[sheet_name] = pd.read_excel(file_path, sheet_name=sheet_name)
+        return dfs
+    except Exception as e:
+        print(f"Error reading Excel file: {e}")
+        return None
+
+def get_common_sheets(file_path1, file_path2):
+    """
+    Get list of sheet names common to both Excel files.
+    
+    Parameters
+    ----------
+    file_path1, file_path2 : str
+        Paths to the Excel files
+        
+    Returns
+    -------
+    list
+        List of common sheet names
+    """
+    excel1 = pd.ExcelFile(file_path1)
+    excel2 = pd.ExcelFile(file_path2)
+    
+    sheets1 = set(excel1.sheet_names)
+    sheets2 = set(excel2.sheet_names)
+    
+    common_sheets = list(sheets1.intersection(sheets2))
+    print(f"\nCommon sheets found: {common_sheets}")
+    return common_sheets
+
+
+
+def write_results_to_excel(stats1, stats2, output_file, sheet_name, stat_tests=None):
+    """
+    Writes stats results to a sheet in an Excel file.
+    Similar to write_results_to_csv but writes to Excel.
+    
+    Parameters
+    ----------
+    stats1, stats2 : dict
+        Dictionaries with statistics
+    output_file : str
+        Path to output Excel file
+    sheet_name : str
+        Name of the sheet to write to
+    stat_tests : dict, optional
+        Dictionary with statistical test results
+    """
+    required_keys = {'column_name', 'mean', 'N', 'std', 'sem'}
+
+    # Verify keys in stats1 and stats2
+    for st in [stats1, stats2]:
+        for column, column_stats in st.items():
+            if set(column_stats.keys()) != required_keys:
+                raise ValueError(f"Invalid keys in stats dictionary for {column}")
+
+    # Create lists for DataFrame
+    data = []
+    headers = ['column_name', 
+               'mean_1', 'N_1', 'std_1', 'sem_1',
+               'mean_2', 'N_2', 'std_2', 'sem_2']
+    
+    if stat_tests is not None:
+        headers.extend(['p_MWU', 'p_KS'])
+    
+    for column in stats1.keys():
+        if column in stats2:
+            row = [
+                column,
+                stats1[column]['mean'],
+                stats1[column]['N'],
+                stats1[column]['std'],
+                stats1[column]['sem'],
+                stats2[column]['mean'],
+                stats2[column]['N'],
+                stats2[column]['std'],
+                stats2[column]['sem']
+            ]
+            
+            if stat_tests is not None and column in stat_tests:
+                row.extend([
+                    stat_tests[column]['p_MWU'],
+                    stat_tests[column]['p_KS']
+                ])
+            
+            data.append(row)
+    
+    # Create DataFrame
+    df = pd.DataFrame(data, columns=headers)
+    
+    # Write to Excel
+    with pd.ExcelWriter(output_file, engine="openpyxl", 
+                        mode='a' if os.path.exists(output_file) else 'w') as writer:
+        df.to_excel(writer, sheet_name=sheet_name, index=False)
+        
+        
+
+def read_behavior_Excel(file_path, sheet_name = "Relative Durations"):
+    """
+    Reads an Excel file, loading the sheet called sheet_name 
+       (probably "Relative Durations") into dataframe df
+    In addition, first checks that sheet_name exists. 
     If it does not, gives an error and print the sheets 
     in the Excel file
     Code mostly from Claude3
 
-
     Parameters
     ----------
     file_path : file name and path
+    sheet_name : sheet name to load
 
     Returns
     -------
@@ -152,12 +266,12 @@ def read_behavior_Excel(file_path):
         excel_file = pd.ExcelFile(file_path)
         
         # Check if "Relative Durations" sheet exists
-        if "Relative Durations" in excel_file.sheet_names:
-            # Load the "Relative Durations" sheet into df1
-            df = excel_file.parse("Relative Durations")
+        if sheet_name in excel_file.sheet_names:
+            # Load the specified sheet into df1
+            df = excel_file.parse(sheet_name)
         else:
             # If the sheet doesn't exist, raise an error
-            raise ValueError(f"Sheet 'Relative Durations' not found. Available sheets: {excel_file.sheet_names}")
+            raise ValueError(f"Sheet {sheet_name} not found. Available sheets: {excel_file.sheet_names}")
             
     except ValueError as e:
         print(f"Error: {e}")
@@ -465,9 +579,11 @@ def calc_stats_dataframes(df, exclude_columns):
         stats_dict: dictionary with keys corresponding to 'column_name', 'mean', 'N', 'std', and 'sem'
     """
     stats_dict = {}
-    # Exclude 'Dataset' column, if not already excluded
+    # Exclude 'Dataset' column, if not already excluded; also 'Source'
     if 'Dataset' not in exclude_columns:
         exclude_columns.append('Dataset')
+    if 'Source' not in exclude_columns:
+        exclude_columns.append('Source')
         
     for column in df.columns:
         if column not in exclude_columns:
@@ -537,6 +653,9 @@ def analyze_dataframes(df1, df2, exclude_columns):
     # Exclude 'Dataset' column, if not already excluded
     if 'Dataset' not in exclude_columns:
         exclude_columns.append('Dataset')
+    # Exclude 'Source' column, if not already excluded
+    if 'Source' not in exclude_columns:
+        exclude_columns.append('Source')
     
     results = []
     
@@ -627,21 +746,92 @@ def write_results_to_csv(stats1, stats2, output_file, stat_tests=None):
                 writer.writerow(row)
 
 
+def compare_datasets(file_paths, dataLabels, common_sheets, comparison_file_path):
+    """
+    Perform statistical tests on the two sets, which the user might use 
+    to evaluate similarity.
+    Outputs an Excel file.    
+    
+    Called by load_and_combine_dataframes(), in which file paths etc. 
+    are specified
+    
+    Parameters:
+        file_paths: list of file paths for the datasets
+        dataLabels: list of data labels for the datasets
+        common_sheets: list of common sheets between the datasets
+        comparison_file_path: path to the output Excel file for comparisons
+    """
+    
+    print('Comparing the two datasets. (Output -> Excel)')
+    exclude_from_all = []
+    
+    with pd.ExcelWriter(comparison_file_path) as comp_writer:
+        for sheet_name in common_sheets:
+            # Read sheets from both files
+            df1 = pd.read_excel(file_paths[0], sheet_name=sheet_name)
+            df2 = pd.read_excel(file_paths[1], sheet_name=sheet_name)
+            
+            # Remove statistics rows if present
+            df1 = keep_dataframe_to_blank_line(df1)
+            df2 = keep_dataframe_to_blank_line(df2)
+            
+            # Analyze (compare + stats)
+            stats1 = calc_stats_dataframes(df1, exclude_from_all)
+            stats2 = calc_stats_dataframes(df2, exclude_from_all)
+            stat_tests = stat_comparisons(df1, df2, exclude_from_all)
+            
+            # Create comparison dataframe
+            comparison_data = []
+            for column in stats1.keys():
+                if column in stats2:
+                    row = [
+                        '{:.3G}'.format(stats1[column]['mean']),
+                        '{:.3G}'.format(stats2[column]['mean']),
+                        stats1[column]['N'],
+                        stats2[column]['N'],
+                        '{:.3G}'.format(stats1[column]['std']),
+                        '{:.3G}'.format(stats2[column]['std']),
+                        '{:.3G}'.format(stats1[column]['sem']),
+                        '{:.3G}'.format(stats2[column]['sem'])
+                    ]
+                    if stat_tests is not None and column in stat_tests:
+                        row.extend([
+                            '{:.3G}'.format(stat_tests[column]['p_MWU']),
+                            '{:.3G}'.format(stat_tests[column]['p_KS'])
+                        ])
+                    comparison_data.append([column] + row)
+            
+            headers = ['column_name', 'mean_1', 'mean_2', 'N_1', 'N_2', 'std_1', 'std_2', 'sem_1', 'sem_2']
+            if stat_tests is not None:
+                headers.extend(['p_MWU', 'p_KS'])
+            
+            comparison_df = pd.DataFrame(comparison_data, columns=headers)
+            
+            # Write comparison dataframe to Excel
+            comparison_df.to_excel(comp_writer, sheet_name=sheet_name, index=False)
+
+
+
 def load_and_combine_dataframes(outputStats = True, compareSets = False):
     """ 
-    Combine datasets from two experiments. Asks user for files, etc.
-    Loads Excel files and writes the concatenated dataset to a new Excel file.
-    If outputStats == True, calculate the statistics for 
+    Combine datasets from two experiments. 
+    Runs on all sheets in inputs
+    Asks user for files, etc.
+    Combine datasets’ outputs from two different experiments, 
+        concatenating information in the summary Excel files. 
+    Creates a new composite Excel file. Adds "dataLabel" column at the end
+    Optional. If outputStats == True, calculate the statistics for 
         each column of the concatenated dataset and write these also
         to the Excel file.
-    Optional: if compareSets == True, perform statistical tests on the 
-        two sets, which the user might use to evaluate similarity.
-        Outputs a CSV file.
+    Optional: if compareSets == True, call compare_datasets() to 
+        perform statistical tests on the two sets, 
+        which the user might use to evaluate similarity.
+        Outputs an Excel file.
     
     Inputs:
         outputStats  : if true, calculate the statistics for 
                 each column of the concatenated dataset
-        compareSets : If true, calc stats on sets and run statistical
+        compareSets : If true, calc stats on sets and run statistical tests
     
     Returns:
         df : dataframe
@@ -651,118 +841,114 @@ def load_and_combine_dataframes(outputStats = True, compareSets = False):
     
     file_paths, dataLabels = get_two_filePaths_and_labels()
     
-    # Read Relative Durations sheets into Pandas DataFrames
-    df1 = read_behavior_Excel(file_paths[0])
-    df2 = read_behavior_Excel(file_paths[1])
-
-    # Verify column headings:
-    verify_and_get_column_headings(df1, df2)
+    # Get common sheets between the files
+    common_sheets = get_common_sheets(file_paths[0], file_paths[1])
     
-    # Remove statistics rows from dataframes -- will recalculate later
-    # if needed
-    print("Removing statistics rows from dataframes -- will recalculate")
-    df1 = keep_dataframe_to_blank_line(df1)
-    df2 = keep_dataframe_to_blank_line(df2)
+    if not common_sheets:
+        print("No common sheets found between the files.")
+        return None
     
     # Output location
-    print('Enter the output folder for the combined dataset (Excel file)')
+    print('Enter the output folder for the combined dataset')
     outputPath = getOutputPath()
     
-    if compareSets:
-        print('Comparing the two datasets. (Output -> CSV)')
-        exclude_from_all = []
-        # Analyze (compare + stats)
-        stats1 = calc_stats_dataframes(df1, exclude_from_all)
-        stats2 = calc_stats_dataframes(df2, exclude_from_all)
-        stat_tests = stat_comparisons(df1, df2, exclude_from_all)
-        # Output CSV file name for statistical tests
-        fileNameCSV_stats = \
-            input('STAT TEST: Output CSV file name, including ".csv", e.g. "compare_stats.csv"): ')
-        stats_output_file = os.path.join(outputPath, fileNameCSV_stats)
-        write_results_to_csv(stats1, stats2, 
-                             output_file=stats_output_file, 
-                             stat_tests=stat_tests)
-
-    df = pd.concat([df1, df2], axis=0)
-
-    if outputStats:
-        # Calculate stats for the concatenated dataframe
-        stats_cat = calc_stats_dataframes(df, [])
-        
-        # Create a dataframe from the stats dictionary
-        # Create a dataframe from the stats dictionary
-        stats_df = pd.DataFrame({
-            col: {
-                'mean': stats_cat[col]['mean'],
-                'N': stats_cat[col]['N'],
-                'std': stats_cat[col]['std'],
-                'sem': stats_cat[col]['sem']
-            } for col in stats_cat
-        })
-        
-        # Reorder the index to have 'mean', 'std', 'sem' , 'N' in this order
-        stats_df = stats_df.reindex(['mean', 'std', 'sem', 'N'])
-        
-        # Reset the index to make the stat names a regular column
-        stats_df = stats_df.reset_index().rename(columns={'index': 'Dataset'})
-
     # Output Excel file name
     inputstr = 'Output Excel file name; can omit ".xlsx"' + \
         '\n  Leave blank for "behavior_counts_combined.xlsx": '
     fileNameExcel = input(inputstr)
-    if fileNameExcel=='':
+    if fileNameExcel == '':
         fileNameExcel = 'behavior_counts_combined.xlsx'
     root, ext = os.path.splitext(fileNameExcel)
     if ext != '.xlsx':
         fileNameExcel = fileNameExcel + '.xlsx'
     Excel_output_file = os.path.join(outputPath, fileNameExcel)
     
+    # Process each common sheet
+    with pd.ExcelWriter(Excel_output_file) as writer:
+        for sheet_name in common_sheets:
+            # Read sheets from both files
+            df1 = pd.read_excel(file_paths[0], sheet_name=sheet_name)
+            df2 = pd.read_excel(file_paths[1], sheet_name=sheet_name)
+            
+            # Remove statistics rows if present
+            df1 = keep_dataframe_to_blank_line(df1)
+            df2 = keep_dataframe_to_blank_line(df2)
+            
+            # Add dataLabel column
+            df1['Source'] = dataLabels[0]
+            df2['Source'] = dataLabels[1]
+            
+            # Combine dataframes
+            df_combined = pd.concat([df1, df2], axis=0)
+            
+            if outputStats:
+                # Calculate stats for the concatenated dataframe
+                stats_combined = calc_stats_dataframes(df_combined, [])
+                
+                # Create stats dataframe
+                stats_df = pd.DataFrame({
+                    col: {
+                        'mean': stats_combined[col]['mean'],
+                        'N': stats_combined[col]['N'],
+                        'std': stats_combined[col]['std'],
+                        'sem': stats_combined[col]['sem']
+                    } for col in stats_combined
+                })
+                
+                # Reorder and format stats
+                stats_df = stats_df.reindex(['mean', 'std', 'sem', 'N'])
+                stats_df = stats_df.reset_index().rename(columns={'index': 'Dataset'})
+                
+                # Write combined data and stats to Excel
+                df_combined.to_excel(writer, sheet_name=sheet_name, index=False)
+                last_row = len(df_combined)
+                stats_df.to_excel(writer, sheet_name=sheet_name, 
+                                startrow=last_row+2, index=False, header=False)
+            else:
+                df_combined.to_excel(writer, sheet_name=sheet_name, index=False)
 
-    # Create a pandas ExcelWriter object
-    with pd.ExcelWriter(Excel_output_file, engine='openpyxl') as writer:
-        # Write the concatenated dataframe to the first sheet
-        df.to_excel(writer, sheet_name='Sheet1', index=False)
-        
-        # Get the last row of the existing data
-        last_row = len(df)
-        
-        if outputStats:    
-            # Write the stats dataframe, starting two rows below the last data row
-            stats_df.to_excel(writer, sheet_name='Sheet1', startrow=last_row+2, index=False, header=False)
+    if compareSets:
+        inputstr = 'Stat. tests: Output Excel file name (including ".xlsx").' + \
+                    '\n  Leave blank for "compare_stats.xlsx": '
+        comparison_file_name = input(inputstr)
+        if comparison_file_name == '':
+            comparison_file_name = 'compare_stats.xlsx'
+        root, ext = os.path.splitext(comparison_file_name)
+        if ext != '.xlsx':
+            comparison_file_name = comparison_file_name + '.xlsx'
+        comparison_file_path = os.path.join(outputPath, comparison_file_name)
+        compare_datasets(file_paths, dataLabels, common_sheets, comparison_file_path)
 
-    return df
+    return True
 
-    
 #%%
 
-if __name__ == '__main__':
+def main():
         
     file_paths, dataLabels = get_two_filePaths_and_labels()
-    
-    # Read Relative Durations sheets into Pandas DataFrames
-    df1 = read_behavior_Excel(file_paths[0])
-    df2 = read_behavior_Excel(file_paths[1])
 
-    # Verify column headings:
-    column_headings = verify_and_get_column_headings(df1, df2)
-    
-    # Remove statistics rows from dataframes -- will recalculate later
-    print("Removing statistics rows from dataframes -- will recalculate")
-    df1 = keep_dataframe_to_blank_line(df1)
-    df2 = keep_dataframe_to_blank_line(df2)
+    # Get common sheets
+    common_sheets = get_common_sheets(file_paths[0], file_paths[1])
+        
+    if not common_sheets:
+        print("No common sheets found between the files.")
+        return
     
     # Output location
     outputPath = getOutputPath()
-    
-    # Output CSV file name
-    fileNameCSV = input('Output CSV file name, including ".csv", e.g. "compare_stats.csv"): ')
 
-    # Output plot "base" file name
+    # Output Excel file name
+    fileNameExcel = input('Output Excel file name, including ".xlsx": ')
+    if not fileNameExcel.endswith('.xlsx'):
+        fileNameExcel += '.xlsx'
+    excel_output_file = os.path.join(outputPath, fileNameExcel)
+    
+    # Output plot base name
     baseName0 = input('Base file name for comparison outputs.\n' + \
-                       '    Include image extension (e.g. "exptGraphs.eps"): ')
+                     '    Include image extension (e.g. "exptGraphs.eps"): ')
     baseName, out_ext = os.path.splitext(baseName0)
     baseName = baseName.split('.')[0]
-
+    
     # Specify columns to exclude for plots
     exclude_from_all = ['Frames per sec', 'Image scale (um/s)', 
                         'Total Time (s)',
@@ -784,35 +970,52 @@ if __name__ == '__main__':
                            "AngleXCorr_mean"]    
     exclude_from_ratio = exclude_from_all + also_exclude_from_ratio
     
-    # Analyze (compare + stats)
-    stats1 = calc_stats_dataframes(df1, exclude_from_all)
-    stats2 = calc_stats_dataframes(df2, exclude_from_all)
-    stat_tests = stat_comparisons(df1, df2, exclude_from_all)
-    stats_output_file = os.path.join(outputPath, fileNameCSV)
-    write_results_to_csv(stats1, stats2, 
-                         output_file=stats_output_file, stat_tests=stat_tests)
-    
-    #%% Plots
-    
-    # Call the function for log-log plot of the comparison
-    new_baseName = baseName + '_relBehaviorLogLog' 
-    outputFileName = os.path.join(outputPath, new_baseName + out_ext)
+    # Process each common sheet
+    for sheet_name in common_sheets:
+        print(f"\nProcessing sheet: {sheet_name}")
+        
+        # Read sheets
+        df1 = pd.read_excel(file_paths[0], sheet_name=sheet_name)
+        df2 = pd.read_excel(file_paths[1], sheet_name=sheet_name)
+        
+        # Remove statistics rows
+        df1 = keep_dataframe_to_blank_line(df1)
+        df2 = keep_dataframe_to_blank_line(df2)
+        
+        # Analyze (compare + stats)
+        stats1 = calc_stats_dataframes(df1, exclude_from_all)
+        stats2 = calc_stats_dataframes(df2, exclude_from_all)
+        stat_tests = stat_comparisons(df1, df2, exclude_from_all)
+        
+        # Write results to Excel
+        write_results_to_excel(stats1, stats2, 
+                             excel_output_file, 
+                             sheet_name, 
+                             stat_tests)
+        
+        # Generate plots with sheet-specific filenames
+        plot_output_name = f"{baseName}_{sheet_name}_relBehaviorLogLog{out_ext}"
+        plot_output_path = os.path.join(outputPath, plot_output_name)
+        
+        plot_comparison((stats1, stats2), exclude_from_loglog, 
+                       (dataLabels[0], dataLabels[1]),
+                       logPlot=True, showTextLabels=False, 
+                       showLegend=True,
+                       outputFileName=plot_output_path)
+        
+        ratio_output_name = f"{baseName}_{sheet_name}_relBehaviorRatios{out_ext}"
+        ratio_output_path = os.path.join(outputPath, ratio_output_name)
+        # Call the function to create scatter plots with error bars
+        # Because uncertainties in mean values are large and asymmetric,
+        # use bootstrap resampling (separate function)
+        # Note that I'm plotting stats of set 2/ set 1,
+        # to match "y / x" from the earlier graph
+        scatter_plots_with_error_bars((stats2, stats1), exclude_from_ratio,
+                                    (dataLabels[1], dataLabels[0]),
+                                    showLegend=False,
+                                    outputFileName=ratio_output_path)
 
-    plot_comparison((stats1, stats2), exclude_from_loglog, 
-                    (dataLabels[0], dataLabels[1]),
-                    logPlot = True, showTextLabels = False, 
-                    showLegend = True,
-                    outputFileName = outputFileName)
+if __name__ == '__main__':
+    main()
     
-    # Call the function to create scatter plots with error bars
-    # Because uncertainties in mean values are large and asymmetric,
-    # use bootstrap resampling (separate function)
-    # Note that I'm plotting stats of set 2/ set 1,
-    # to match "y / x" from the earlier graph
-    new_baseName = baseName + '_relBehaviorRatios' 
-    outputFileName = os.path.join(outputPath, new_baseName + out_ext)
-    scatter_plots_with_error_bars((stats2, stats1), exclude_from_ratio,
-                                  (dataLabels[1], dataLabels[0]),
-                                  showLegend = False,
-                                  outputFileName = outputFileName)
-
+    
