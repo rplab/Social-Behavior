@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Fri Dec. 1, 2023
-Last modified on Oct. 25, 2024
+Last modified on Nov. 24, 2024
 
 Description
 -----------
@@ -24,7 +24,7 @@ Inputs:
     
 Outputs:
     - Makes, saves graphs
-    - Outputs a CSV file of statistics for experiments
+    - Outputs a Excel file of statistics for experiments
 
 """
 
@@ -33,9 +33,9 @@ import matplotlib.pyplot as plt
 import os
 import pandas as pd
 from scipy import stats
-import csv
 import tkinter as tk
 from tkinter import filedialog
+
 
 def get_two_filePaths_and_labels():
     """
@@ -176,7 +176,8 @@ def get_common_sheets(file_path1, file_path2):
 
 
 
-def write_results_to_excel(stats1, stats2, output_file, sheet_name, stat_tests=None):
+def write_results_to_excel(stats1, stats2, output_file, 
+                           sheet_name, stat_tests, column_ratios):
     """
     Writes stats results to a sheet in an Excel file.
     Similar to write_results_to_csv but writes to Excel.
@@ -184,12 +185,14 @@ def write_results_to_excel(stats1, stats2, output_file, sheet_name, stat_tests=N
     Parameters
     ----------
     stats1, stats2 : dict
-        Dictionaries with statistics
+        Dictionaries with statistics for each dataset column
     output_file : str
         Path to output Excel file
     sheet_name : str
         Name of the sheet to write to
-    stat_tests : dict, optional
+    column_ratios: list of dictionaries with ratios of set2/set1 values 
+                    and uncertainties; (make None to ignore)
+    stat_tests : dict, (make None to ignore)
         Dictionary with statistical test results
     """
     required_keys = {'column_name', 'mean', 'N', 'std', 'sem'}
@@ -205,10 +208,13 @@ def write_results_to_excel(stats1, stats2, output_file, sheet_name, stat_tests=N
     headers = ['column_name', 
                'mean_1', 'N_1', 'std_1', 'sem_1',
                'mean_2', 'N_2', 'std_2', 'sem_2']
+
+    if column_ratios is not None:
+        headers.extend(['ratio', 'ratio_unc', 'ratio_uncLower', 'ratio_uncUpper'])
     
     if stat_tests is not None:
         headers.extend(['p_MWU', 'p_KS'])
-    
+            
     for column in stats1.keys():
         if column in stats2:
             row = [
@@ -222,7 +228,16 @@ def write_results_to_excel(stats1, stats2, output_file, sheet_name, stat_tests=N
                 stats2[column]['std'],
                 stats2[column]['sem']
             ]
-            
+            if column_ratios is not None:
+                if column in column_ratios:
+                    row.extend([
+                        column_ratios[column]['mean'],
+                        column_ratios[column]['uncertainty'],
+                        column_ratios[column]['unc_lower'],
+                        column_ratios[column]['unc_upper']
+                    ])
+                else:
+                    row.extend([' ',' ',' ',' '])
             if stat_tests is not None and column in stat_tests:
                 row.extend([
                     stat_tests[column]['p_MWU'],
@@ -236,89 +251,27 @@ def write_results_to_excel(stats1, stats2, output_file, sheet_name, stat_tests=N
     
     # Write to Excel
     with pd.ExcelWriter(output_file, engine="openpyxl", 
-                        mode='a' if os.path.exists(output_file) else 'w') as writer:
+                        mode='a' if os.path.exists(output_file) else 'w',
+                        if_sheet_exists="replace" if os.path.exists(output_file) else None) as writer:
         df.to_excel(writer, sheet_name=sheet_name, index=False)
         
         
-
-def read_behavior_Excel(file_path, sheet_name = "Relative Durations"):
-    """
-    Reads an Excel file, loading the sheet called sheet_name 
-       (probably "Relative Durations") into dataframe df
-    In addition, first checks that sheet_name exists. 
-    If it does not, gives an error and print the sheets 
-    in the Excel file
-    Code mostly from Claude3
-
-    Parameters
-    ----------
-    file_path : file name and path
-    sheet_name : sheet name to load
-
-    Returns
-    -------
-    df : pandas dataframe
-    
-    """
-    
-    try:
-        # Read the Excel file
-        excel_file = pd.ExcelFile(file_path)
-        
-        # Check if "Relative Durations" sheet exists
-        if sheet_name in excel_file.sheet_names:
-            # Load the specified sheet into df1
-            df = excel_file.parse(sheet_name)
-        else:
-            # If the sheet doesn't exist, raise an error
-            raise ValueError(f"Sheet {sheet_name} not found. Available sheets: {excel_file.sheet_names}")
-            
-    except ValueError as e:
-        print(f"Error: {e}")
-        df = None  # Set df1 to None if the desired sheet is not found
-    
-    return df
-
-
-def verify_and_get_column_headings(df1, df2):
-    # Get column headings for both DataFrames
-    # Check that both are the same
-    # Code from Claude3
-    headings1 = list(df1.columns)
-    headings2 = list(df2.columns)
-
-    # Check if the headings are identical
-    if headings1 == headings2:
-        return headings1
-    else:
-        # If headings don't match, find the differences
-        diff1 = set(headings1) - set(headings2)
-        diff2 = set(headings2) - set(headings1)
-        
-        error_message = "Column headings are not the same.\n"
-        if diff1:
-            error_message += f"Columns in df1 but not in df2: {diff1}\n"
-        if diff2:
-            error_message += f"Columns in df2 but not in df1: {diff2}"
-        
-        raise ValueError(error_message)
-
-
-
-
-def plot_comparison(stats_both, exclude_from_loglog,  
+def plot_comparison(stats_both, df_both, exclude_from_loglog,  
                     dataLabels = ('Set1', 'Set2'), 
-                    logPlot = False, addDiagonals = True,
+                    logPlot = True, addDiagonals = True,
                     showTextLabels = False, showLegend = True,
                     outputFileName = None):
     """
     Plot the mean and s.e.m. of behavior frequencies found in 
-    datasets 1 and 2 versus each other; Plot set 2 vs set 1
+    datasets 1 and 2 versus each other; Plot set 2 vs set 1.
+    Also plots individual datapoints from both datasets as open circles
+    in matching colors.
     
     Parameters
     ----------
     stats_both : tuple of stats1, stats2, dictionaries containing 
                  statistics for each column
+    df_both : tuple of df1, df2, the original dataframes
     exclude_from_loglog : list of columns (keys) to ignore in plot
     dataLabels : tuple of dataLabel1, 2 for labeling plots
     logPlot : if True, use log axes
@@ -333,6 +286,7 @@ def plot_comparison(stats_both, exclude_from_loglog,
     """    
     
     stats1, stats2 = stats_both
+    df1, df2 = df_both
     
     # Filter out excluded columns
     stats1 = {k: v for k, v in stats1.items() if k not in exclude_from_loglog}
@@ -349,12 +303,34 @@ def plot_comparison(stats_both, exclude_from_loglog,
     
     # Plotting
     plt.figure(figsize=(10, 8))
+    
+    # Get the default color cycle
+    prop_cycle = plt.rcParams['axes.prop_cycle']
+    colors = prop_cycle.by_key()['color']
+    
+    # Plot means with error bars and individual points for each column
     for j, col in enumerate(columns):
+        color = colors[j % len(colors)]  # Cycle through colors if more columns than colors
+        
+        # Get individual points from each dataset
+        points1 = df1[col].dropna().values
+        points2 = df2[col].dropna().values
+        
+        # Plot horizontal spread at mean2
+        plt.scatter(points1, np.full_like(points1, means2[j]), 
+                   alpha=0.3, s=60, color=color, 
+                   facecolors='none', edgecolors=color)
+        # Plot vertical spread at mean1
+        plt.scatter(np.full_like(points2, means1[j]), points2, 
+                   alpha=0.3, s=60, color=color, 
+                   facecolors='none', edgecolors=color)
+        
+        # Plot mean with error bars
         plt.errorbar(means1[j], means2[j], 
                      xerr=sems1[j], 
                      yerr=sems2[j], fmt='o', 
-                     capsize=5, markersize=12,
-                     label = f"  {col}")
+                     capsize=5, markersize=16,
+                     color=color, label=f"  {col}")
 
     if logPlot:
         plt.xscale('log')
@@ -402,22 +378,111 @@ def plot_comparison(stats_both, exclude_from_loglog,
         plt.savefig(outputFileName, bbox_inches='tight')
 
 
+def plot_cols_side_by_side(stats_both, df_both, exclude_from_all, 
+                          offset_x=0.1, dataLabels=('Set1', 'Set2'), 
+                          outputFileName=None, logYscale = True):
+    """
+    Plot the data points and statistics from two datasets side by side for each column.
+    For each column, plots scatter points and mean±sem, with dataset 1 slightly left 
+    and dataset 2 slightly right of the column position.
+    
+    Parameters:
+    -----------
+    stats_both : tuple of dicts
+        (stats1, stats2) where each contains column statistics with 'mean' and 'sem'
+    df_both : tuple of pandas.DataFrame
+        (df1, df2) containing the raw data for each dataset
+    exclude_from_all : list
+        Column names to exclude from plotting
+    offset_x : float, optional
+        Horizontal offset for separating the two datasets (default: 0.25)
+    dataLabels : tuple of str, optional
+        Labels for the two datasets (default: ('Set1', 'Set2'))
+    outputFileName : str, optional
+        If provided, save the plot to this path
+    """
+    stats1, stats2 = stats_both
+    df1, df2 = df_both
+    
+    # Filter out excluded columns
+    stats1 = {k: v for k, v in stats1.items() if k not in exclude_from_all}
+    stats2 = {k: v for k, v in stats2.items() if k not in exclude_from_all}
+    
+    # Extract columns and prepare figure
+    columns = list(stats1.keys())
+    plt.figure(figsize=(12, 6))
+    
+    # Get the default color cycle
+    prop_cycle = plt.rcParams['axes.prop_cycle']
+    colors = prop_cycle.by_key()['color']
+    
+    # Plot each column
+    for j, col in enumerate(columns):
+        color = colors[j % len(colors)]
+        
+        # Get data points and statistics
+        points1 = df1[col].dropna().values
+        points2 = df2[col].dropna().values
+        mean1, sem1 = stats1[col]['mean'], stats1[col]['sem']
+        mean2, sem2 = stats2[col]['mean'], stats2[col]['sem']
+        
+        # Plot dataset 1 (left side)
+        plt.scatter([j-offset_x] * len(points1), points1, 
+                   marker='x', color=color, alpha=0.5)
+        plt.errorbar(j-offset_x, mean1, yerr=sem1, 
+                    marker='<', color=color, markersize=10,
+                    capsize=5)
+        
+        # Plot dataset 2 (right side)
+        plt.scatter([j+offset_x] * len(points2), points2, 
+                   marker='x', color=color, alpha=0.5)
+        plt.errorbar(j+offset_x, mean2, yerr=sem2, 
+                    marker='>', color=color, markersize=10,
+                    capsize=5)
+    
+    # Customize the plot
+    plt.xticks(range(len(columns)), columns, rotation=45)
+    plt.grid(True, axis='y', linestyle='--', alpha=0.7)
+    
+    # Add legend
+    custom_lines = [
+        plt.Line2D([0], [0], marker='<', color='gray', linestyle='none',
+                  markersize=10, label=dataLabels[0]),
+        plt.Line2D([0], [0], marker='>', color='gray', linestyle='none',
+                  markersize=10, label=dataLabels[1])
+    ]
+    plt.legend(handles=custom_lines)
+    
+    # Set labels and title
+    plt.xlabel('Behaviors')
+    plt.ylabel('Duration')
+    plt.title('Behavior Durations by Dataset')
+    
+    # Adjust layout to prevent label cutoff
+    plt.tight_layout()
+    
+    # logarithmic y scale
+    if logYscale:
+        plt.yscale('log')
+        
+    # Save if filename provided
+    if outputFileName is not None:
+        plt.savefig(outputFileName, bbox_inches='tight')
+    
+    plt.show()
+    
 
-def scatter_plots_with_error_bars(stats_both, exclude_from_ratio, 
-                                  dataLabels = ('Set1', 'Set2'),
-                                  showLegend = True, outputFileName = None):
+def plot_behavior_ratio(column_ratios, dataLabels = ('Set1', 'Set2'),
+                        showLegend = True, outputFileName = None):
     """
     Plot the ratios of behavior frequencies (ratio of means
-    with uncertainty) found in datasets 1 and 2 versus each other; 
-    mean 1 / mean 2
-    Use bootstrap for uncertainty, since sems are large, and simple
-    error propagation is asymmetric.
+    with uncertainty) found in datasets 1 and 2 versus each other;
+    Ratios and uncertainties previously calculated, calculate_column_ratios()
+    mean 2 / mean 1
 
     Parameters
     ----------
-    stats_both : tuple of stats1, stats2, dictionaries containing 
-                 statistics for each column
-    exclude_from_ratio : list of columns (keys) to ignore in plot
+    column_ratios : dictionary of df2/df2 column ratios and uncertainties
     dataLabels : tuple of dataLabel1, 2 for labeling plots
     showLegend : if true, show a legend
     outputFileName : filename for figure output, if not None
@@ -427,43 +492,25 @@ def scatter_plots_with_error_bars(stats_both, exclude_from_ratio,
     None.
     """    
 
-    stats1, stats2 = stats_both 
-
-    # Filter out excluded columns
-    stats1 = {k: v for k, v in stats1.items() if k not in exclude_from_ratio}
-    stats2 = {k: v for k, v in stats2.items() if k not in exclude_from_ratio}
-    
-    # Extract means and SEMs
-    columns = list(stats1.keys())
-    means1 = [stats1[col]['mean'] for col in columns]
-    sems1 = [stats1[col]['sem'] for col in columns]
-    means2 = [stats2[col]['mean'] for col in columns]
-    sems2 = [stats2[col]['sem'] for col in columns]
-
     dataLabel_1, dataLabel_2 = dataLabels
-
-    # Calculate ratio and uncertainty
-    ratios = np.array(means1) / np.array(means2)  # ratio of means
+    plt.figure()
     
-    r = ratio_with_sim_uncertainty(means2, sems2, means1, sems1)
-    r_unc_lower = r[1]  # ignore r[0], re-sampled mean
-    r_unc_upper = r[2]
-
     # Create scatter plots with error bars for each column
-    plt.figure(figsize=(9, 7))
-    for j, col in enumerate(columns):
-        plt.errorbar(j, ratios[j], 
-                     yerr=np.vstack((r_unc_lower[j], r_unc_upper[j])), 
+    for j, col in enumerate(column_ratios.keys()):
+        plt.errorbar(j, column_ratios[col]['mean'], 
+                     yerr=np.vstack((column_ratios[col]['unc_lower'], 
+                                     column_ratios[col]['unc_lower'])), 
                      label = f"  {col}", fmt='o', capsize=5,
                      markersize=12)
 
-    plt.xticks(range(len(ratios)), columns, fontsize=14, 
+    column_names = column_ratios.keys()
+    plt.xticks(range(len(column_ratios)), column_names, fontsize=14, 
                rotation=45, ha='right')
     plt.yticks(fontsize=14)
 
     # Set labels and title
-    plt.ylabel(f"Ratio: {dataLabel_1} / {dataLabel_2}", fontsize=16)
-    plt.title("Ratios of Behavior Durations", fontsize=16)
+    plt.ylabel(f"Ratio: {dataLabel_2} / {dataLabel_1}", fontsize=16)
+    plt.title("Ratios of Behavior Properties", fontsize=16)
 
     current_x_limits = plt.xlim()
     # dashed line at ratio = 1
@@ -479,52 +526,84 @@ def scatter_plots_with_error_bars(stats_both, exclude_from_ratio,
         plt.savefig(outputFileName, bbox_inches='tight')
         
 
-def ratio_with_sim_uncertainty(x, sigx, y, sigy, n_samples=10000):
+def calculate_column_ratios(df1, df2, Nbootstrap=1000, exclude_columns=[]):
     """
-    Calculate the ratio of y to x with asymmetric uncertainties 
-       estimated from simulated normal distribution.
-    x are the mean values for various behaviors, with s.e.m. sigx;
-    y are the mean values for various behaviors, with s.e.m. sigy;
-    To estimate uncertainty, make a Gaussian random distribution 
-        and draw x, y pairs; calculate median (not mean, to avoid
-        skew and negative numbers) and upper and lower 1 sigma
-        percentiles of this.
-    A bit silly -- should do a bootstrap on the original data that x 
-    and y came from -- but this is a fine estimate.
+    Calculate the mean and uncertainty of the ratio of values between 
+    two DataFrames using Bootstrap resampling. (because uncertainties in mean 
+                                                values are large and asymmetric)
     
     Parameters:
-        x (array-like): Array of x values, one per behavior
-        sigx (array-like): Array of s.e.m. of each x value.
-        y (array-like): like x.
-        sigy (array-like): like x.
-        n_samples (int): Number of samples to generate. Default 10000.
-    
+    df1 (pandas.DataFrame): The first DataFrame, from experiment 1
+    df2 (pandas.DataFrame): The second DataFrame, from experiment 2
+    Nbootstrap (int): Number of samples to generate for Bootstrapping. Default 1000.
+    exclude_columns: list of columns to ignore for analysis
+
     Returns:
-        r_mean (float): Mean ratio of y to x for each behavior
-        r_lower (float): Lower bound of the uncertainty in the ratio.
-        r_upper (float): Upper bound of the uncertainty in the ratio.
+    column_ratios: dictionary, keys being column name, with sub-keys being:
+        - mean: the mean of the ratios
+        - uncertainty: the uncertainty of the ratio (std. dev. of bootstrap resamplings) 
+        - unc_lower: lower uncertainty (16th pct. of bootstrap resamplings) 
+        - unc_upper: upper uncertainty (84th pct. of bootstrap resamplings)
     """
+    # Verify that the DataFrames have the same column headings
+    if not df1.columns.equals(df2.columns):
+        raise ValueError("DataFrames must have the same column headings.")
     
-    N_behaviors = len(x)
     
-    # Initialize array to store ratios
-    ratios = np.zeros(N_behaviors)
-    r_lower = np.zeros(N_behaviors)
-    r_upper = np.zeros(N_behaviors)
+    # Exclude 'Dataset' column, if not already excluded
+    if 'Dataset' not in exclude_columns:
+        exclude_columns.append('Dataset')
+    # Exclude 'Source' column, if not already excluded
+    if 'Source' not in exclude_columns:
+        exclude_columns.append('Source')
     
-    # Bootstrap resampling
-    for j in range(N_behaviors):
-        # random values
-        x_sim = np.random.normal(loc=x[j], scale=sigx[j], size=n_samples)
-        y_sim = np.random.normal(loc=y[j], scale=sigy[j], size=n_samples)
-        r_sim = y_sim / x_sim
-                
-        # Calculate ratios for resampled data
-        ratios[j] = np.median(r_sim)
-        r_lower[j] = ratios[j] - np.percentile(r_sim, 16)
-        r_upper[j] = np.percentile(r_sim, 84) - ratios[j]
+    # Columns to analyze
+    analyze_columns = [col for col in df1.columns if col not in exclude_columns]
         
-    return ratios, r_lower, r_upper
+    column_ratios = {}
+
+    for col in analyze_columns:
+        values1 = df1[col].values
+        values2 = df2[col].values
+        # Initialize arrays to store bootstrap results
+        ratios = np.zeros(Nbootstrap)
+        # Perform bootstrap resampling
+        for j in range(Nbootstrap):
+            # Resample with replacement
+            sample1 = np.random.choice(values1, size=len(values1), replace=True)
+            sample2 = np.random.choice(values2, size=len(values2), replace=True)
+            
+            # Calculate ratio of means for this resampling
+            ratios[j] = np.mean(sample2) / np.mean(sample1)
+            
+        # Remove zeros or inf
+        ratios = ratios[np.isfinite(ratios)]
+        ratios = ratios[np.abs(ratios)>0.0]
+        
+        # Store results for this column
+        thismean = np.mean(ratios)
+        column_ratios[col] = {
+            'mean': thismean,
+            'uncertainty': np.std(ratios),
+            'unc_lower': thismean - np.percentile(ratios, 16),
+            'unc_upper': np.percentile(ratios, 84) - thismean
+        }
+        
+        #plt.figure()
+        #plt.hist(ratios, bins=50)
+        #plt.xlabel(f'Ratio of {col}')
+        #plt.title(f'Bootstrapping, {col}')
+
+    printOutput = False
+    if printOutput:
+        for k in ['mean', 'uncertainty', 'unc_lower' , 'unc_upper']:
+            print(f'{k}: ')
+            for col in analyze_columns:
+                print(f'{column_ratios[col][k]:.3f},  ', end='')
+            print('\n')
+
+    return column_ratios
+
 
 
 def getOutputPath():
@@ -691,59 +770,6 @@ def analyze_dataframes(df1, df2, exclude_columns):
     return results, headers
 
 
-
-def write_results_to_csv(stats1, stats2, output_file, stat_tests=None):
-    """ 
-    Writes stats results from two calc_stats_dataframes() 
-    outputs and optional stat_tests to a CSV file
-    
-    Parameters:
-        stats1, stats2 : dictionaries with keys corresponding to column names, 
-                         each containing a dictionary of statistics
-        output_file : string, path to the output CSV file
-        stat_tests : optional, dictionary with statistical test results
-    """
-    required_keys = {'column_name', 'mean', 'N', 'std', 'sem'}
-
-    # Verify keys in stats1 and stats2
-    for st in [stats1, stats2]:
-        for column, column_stats in st.items():
-            if set(column_stats.keys()) != required_keys:
-                raise ValueError(f"Invalid keys in stats dictionary. Expected {required_keys}, "
-                                 f"but got {set(column_stats.keys())} for column {column}")
-
-    headers = ['column_name', 
-               'mean_1', 'N_1', 'std_1', 'sem_1',
-               'mean_2', 'N_2', 'std_2', 'sem_2']
-    
-    if stat_tests is not None:
-        headers.extend(['p_MWU', 'p_KS'])
-    
-    with open(output_file, 'w', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(headers)
-        
-        for column in stats1.keys():
-            if column in stats2:
-                row = [
-                    column,
-                    '{:.3G}'.format(stats1[column]['mean']),
-                    '{:.3G}'.format(stats2[column]['mean']),
-                    str(stats1[column]['N']),
-                    str(stats2[column]['N']),
-                    '{:.3G}'.format(stats1[column]['std']),
-                    '{:.3G}'.format(stats2[column]['std']),
-                    '{:.3G}'.format(stats1[column]['sem']),
-                    '{:.3G}'.format(stats2[column]['sem'])
-                ]
-                
-                if stat_tests is not None and column in stat_tests:
-                    row.extend([
-                        '{:.3G}'.format(stat_tests[column]['p_MWU']),
-                        '{:.3G}'.format(stat_tests[column]['p_KS'])
-                    ])
-                
-                writer.writerow(row)
 
 
 def compare_datasets(file_paths, dataLabels, common_sheets, comparison_file_path):
@@ -938,7 +964,7 @@ def main():
     outputPath = getOutputPath()
 
     # Output Excel file name
-    fileNameExcel = input('Output Excel file name, including ".xlsx": ')
+    fileNameExcel = input('Output Excel file name (can omit ".xlsx"): ')
     if not fileNameExcel.endswith('.xlsx'):
         fileNameExcel += '.xlsx'
     excel_output_file = os.path.join(outputPath, fileNameExcel)
@@ -949,7 +975,8 @@ def main():
     baseName, out_ext = os.path.splitext(baseName0)
     baseName = baseName.split('.')[0]
     
-    # Specify columns to exclude for plots
+
+    # Specify columns to exclude from calculations and plots
     exclude_from_all = ['Frames per sec', 'Image scale (um/s)', 
                         'Total Time (s)',
                         'Mean difference in fish lengths (mm)']
@@ -960,11 +987,14 @@ def main():
                                  'contact_larger_fish_head',
                                  'contact_smaller_fish_head',
                                  'bad_bodyTrack_frames'])
-        
+    
+    # Exclude from log-log plot
     also_exclude_from_loglog = ['Mean difference in fish lengths (mm)',
                            'Mean head-head dist (mm)',
                            "AngleXCorr_mean"]
     exclude_from_loglog = exclude_from_all + also_exclude_from_loglog
+
+    # Exclude from ratio calculation and plot
     also_exclude_from_ratio = ['Mean difference in fish lengths (mm)',
                            'Mean head-head dist (mm)',
                            "AngleXCorr_mean"]    
@@ -982,22 +1012,26 @@ def main():
         df1 = keep_dataframe_to_blank_line(df1)
         df2 = keep_dataframe_to_blank_line(df2)
         
-        # Analyze (compare + stats)
+        # Analyze (compare + calculate stats)
         stats1 = calc_stats_dataframes(df1, exclude_from_all)
         stats2 = calc_stats_dataframes(df2, exclude_from_all)
         stat_tests = stat_comparisons(df1, df2, exclude_from_all)
         
+        column_ratios = calculate_column_ratios(df1, df2, 
+                                                Nbootstrap=1000, 
+                                                exclude_columns = exclude_from_ratio)
+
+           
         # Write results to Excel
-        write_results_to_excel(stats1, stats2, 
-                             excel_output_file, 
-                             sheet_name, 
-                             stat_tests)
+        write_results_to_excel(stats1, stats2, excel_output_file, 
+                             sheet_name, stat_tests, column_ratios)
         
         # Generate plots with sheet-specific filenames
         plot_output_name = f"{baseName}_{sheet_name}_relBehaviorLogLog{out_ext}"
         plot_output_path = os.path.join(outputPath, plot_output_name)
         
-        plot_comparison((stats1, stats2), exclude_from_loglog, 
+        # Plot comparison of datasets, 1 vs 2, showing means and individual pts
+        plot_comparison((stats1, stats2), (df1, df2), exclude_from_loglog, 
                        (dataLabels[0], dataLabels[1]),
                        logPlot=True, showTextLabels=False, 
                        showLegend=True,
@@ -1005,15 +1039,23 @@ def main():
         
         ratio_output_name = f"{baseName}_{sheet_name}_relBehaviorRatios{out_ext}"
         ratio_output_path = os.path.join(outputPath, ratio_output_name)
-        # Call the function to create scatter plots with error bars
-        # Because uncertainties in mean values are large and asymmetric,
-        # use bootstrap resampling (separate function)
+        
+        # Call the function to plot, for each behavior, ratio of 
+        # behavior value with errorbars.
         # Note that I'm plotting stats of set 2/ set 1,
         # to match "y / x" from the earlier graph
-        scatter_plots_with_error_bars((stats2, stats1), exclude_from_ratio,
-                                    (dataLabels[1], dataLabels[0]),
-                                    showLegend=False,
-                                    outputFileName=ratio_output_path)
+        plot_behavior_ratio(column_ratios, (dataLabels[0], dataLabels[1]),
+                            showLegend=False,
+                            outputFileName=ratio_output_path)
+        
+        sidebyside_output_name = f"{baseName}_{sheet_name}_BehaviorSideBySide{out_ext}"
+        sidebyside_output_path = os.path.join(outputPath, sidebyside_output_name)
+        # Plot values side-by-side for each behavior
+        plot_cols_side_by_side((stats1, stats2), (df1, df2), exclude_from_all, 
+                                  offset_x=0.1, 
+                                  dataLabels=(dataLabels[0], dataLabels[1]), 
+                                  outputFileName=sidebyside_output_path,
+                                  logYscale = True) 
 
 if __name__ == '__main__':
     main()
