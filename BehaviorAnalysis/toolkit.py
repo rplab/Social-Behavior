@@ -1151,7 +1151,7 @@ def write_output_files(params, dataPath, datasets):
                     "head_head_distance_mm_mean", 
                     "AngleXCorr_mean"]
     initial_strings = ["Dataset", "Frames per sec", 
-                       "Image scale (um/s)",
+                       "Image scale (um/px)",
                        "Total Time (s)", "Fraction of time in proximity", 
                        "Mean speed (mm/s)", "Mean moving speed (mm/s)", 
                        "Mean bout rate (/min)", "Mean bout duration (s)",

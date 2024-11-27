@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified Sept. 29, 2024 -- Raghu Parthasarathy
+Last modified Nov. 24, 2024 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -260,9 +260,12 @@ def extract_behaviors(dataset, params, CSVcolumns):
     t1_3 = perf_counter()
     print(f'   t1_3 start contact analysis: {t1_3 - t1_start:.2f} seconds')
     # Any contact, or head-body contact
+    print('Here 4: ')
+    print(dataset["image_scale"])
+    print(params["contact_inferred_distance_threshold_mm"])
     contact_inferred_distance_threshold_px = params["contact_inferred_distance_threshold_mm"]*1000/dataset["image_scale"]
     contact_dict = get_contact_frames(body_x, body_y, dataset["closest_distance_mm"],
-                                params["contact_inferred_distance_threshold_mm"], 
+                                params["contact_distance_threshold_mm"], 
                                 dataset["image_scale"],
                                 dataset["fish_length_array_mm"])
     contact_any = contact_dict["any_contact"]
@@ -350,7 +353,10 @@ def get_contact_frames(body_x, body_y, closest_distance_mm,
         # body points, previously calculated
         if closest_distance_mm[idx] < contact_distance_threshold_mm:
             contact_dict["any_contact"].append(idx+1)
-            
+            if idx > 150 and idx < 400:
+                print(f'Image scale {image_scale:.2f}')
+                print(f'idx {idx},  {closest_distance_mm[idx]}, {contact_distance_threshold_mm}')
+        
         # Head-body contact
         d_head1_body2 = np.sqrt((body_x[idx,0,0] - body_x[idx,:,1])**2 + 
                                 (body_y[idx,0,0] - body_y[idx,:,1])**2)

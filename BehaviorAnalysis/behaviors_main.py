@@ -7,7 +7,7 @@
 # First version  : Estelle Trieu 9/19/2022
 # Re-written by : Raghuveer Parthasarathy (2023)
 # version ='2.0' Raghuveer Parthasarathy -- begun May 2023; see notes.
-# last modified: Raghuveer Parthasarathy, Oct. 16, 2024
+# last modified: Raghuveer Parthasarathy, Nov. 25, 2024
 # ---------------------------------------------------1------------------------
 """
 
@@ -79,6 +79,9 @@ def main():
     with open(params_file_full, 'r') as f:
         all_param = yaml.safe_load(f)
     params = all_param['params']
+    print('\n\n Here params')
+    print(params)
+    x = input('As ')
 
     # Get folder containing CSV files, and all "results" CSV filenames
     # Also get subgroup name
@@ -183,6 +186,8 @@ def main():
                 print('Invalid index; *NOT* flipping')
                 input('Press enter to indicate acknowlegement: ')
 
+    #%% Analysis: basic characterizations, identify bad tracking
+    
     # For each dataset, get simple coordinate characterizations
     # (polar coordinates, radial alignment) 
     datasets = get_coord_characterizations(datasets, CSVcolumns,
@@ -202,11 +207,15 @@ def main():
     datasets = get_badTracking_frames_dictionary(datasets, params, 
                                           CSVcolumns, tol=0.001)
     
+    #%% Analysis: single fish characterizations
+
     # For each dataset, characterizations that involve single fish
     # (e.g. fish length, bending, speed)
     datasets = get_single_fish_characterizations(datasets, CSVcolumns,
                                                  expt_config, params)
     
+    #%% Analysis: multi-fish characterizations
+
     # For each dataset, perform “basic” two-fish characterizations 
     # such as inter-fish distance, if Nfish > 1. 
     if Nfish==2:
@@ -269,6 +278,7 @@ def main():
                                                datasets[j]["bad_bodyTrack_frames"]["raw_frames"]),
                                                behavior_name = b_key,
                                                Nframes=datasets[j]['Nframes'])
+    #%% Outputs
 
     # Write pickle file containing all datasets (optional)
     if pickleFileName.lower() != 'none':

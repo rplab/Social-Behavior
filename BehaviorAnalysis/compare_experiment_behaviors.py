@@ -977,7 +977,7 @@ def main():
     
 
     # Specify columns to exclude from calculations and plots
-    exclude_from_all = ['Frames per sec', 'Image scale (um/s)', 
+    exclude_from_all = ['Frames per sec', 'Image scale (um/px)', 
                         'Total Time (s)',
                         'Mean difference in fish lengths (mm)']
     exclude_more_from_all = True
