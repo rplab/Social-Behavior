@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Fri Dec. 1, 2023
-Last modified on Nov. 24, 2024
+Last modified on Nov. 27, 2024
 
 Description
 -----------
@@ -370,12 +370,12 @@ def plot_comparison(stats_both, df_both, exclude_from_loglog,
 
     ax = plt.gca()
     ax.set_aspect('equal', adjustable='box')
-    
-    # Display the plot
-    plt.show()
-    
+        
     if outputFileName is not None:
         plt.savefig(outputFileName, bbox_inches='tight')
+
+    # Display the plot
+    plt.show()
 
 
 def plot_cols_side_by_side(stats_both, df_both, exclude_from_all, 
@@ -517,13 +517,14 @@ def plot_behavior_ratio(column_ratios, dataLabels = ('Set1', 'Set2'),
     plt.plot(current_x_limits, (1.0, 1.0), 
              color='gray', linewidth=2.0, linestyle='dotted')
 
-    # Display the plot
     if showLegend:
         plt.legend()
-    plt.show()
     
     if outputFileName is not None:
         plt.savefig(outputFileName, bbox_inches='tight')
+
+    # Display the plot
+    plt.show()
         
 
 def calculate_column_ratios(df1, df2, Nbootstrap=1000, exclude_columns=[]):
