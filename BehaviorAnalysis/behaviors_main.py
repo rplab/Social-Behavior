@@ -14,16 +14,16 @@
 import os
 import numpy as np
 import yaml
-from toolkit import get_basePath, load_expt_config, \
+from toolkit import get_basePath, load_expt_config, load_analysis_parameters, \
         get_CSV_filenames, load_all_position_data, fix_heading_angles, \
         repair_head_positions, \
-        make_frames_dictionary, get_edge_frames_dictionary, \
+        make_frames_dictionary, get_edgeRejection_frames_dictionary, \
         get_badTracking_frames_dictionary, \
         write_output_files, write_pickle_file, \
         add_statistics_to_excel
 from behavior_identification_single import get_single_fish_characterizations, \
         get_coord_characterizations
-from behavior_identification import extract_behaviors, \
+from behavior_identification import extract_pair_behaviors, \
     get_basic_two_fish_characterizations
 
 
@@ -74,14 +74,7 @@ def main():
 
     # Get behavior analysis parameter info from configuration file
     params_file = 'analysis_parameters.yaml'
-    params_file_full = os.path.join(basePath, params_file)
-    # Note that we already checked if this exists
-    with open(params_file_full, 'r') as f:
-        all_param = yaml.safe_load(f)
-    params = all_param['params']
-    print('\n\n Here params')
-    print(params)
-    x = input('As ')
+    params = load_analysis_parameters(basePath, params_file)
 
     # Get folder containing CSV files, and all "results" CSV filenames
     # Also get subgroup name
@@ -168,6 +161,7 @@ def main():
     if len(set(Nfish_values)) != 1:
         raise ValueError("Not all datasets have the same 'Nfish' value")
     Nfish = Nfish_values[0]
+    print(f'Number of fish: {Nfish}')
     
     # Time-reverse one of the fish
     time_reverse_fish_idx = None # set to None to avoid flipping
@@ -196,9 +190,8 @@ def main():
     # Identify close-to-edge frames for each dataset
     # Call get_edge_frames for each datasets[j] and put results in a 
     # dictionary that includes durations of edge events, etc.
-    datasets = get_edge_frames_dictionary(datasets, params, 
-                                          expt_config['arena_radius_mm'],
-                                          CSVcolumns)
+    datasets = get_edgeRejection_frames_dictionary(datasets, params, 
+                                          expt_config['arena_radius_mm'])
     
     # Identify bad-tracking frames for each dataset
     # Call get_bad_headTrack_frames and get_bad_bodyTrack_frames
@@ -240,7 +233,7 @@ def main():
                     contact_inferred_frames, tail_rubbing_frames, \
                     approaching_frames, approaching_frames_any, approaching_frames_all, \
                     fleeing_frames, fleeing_frames_any, fleeing_frames_all, \
-                    = extract_behaviors(datasets[j], params, CSVcolumns)
+                    = extract_pair_behaviors(datasets[j], params, CSVcolumns)
             # removed "circling_frames," from the list
             
             # For each behavior, a dictionary containing frames, 

@@ -11,7 +11,7 @@ Description
 -----------
 
 Module containing all zebrafish pair behavior identification functions:
-    - extract_behaviors(), which calls all the other functions
+    - extract_pair_behaviors(), which calls all the other functions
     - Contact
     - 90-degree orientation
     - Tail rubbing
@@ -208,10 +208,10 @@ def get_close_pair_frames(distance_mm, frameArray, proximity_threshold_mm):
 
 
     
-def extract_behaviors(dataset, params, CSVcolumns): 
+def extract_pair_behaviors(dataset, params, CSVcolumns): 
     """
-    Calls functions to identify frames corresponding to each two-fish
-    behavioral motif in a single dataset.
+    For a single dataset, calls functions to identify frames corresponding 
+    to each two-fish behavioral motif.
     
     Inputs:
         dataset : dictionary, with keys like "all_data" containing all 
@@ -232,12 +232,13 @@ def extract_behaviors(dataset, params, CSVcolumns):
     # Timer
     t1_start = perf_counter()
 
-    # Arrays of head, body positions; angles. 
-    # Last dimension = fish (so arrays are Nframes x {1 or 2}, Nfish==2)
+    # Arrays of head, body positions abd angles, which are used by multiple 
+    # functions.
+    # Last dimension = fish (so array shapes are Nframes x {1 or 2}, Nfish==2)
     head_pos_data = dataset["all_data"][:,CSVcolumns["head_column_x"]:CSVcolumns["head_column_y"]+1, :]
         # head_pos_data is Nframes x 2 (x and y positions) x 2 (Nfish) array of head positions
     angle_data = dataset["heading_angle"]
-    # body_x and _y are the body positions, each of size Nframes x 10 x 2 (fish)
+    # body_x and _y are the body positions, each of size Nframes x 10 x Nfish
     body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
     body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
         
@@ -260,21 +261,16 @@ def extract_behaviors(dataset, params, CSVcolumns):
     t1_3 = perf_counter()
     print(f'   t1_3 start contact analysis: {t1_3 - t1_start:.2f} seconds')
     # Any contact, or head-body contact
-    print('Here 4: ')
-    print(dataset["image_scale"])
-    print(params["contact_inferred_distance_threshold_mm"])
-    contact_inferred_distance_threshold_px = params["contact_inferred_distance_threshold_mm"]*1000/dataset["image_scale"]
-    contact_dict = get_contact_frames(body_x, body_y, dataset["closest_distance_mm"],
-                                params["contact_distance_threshold_mm"], 
-                                dataset["image_scale"],
-                                dataset["fish_length_array_mm"])
+    contact_dict = get_contact_frames(dataset, CSVcolumns,
+                                params["contact_distance_threshold_mm"])
     contact_any = contact_dict["any_contact"]
     contact_head_body = contact_dict["head-body"]
     contact_larger_fish_head = contact_dict["larger_fish_head_contact"]
     contact_smaller_fish_head = contact_dict["smaller_fish_head_contact"]
-    contact_inferred_frames = get_inferred_contact_frames(dataset,
+    contact_inferred_frames = get_inferred_contact_frames(dataset, CSVcolumns, 
                         params["contact_inferred_window"],                                  
-                        contact_inferred_distance_threshold_px)
+                        params["contact_inferred_distance_threshold_mm"],
+                        contact_any)
     # Include inferred contact frames in "any" contact.
     contact_any = np.unique(np.concatenate((contact_any, 
                                             contact_inferred_frames),0))
@@ -317,32 +313,36 @@ def extract_behaviors(dataset, params, CSVcolumns):
         approaching_frames, approaching_frames_any, approaching_frames_all, \
         fleeing_frames, fleeing_frames_any, fleeing_frames_all
 
-    
 
-
-def get_contact_frames(body_x, body_y, closest_distance_mm, 
-                       contact_distance_threshold_mm, 
-                       image_scale, fish_length_array):
+                            
+def get_contact_frames(dataset, CSVcolumns, contact_distance_threshold_mm):
     """
-    Returns a dictionary of window frames for different 
-    contact between two fish: any body positions, or head-body contact
+    Returns a dictionary of window frames for contact between two fish, 
+    which can be close distance between any fish body positions or 
+    head-body contact
     
     Assumes frames are contiguous, as should have been checked earlier.
 
     Args:
-        body_x (array): a 3D array (Nframes x 10 x 2 fish) of x positions along the 10 body markers. (px)
-        body_y (array): a 3D array (Nframes x 10 x 2 fish) of y positions along the 10 body markers. (px)
-        closest_distance_mm (array) : 1D array of closest distance between fish (mm)
+        dataset : dictionary with all dataset info, including head-head
+                  distance (mm), dataset["closest_distance_mm"],
+                  dataset["image_scale"], 
+                  dataset["fish_length_array_mm"] (used for identifying the larger fish),
+                  and all positions
+        CSVcolumns : CSV column parameters
         contact_distance_threshold_mm: the contact distance threshold, *mm*
         image_scale : um/px, from datasets[j]["image_scale"]
-        fish_length_array: Nframes x 2 array of fish lengths in each frame, mm
-                            Only used for identifying the larger fish.
 
     Returns:
         contact_dict (dictionary): a dictionary of arrays of different 
             contact types: any_contact, head-body contact (a subset)
             larger or smaller fish head contact (a subset)
     """
+    
+    # body_x and _y are the body positions, each of size Nframes x 10 x Nfish
+    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+    
     contact_dict = {"any_contact": [], "head-body": [], 
                     "larger_fish_head_contact": [], 
                     "smaller_fish_head_contact": []}
@@ -351,26 +351,23 @@ def get_contact_frames(body_x, body_y, closest_distance_mm,
 
         # Any contact: look at closest element of distance matrix between
         # body points, previously calculated
-        if closest_distance_mm[idx] < contact_distance_threshold_mm:
+        if dataset["closest_distance_mm"][idx] < contact_distance_threshold_mm:
             contact_dict["any_contact"].append(idx+1)
-            if idx > 150 and idx < 400:
-                print(f'Image scale {image_scale:.2f}')
-                print(f'idx {idx},  {closest_distance_mm[idx]}, {contact_distance_threshold_mm}')
         
         # Head-body contact
         d_head1_body2 = np.sqrt((body_x[idx,0,0] - body_x[idx,:,1])**2 + 
                                 (body_y[idx,0,0] - body_y[idx,:,1])**2)
         d_head2_body1 = np.sqrt((body_x[idx,0,1] - body_x[idx,:,0])**2 + 
                                 (body_y[idx,0,1] - body_y[idx,:,0])**2)
-        fish1_hb_contact = np.min(d_head1_body2) < contact_distance_threshold_mm*1000/image_scale
-        fish2_hb_contact = np.min(d_head2_body1) < contact_distance_threshold_mm*1000/image_scale
+        fish1_hb_contact = np.min(d_head1_body2) < contact_distance_threshold_mm*1000/dataset["image_scale"]
+        fish2_hb_contact = np.min(d_head2_body1) < contact_distance_threshold_mm*1000/dataset["image_scale"]
         
         if fish1_hb_contact or fish2_hb_contact:
             contact_dict["head-body"].append(idx+1)
             # Note that "any contact" will be automatically satisfied.
             if not (fish1_hb_contact and fish2_hb_contact):
                 # Only one is making head-body contact
-                largerFishIdx = np.argmax(fish_length_array[idx,:])
+                largerFishIdx = np.argmax(dataset["fish_length_array_mm"][idx,:])
                 if largerFishIdx==0 and fish1_hb_contact:
                     contact_dict["larger_fish_head_contact"].append(idx+1)
                 else:
@@ -379,28 +376,49 @@ def get_contact_frames(body_x, body_y, closest_distance_mm,
     return contact_dict
 
 
-def get_inferred_contact_frames(dataset, frameWindow, contact_dist_mm):
+def get_inferred_contact_frames(dataset, CSVcolumns, frameWindow, 
+                                contact_inferred_distance_threshold_mm,
+                                contact_any):
     """
-    Returns an array of frames corresponding to inferred contact, in which
-    tracking is bad (zeros values) but inter-fish distance was decreasing
-    over some number of preceding frames and was below-threshold immediately 
-    before the bad tracking.
+    Returns an array of frames corresponding to inferred contact.
+    This can be either of the following:
+    (i) tracking is bad (zeros values) but inter-fish distance was decreasing
+       over some number of preceding frames and was below the contact
+       threshold immediately before the bad tracking.
+    (ii) frames with bad tracking in which fish are close 
+       (separation < contact_distance_threshold) before and after the bad tracking 
+       frames, and in which fish have not moved much during this period, 
+       accounting for possibly switched Track IDs 
+       (total distance < Nfish*contact_inferred_distance_threshold).
     
     Args:
         dataset : dictionary with all dataset info, including head-head
-                  distance (mm)
+                  distance (mm), and all positions
+        CSVcolumns : CSV column parameters
         frameWindow : number of preceding frames to examine
-        contact_dist_mm: the contact distance threshold, *mm*
+        contact_inferred_distance_threshold_mm: the inferred contact distance threshold, *mm*
+        contact_any : list of frames in which there is a contact event (previously calculated)
 
     Returns:
         inf_contact_frames: 1D of array of frames with inferred contact. 
            These are the frames immediately preceding the start of a bad
            tracking run.
+           
+    To do:
+        Make inferred 1 and inferred 2 into separate functions
     """
-    inf_contact_frames = []
     
+    # body positions
+    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+
+    # shouldn't need to be a set, but can't hurt.
+    badFrames_firstFrames = set(dataset["bad_bodyTrack_frames"]["combine_frames"][0,:])
+    
+    ## Method (i)
+    inf_contact_frames_1 = []
     # Consider the start of each run of bad frames.
-    for badFrame in dataset["bad_bodyTrack_frames"]["combine_frames"][0,:]:
+    for badFrame in badFrames_firstFrames:
         precedingFrames = np.arange(badFrame-frameWindow,badFrame)
         # check that these frames exist, and aren't part of other runs of bad Frames
         okFrames = np.all(np.isin(precedingFrames, dataset["frameArray"])) and \
@@ -408,12 +426,96 @@ def get_inferred_contact_frames(dataset, frameWindow, contact_dist_mm):
         if okFrames:
             # note need to switch order in np.isin()
             this_distance = np.array(dataset["head_head_distance_mm"]\
-                                     [np.where(np.isin(dataset["frameArray"], precedingFrames))])
+                                     [np.where(np.isin(dataset["frameArray"], 
+                                                       precedingFrames))])
             # Check decreasing, and check that last element is within threshold
-            if (this_distance[-1]<contact_dist_mm) and \
+            if (this_distance[-1]<contact_inferred_distance_threshold_mm) and \
                     np.all(this_distance[:-1] >= this_distance[1:]):
-                inf_contact_frames.append(precedingFrames[-1])
+                inf_contact_frames_1.append(precedingFrames[-1])
 
+    ## Method (ii)
+    # shouldn't need to be a set, but can't hurt.
+    badFrames_allFrames = set(dataset["bad_bodyTrack_frames"]["edit_frames"])
+    contact_inferred_distance_threshold_px = contact_inferred_distance_threshold_mm*1000/dataset["image_scale"]
+    inf_contact_frames_2 = []
+    Nfish = body_x.shape[2]
+
+    # Find contiguous blocks of badFrames
+    contact_set = set(contact_any)
+    blocks = []
+    current_block = []
+    
+    minFrame = int(max(0, min(badFrames_allFrames)-1))
+    maxFrame = int(min(body_x.shape[0], max(badFrames_allFrames)+2))
+    for f in range(minFrame, maxFrame):
+        # print('testing f: ', f)
+        if f in badFrames_allFrames:
+            # If current frame is a badFrame
+            if not current_block:
+                # Start a new block if it's empty
+                current_block = [f]
+            else:
+                # Extend current block if previous frame was also in badFrame
+                if f == current_block[-1] + 1:
+                    current_block.append(f)
+        else:
+            # If current frame is not a badFrame
+            if current_block:
+                # Check if the block is bounded by contact frames
+                if (current_block[0]-1 in contact_set) and (current_block[-1]+1 in contact_set):
+                    blocks.append(current_block)
+                # Reset current block
+                current_block = []
+    
+    # Step 2: Refine inferred contacts
+    refined_contacts = []
+    if blocks:
+        refined_contacts = []
+        for block in blocks:
+            # Find frames immediately before and after the block
+            before_frame = block[0] - 1
+            after_frame = block[-1] + 1
+            
+            # Check if these frames are valid
+            if before_frame < 0 or after_frame >= body_x.shape[0]:
+                continue
+            
+            # Calculate head distances for each fish pair
+            closest_distances = []
+            for j in range(Nfish):
+                # Head position is the first marker (index 0)
+                head_before_j = (body_x[before_frame, 0, j], 
+                                 body_y[before_frame, 0, j])
+                
+                # Find minimum distance for this fish
+                min_dist = np.inf
+                for k in range(Nfish):
+                    if j == k:
+                        continue
+                    head_after_k = (body_x[after_frame, 0, k], 
+                                    body_y[after_frame, 0, k])
+                    # Euclidean distance
+                    dist = np.sqrt(
+                        (head_before_j[0] - head_after_k[0])**2 + 
+                        (head_before_j[1] - head_after_k[1])**2
+                    )
+                    min_dist = min(min_dist, dist)
+                
+                closest_distances.append(min_dist)
+            
+            # Check if total closest distances exceed threshold
+            if np.sum(closest_distances) <= (Nfish * contact_inferred_distance_threshold_px):
+                refined_contacts.extend(block)
+        
+        inf_contact_frames_2 = np.array(sorted(refined_contacts), dtype=int)
+
+    ## Combine, and remove duplication of frames
+    if len(inf_contact_frames_2) > 0:
+        inf_contact_frames = np.concatenate((inf_contact_frames_1, 
+                                             inf_contact_frames_2), axis=0)
+    else:
+        inf_contact_frames = inf_contact_frames_1
+    
     return inf_contact_frames
 
 

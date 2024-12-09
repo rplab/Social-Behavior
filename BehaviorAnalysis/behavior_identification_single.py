@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Split from behavior_identification.py on July 22, 2024
-Last modified Oct. 20, 2024 -- Raghu Parthasarathy
+Last modified Dec. 9, 2024 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -35,8 +35,7 @@ from toolkit import make_frames_dictionary, dilate_frames, wrap_to_pi,\
     calculate_value_corr_all, plot_function_allSets
 
 
-def get_coord_characterizations(datasets, CSVcolumns,
-                                             expt_config, params):
+def get_coord_characterizations(datasets, CSVcolumns, expt_config, params):
     """
     For each dataset, simple coordinate characterizations
         (polar coordinates, radial alignment)
@@ -114,9 +113,30 @@ def get_single_fish_characterizations(datasets, CSVcolumns,
         # "_any" is a numpy array of frames in which any fish is moving
         # "_all" is a numpy array of frames in which all fish are moving
         isMoving_frames_each, isMoving_frames_any, isMoving_frames_all = \
-            get_isMoving_frames(datasets[j], params["motion_speed_threshold_mm_second"])
+            get_isMoving_frames(datasets[j], 
+                                params["motion_speed_threshold_mm_second"])
 
-        
+        # Frames that are close to the edge of the dish 
+        # (weak "edge_proximity_threshold_mm" criterion)
+        close_to_edge_frames_each, close_to_edge_frames_any, \
+            close_to_edge_frames_all = get_isCloseToEdge_frames(datasets[j], 
+                                                                params["edge_proximity_threshold_mm"], 
+                                                                expt_config['arena_radius_mm'])
+        # For edge closeness indicator, for each fish and for "any" and "all" fish,
+        # make a dictionary containing frames, removing frames with 
+        # "bad" elements. Like "isMoving" arrays
+        iCloseEdgeEach = [close_to_edge_frames_each[key] for key in sorted(close_to_edge_frames_each.keys())]
+        iCloseEdge_arrays = iCloseEdgeEach + [close_to_edge_frames_any] + [close_to_edge_frames_all] 
+        # Create the second tuple of strings
+        iCloseEdge_keys = tuple(f'close_to_edge_Fish{i}' for i in range(len(iCloseEdgeEach))) \
+            + ('close_to_edge_any',)  + ('close_to_edge_all', )
+        for iCL_key, iCL_array in zip(iCloseEdge_keys, iCloseEdge_arrays):
+            datasets[j][iCL_key] = make_frames_dictionary(iCL_array,
+                                          np.array(datasets[j]["bad_bodyTrack_frames"]["raw_frames"]).astype(int),
+                                          behavior_name = iCL_key,
+                                          Nframes=datasets[j]['Nframes'])
+
+            
         # Calculate the bending angle: supplement of the angle between 
         # the front half and the back half
         datasets[j]["bend_angle"] = calc_bend_angle(datasets[j], CSVcolumns)
@@ -137,7 +157,7 @@ def get_single_fish_characterizations(datasets, CSVcolumns,
         isActive_frames_all = np.unique(np.concatenate([isMoving_frames_all, 
                                              isBending_frames_all]))
             
-        # For movement indicator, and acticity indicator,
+        # For movement indicator, and activity indicator,
         # for each fish and for "any" and "all" fish,
         # make a dictionary containing frames, removing frames with 
         # "bad" elements. Unlike other characteristics, need to "dilate"
@@ -386,7 +406,47 @@ def get_mean_speed(speed_array_mm_s, isMoving_frames_each, badTrackFrames):
         speed_mean_moving[0, j] = np.mean(speed_array_mm_s[moving_mask, j])
     
     return speed_mean_all, speed_mean_moving
+
+
+def get_isCloseToEdge_frames(dataset, edge_proximity_threshold_mm, arena_radius_mm):
+    """ 
+    Find frames in which fish are close to the edge (not for rejection of behaviors).
+    Inputs:
+        dataset: dataset dictionary of all behavior information for a given expt.
+        edge_proximity_threshold_mm : edge-closeness threshold, mm
+        expt_config['arena_radius_mm'] :arena_radius in mm
+    Output : 
+        close_to_edge_frames...
+           _each:  dictionary with a key for each fish, 
+                   each containing a numpy array of frames in which 
+                   that fish is close to the edge
+           _any : numpy array of frames in which any fish is close to the edge
+           _all : numpy array of frames in which all fish are close to the edge
+    """
     
+    Nfish = dataset["Nfish"]
+    r_mm = dataset["radial_position_mm"] # distance from center, mm, each fish
+    
+    # True if close to edge
+    close_to_edge = (arena_radius_mm - r_mm) < edge_proximity_threshold_mm
+    
+    # Dictionary containing "close_to_edge" frames for each fish
+    close_to_edge_frames_each = {}
+    for fish in range(Nfish):
+        close_to_edge_frames_each[fish] = dataset['frameArray'][close_to_edge[:, fish]] 
+        
+    # any fish
+    any_fish_close  = np.any(close_to_edge, axis=1)
+    close_to_edge_frames_any = dataset['frameArray'][any_fish_close]
+    
+    # all fish
+    all_fish_close  = np.all(close_to_edge, axis=1)
+    close_to_edge_frames_all = dataset['frameArray'][all_fish_close]
+
+    return close_to_edge_frames_each, close_to_edge_frames_any, close_to_edge_frames_all
+
+
+
 def getTailAngle(all_data, CSVcolumns, heading_angles):
     """
     Calculate the tail angle:  angle of last two body points 

@@ -1,6 +1,7 @@
 # Defines analysis parameters for behavior identification
 params:
-  arena_edge_threshold_mm: 5
+  edge_rejection_threshold_mm: None
+  edge_proximity_threshold_mm: 5
   cos_theta_AP_threshold: -0.7
   cos_theta_tangent_threshold: 0.34
   cos_theta_90_thresh: 0.26

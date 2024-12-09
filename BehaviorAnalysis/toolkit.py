@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, Oct. 20, 2024
+Last modified by Rghuveer Parthasarathy, December 9, 2024
 
 Description
 -----------
@@ -103,52 +103,7 @@ def get_valid_file(fileTypeString = 'Config File'):
             return selected_file
         else:
             print(f"Invalid file. Please select a valid {fileTypeString}.")
-            
-def load_global_expt_config(config_path, config_file):
-    """ 
-    Loads the global experimental configuration file, which points to the
-    experiment-specific configuration files
-    
-    PLACEHOLDER
-    To be written.
-    Modify all_expt_configs to just contain basePath for the various experiments
-    Note that this uses get_valid_file(); it's the only function that does;
-       will need to load this in behaviors_main.py
-
-    Inputs:
-        config_path, config_file: path and file name of the yaml config file
-    Outputs:
-        expt_config : dictionary of configuration information
-    """
-    config_file_full = os.path.join(config_path, config_file)
-    # Check if the config file exists; dialog box if not
-    if not os.path.isfile(config_file_full):
-        print(f"The config file '{config_file_full}' does not exist.")
-        config_file_full = get_valid_file(fileTypeString = 'Config File')
-    
-    with open(config_file_full, 'r') as f:
-        all_config = yaml.safe_load(f)
-    all_expt_names = list(all_config.keys())
-    print('\n\nALl experiments: ')
-    for j, key in enumerate(all_expt_names):
-        print(f'  {j}: {key}')
-
-    #----
-    # MODIFY HERE: As below, select an experiment, but just use this path info, 
-    # and load the expt config file with load_expt_config
-        
-    expt_choice = input('Select experiment (name string or number): ')
-    # Note that we're not checking if the choice is valid, i.e. if in 
-    # all_expt_names (if a string) or if in 0...len(all_expt_names) (if 
-    # a string that can be converted to an integer.)
-    try:
-        # Is the input string just an integer? Try integer...
-        expt_config = all_config[all_expt_names[int(expt_choice)]]
-    except:
-        # Must be a string
-        expt_config = all_config[all_expt_names[expt_choice]]
-    
-    return expt_config            
+             
 
 def load_expt_config(config_path, config_file):
     """ 
@@ -229,13 +184,37 @@ def load_expt_config(config_path, config_file):
     
     return expt_config
     
-
+def load_analysis_parameters(basePath, params_file):
+    """ 
+    Loads the analysis parameters file and performs various checks
+    Inputs:
+        basePath, params_file: path and file name of the yaml parameter file
+    Outputs:
+        params : dictionary of analysis parameters
+    """
+    params_file_full = os.path.join(basePath, params_file)
+    # Note that we already checked if this exists
+    with open(params_file_full, 'r') as f:
+        all_param = yaml.safe_load(f)
+    params = all_param['params']
+    # Set edge rejection criterion to None 'None', and if negative
+    if isinstance(params["edge_rejection_threshold_mm"], str):
+        if params["edge_rejection_threshold_mm"].lower() == 'none':
+            params["edge_rejection_threshold_mm"] = None
+        else:
+            raise ValueError("edge_rejection_threshold_mm : only allowed string is None") 
+    if isinstance(params["edge_rejection_threshold_mm"], float):
+        if params["edge_rejection_threshold_mm"] < 0.0:
+            params["edge_rejection_threshold_mm"] = None
+    
+    return params
+        
 
 def get_CSV_filenames(basePath, expt_config, startString="results"):
     """
     Select subgroup (if applicable) and get a list of all CSV files 
-    whose names start with 
-    startString, probably "results," in the basePath previously specified
+    whose names start with startString, probably "results," 
+    in the basePath previously specified
 
     Inputs:
         basePath : folder containing folders with CSV files for analysis;
@@ -281,6 +260,23 @@ def get_CSV_filenames(basePath, expt_config, startString="results"):
             allCSVfileNames.append(filename)
 
     return dataPath, allCSVfileNames, subGroupName
+
+
+
+def get_dataset_name(CSVfileName):
+    """ 
+    Extract the "dataset name" from the CSV filename. Delete
+    "results_SocPref_", "_ALL.csv"; keep everything else
+    E.g. file name "results_SocPref_3c_2wpf_k2_ALL.csv" gives
+      dataset_name = "3c_2wpf_k2""
+    
+    Returns:
+        dataset_name : string
+    """
+    dataset_name = CSVfileName.replace("results_SocPref_", '')
+    dataset_name = dataset_name.replace("_ALL", '')
+    dataset_name = dataset_name.replace(".csv", '')
+    return dataset_name
 
 
 def load_all_position_data(allCSVfileNames, expt_config, CSVcolumns,
@@ -342,24 +338,25 @@ def load_all_position_data(allCSVfileNames, expt_config, CSVcolumns,
         #    (& close threshold)
         if showAllPositions:
             plotAllPositions(datasets[j], CSVcolumns, expt_config['arena_radius_mm'], 
-                             params["arena_edge_threshold_mm"])
+                             params["edge_rejection_threshold_mm"])
 
     return datasets
     
 def load_data(CSVfileName, N_columns):
     """
     Loads position data from a CSV file and returns a single array
-    containing both information for all fish
+    containing position information for all fish
     (position, angle, body markers etc.)
-    Load all columns (0 to N_columns-1)
     Works for any number of fish -- infers this from the first column
     Also returns frame numbers (first column of CSV), checking that 
-    the frame number array is the same for each fish section of the 
+    the frame number array is the same for each fish id of the 
     dataset.
+    Checks that frame numbers are consecutive integers from 1 to Nframes 
+    for each ID; raises an Error otherwise.
 
     Args:
         CSVfileName (str): CSV file name with tracking data
-        N_columns: number of columns (almost certainly 26).
+        N_columns: number of columns (probably 26).
 
     Returns:
         all_data : a single numpy array with all the data 
@@ -372,10 +369,9 @@ def load_data(CSVfileName, N_columns):
     data = np.genfromtxt(CSVfileName, delimiter=',')
     id_numbers = data[:, 0]
     frame_numbers = data[:, 1]
-    # Check that the number of rows (i.e. frames) is the same for each fish
     unique_ids = np.unique(id_numbers)
     Nfish = len(unique_ids)
-    print('Number of fish: ', Nfish)
+    # print('Number of fish: ', Nfish)
     
     # (1) Check that the set of frame numbers is the same for all ID numbers
     frame_sets = [set(frame_numbers[id_numbers == id]) for id in unique_ids]
@@ -431,21 +427,6 @@ def fix_heading_angles(datasets, CSVcolumns):
 
 
 
-def get_dataset_name(CSVfileName):
-    """ 
-    Extract the "dataset name" from the CSV filename. Delete
-    "results_SocPref_", "_ALL.csv"; keep everything else
-    E.g. file name "results_SocPref_3c_2wpf_k2_ALL.csv" gives
-      dataset_name = "3c_2wpf_k2""
-    
-    Returns:
-        dataset_name : string
-    """
-    dataset_name = CSVfileName.replace("results_SocPref_", '')
-    dataset_name = dataset_name.replace("_ALL", '')
-    dataset_name = dataset_name.replace(".csv", '')
-    return dataset_name
-
 def make_frames_dictionary(frames, frames_to_remove, behavior_name,
                            Nframes):
     """
@@ -480,10 +461,8 @@ def make_frames_dictionary(frames, frames_to_remove, behavior_name,
     frames_dict = dict([(key, []) for key in keys])
     frames_dict["behavior_name"] = behavior_name
     frames_dict["raw_frames"] = frames
-    frames_dict["edit_frames"] = \
-        remove_frames(frames,  frames_to_remove)
-    frames_dict["combine_frames"] = \
-        combine_events(frames_dict["edit_frames"])
+    frames_dict["edit_frames"] = remove_frames(frames, frames_to_remove)
+    frames_dict["combine_frames"] = combine_events(frames_dict["edit_frames"])
     frames_dict["total_duration"] = np.sum(frames_dict["combine_frames"][1,:])
     frames_dict["N_events"] = frames_dict["combine_frames"].shape[1]
     frames_dict["relative_duration"] = frames_dict["total_duration"] / Nframes
@@ -596,17 +575,48 @@ def combine_events(events):
     combined_events_and_durations = np.stack((events[idx_keep], durations))
     return combined_events_and_durations
 
-def get_edge_frames_dictionary(datasets, params, arena_radius_mm, CSVcolumns):
+    
+def get_edgeRejection_frames(dataset, params, arena_radius_mm):
     """ 
-    identify frames in which the head position of one or more fish is close
-    to the dish edge (within threshold)
+    Identify frames to reject in which the head position of one or more 
+    fish is close to the dish edge (within threshold)
+    Note that radial coordinate has already been calculated (get_polar_coords() )
+    If there is no edge-rejection threshold, return empty numpy array
+    
+    Inputs:
+        dataset : dataset dictionary. Note "all_data" is 
+                  Nframes x data columns x Nfish
+        params : parameters, including edge-closeness threshold
+        arena_radius_mm :arena_radius in mm
+         
+    Output:
+        edge_rejection_frames : numpy array of frame numbers (not index numbers!)
+    """
+    params["edge_rejection_threshold_mm"] 
+    if params["edge_rejection_threshold_mm"] is not None:
+        print('\n\nUsing edge threshold: ' , params["edge_rejection_threshold_mm"])
+        r_mm = dataset["radial_position_mm"] # distance from center, mm
+        # True if close to edge
+        near_edge = (arena_radius_mm - r_mm) < params["edge_rejection_threshold_mm"]
+        near_edge = np.any(near_edge, axis=1)
+        edge_rejection_frames = dataset["frameArray"][np.where(near_edge)]
+    else:
+        edge_rejection_frames = np.array([])
+    
+    return edge_rejection_frames
+
+
+def get_edgeRejection_frames_dictionary(datasets, params, arena_radius_mm):
+    """ 
+    Calls get_edgeRejection_frames() to make a dictionary with
+    frames for rejecting behavior, in which the head position 
+    of one or more fish is close to the dish edge (within threshold)
     Note that radial coordinate has already been calculated (get_polar_coords() )
     
     Inputs:
         datasets : all datasets, dictionary 
         params : analysis parameters
         arena_radius_mm :arena_radius in mm
-        CSVcolumns : CSV column name dictionary
         
     Output:
         datasets : all datasets, dictionary; now with ["edge_frames"]
@@ -622,44 +632,16 @@ def get_edge_frames_dictionary(datasets, params, arena_radius_mm, CSVcolumns):
         #    durations of edge events, etc.
         # Don't bother keeping array of distance to edge, 
         #    since radial_position_mm and arena_radius contains this infomation
-        edge_frames = get_edge_frames(datasets[j], params, arena_radius_mm, 
-                                      CSVcolumns["head_column_x"],
-                                      CSVcolumns["head_column_y"])
+        edge_frames = get_edgeRejection_frames(datasets[j], params, arena_radius_mm)
         
         datasets[j]["edge_frames"] = make_frames_dictionary(edge_frames, (), 
                                                             behavior_name='Edge frames',
                                                             Nframes=datasets[j]['Nframes'])
-        print('   Number of edge frames: ', len(datasets[j]["edge_frames"]["raw_frames"]))
+        #print('   Number of edge frames to reject: ', len(datasets[j]["edge_frames"]["raw_frames"]))
     
     return datasets
 
-    
-def get_edge_frames(dataset, params, arena_radius_mm, xcol=3, ycol=4):
-    """ 
-    identify frames in which the head position of one or more fish is close
-    to the dish edge (within threshold)
-    Note that radial coordinate has already been calculated (get_polar_coords() )
-    
-    Inputs:
-        dataset : dataset dictionary. Note "all_data" is 
-                  Nframes x data columns x Nfish
-        params : parameters, including edge-closeness threshold
-        arena_radius_mm :arena_radius in mm
-        xcol, ycol = column indices (0==first) of the x and y head 
-                        position columns
-        
-    Output:
-        near_edge_frames : array of frame numbers (not index numbers!)
-    """
 
-    r_mm = dataset["radial_position_mm"] # distance from center, mm
-    # True if close to edge
-    near_edge = (arena_radius_mm - r_mm) < params["arena_edge_threshold_mm"]
-    near_edge = np.any(near_edge, axis=1)
-
-    near_edge_frames = dataset["frameArray"][np.where(near_edge)]
-    
-    return near_edge_frames
 
 def get_ArenaCenter(dataset_name, expt_config):
     """ 
@@ -973,14 +955,14 @@ def get_bad_bodyTrack_frames(dataset, params, body_column_x_start=6,
 def wrap_to_pi(x):
     # shift values of numpy array "x" to [-pi, pi]
     # x must be an array, not a single number
-    x_wrap=np.remainder(x, 2*np.pi)
+    x_wrap = np.remainder(x, 2*np.pi)
     mask = np.abs(x_wrap)>np.pi
     x_wrap[mask] -= 2*np.pi * np.sign(x_wrap[mask])
     return x_wrap
 
 
 def plotAllPositions(dataset, CSVcolumns, arena_radius_mm, 
-                     arena_edge_mm = 0):
+                     arena_edge_mm = None):
     """
     Plot head x and y positions for each fish, in all frames
     also dish center and edge
@@ -989,11 +971,18 @@ def plotAllPositions(dataset, CSVcolumns, arena_radius_mm,
         dataset : dictionary with all dataset info
         CSVcolumns : CSV column information (dictionary)
         arena_radius_mm
-        arena_edge_mm : threshold distance from arena_radius to illustrate
+        arena_edge_mm : threshold distance from arena_radius to illustrate; default None
     
     Outputs: none
     
     """
+    Npts = 360
+    cos_phi = np.cos(2*np.pi*np.arange(Npts)/Npts).reshape((Npts, 1))
+    sin_phi = np.sin(2*np.pi*np.arange(Npts)/Npts).reshape((Npts, 1))
+    R_px = arena_radius_mm*1000/dataset["image_scale"]
+    arena_ring = dataset["arena_center"] + R_px*np.hstack((cos_phi, sin_phi))
+    #arena_ring_x = dataset["arena_center"][0] + arena_radius_mm*1000/dataset["image_scale"]*cos_phi
+    #arena_ring_y = dataset["arena_center"][1] + arena_radius_mm*1000/dataset["image_scale"]*sin_phi
     plt.figure()
     plt.scatter(dataset["all_data"][:,CSVcolumns["head_column_x"],0].flatten(), 
                 dataset["all_data"][:,CSVcolumns["head_column_y"],0].flatten(), color='m', marker='x')
@@ -1001,17 +990,10 @@ def plotAllPositions(dataset, CSVcolumns, arena_radius_mm,
                 dataset["all_data"][:,CSVcolumns["head_column_y"],1].flatten(), color='darkturquoise', marker='x')
     plt.scatter(dataset["arena_center"][0], dataset["arena_center"][1], 
                 color='red', s=100, marker='o')
-    Npts = 360
-    cos_phi = np.cos(2*np.pi*np.arange(Npts)/Npts).reshape((Npts, 1))
-    sin_phi = np.sin(2*np.pi*np.arange(Npts)/Npts).reshape((Npts, 1))
-    R_px = arena_radius_mm*1000/dataset["image_scale"]
-    R_closeEdge_px = (arena_radius_mm-arena_edge_mm)*1000/dataset["image_scale"]
-    arena_ring = dataset["arena_center"] + R_px*np.hstack((cos_phi, sin_phi))
-    edge_ring = dataset["arena_center"] + R_closeEdge_px*np.hstack((cos_phi, sin_phi))
-    #arena_ring_x = dataset["arena_center"][0] + arena_radius_mm*1000/dataset["image_scale"]*cos_phi
-    #arena_ring_y = dataset["arena_center"][1] + arena_radius_mm*1000/dataset["image_scale"]*sin_phi
     plt.plot(arena_ring[:,0], arena_ring[:,1], c='orangered', linewidth=3.0)
-    if arena_edge_mm > 1e-9:
+    if arena_edge_mm is not None:
+        R_closeEdge_px = (arena_radius_mm-arena_edge_mm)*1000/dataset["image_scale"]
+        edge_ring = dataset["arena_center"] + R_closeEdge_px*np.hstack((cos_phi, sin_phi))
         plt.plot(edge_ring[:,0], edge_ring[:,1], c='lightcoral', linewidth=3.0)
     plt.title(dataset["dataset_name"] )
     plt.axis('equal')
@@ -1109,6 +1091,9 @@ def write_output_files(params, dataPath, datasets):
     for j in range(Nfish):
         key_list.extend([f"isActive_Fish{j}"])
     key_list.extend(["isActive_any", "isActive_all"]) # formerly had a condition "if Nfish > 1:"
+    for j in range(Nfish):
+        key_list.extend([f"close_to_edge_Fish{j}"])
+    key_list.extend(["close_to_edge_any", "close_to_edge_all"]) # formerly had a condition "if Nfish > 1:"
     key_list.extend(["edge_frames", "bad_bodyTrack_frames"])
     # Remove any keys that are not in the first dataset, for example
     # two-fish behaviors if that dataset was for single fish data
@@ -1259,7 +1244,10 @@ def write_basicMeasurements_txt_file(dataset):
     Nfish = dataset["Nfish"] # number of fish
     frames = np.arange(1, Nframes+1)
     EdgeFlag = np.zeros((Nframes,),dtype=int)
-    EdgeFlagIdx = dataset["edge_frames"]['raw_frames'] - 1
+    if len(dataset["edge_frames"]['raw_frames']) > 0:
+        EdgeFlagIdx = dataset["edge_frames"]['raw_frames'] - 1
+    else:
+        EdgeFlagIdx = []
     EdgeFlag[EdgeFlagIdx] = 1
     BadTrackFlag = np.zeros((Nframes,),dtype=int)
     BadTrackIdx = dataset["bad_bodyTrack_frames"]['raw_frames'] - 1
@@ -2606,3 +2594,51 @@ def behaviorFrameCount_all(datasets, keyList,
         dataset[behaviorLabel] = behaviorCounts
     
     return datasets
+
+
+
+def load_global_expt_config(config_path, config_file):
+    """ 
+    Loads the global experimental configuration file, which points to the
+    experiment-specific configuration files
+    
+    PLACEHOLDER
+    To be written.
+    Modify all_expt_configs to just contain basePath for the various experiments
+    Note that this uses get_valid_file(); it's the only function that does;
+       will need to load this in behaviors_main.py
+
+    Inputs:
+        config_path, config_file: path and file name of the yaml config file
+    Outputs:
+        expt_config : dictionary of configuration information
+    """
+    config_file_full = os.path.join(config_path, config_file)
+    # Check if the config file exists; dialog box if not
+    if not os.path.isfile(config_file_full):
+        print(f"The config file '{config_file_full}' does not exist.")
+        config_file_full = get_valid_file(fileTypeString = 'Config File')
+    
+    with open(config_file_full, 'r') as f:
+        all_config = yaml.safe_load(f)
+    all_expt_names = list(all_config.keys())
+    print('\n\nALl experiments: ')
+    for j, key in enumerate(all_expt_names):
+        print(f'  {j}: {key}')
+
+    #----
+    # MODIFY HERE: As below, select an experiment, but just use this path info, 
+    # and load the expt config file with load_expt_config
+        
+    expt_choice = input('Select experiment (name string or number): ')
+    # Note that we're not checking if the choice is valid, i.e. if in 
+    # all_expt_names (if a string) or if in 0...len(all_expt_names) (if 
+    # a string that can be converted to an integer.)
+    try:
+        # Is the input string just an integer? Try integer...
+        expt_config = all_config[all_expt_names[int(expt_choice)]]
+    except:
+        # Must be a string
+        expt_config = all_config[all_expt_names[expt_choice]]
+    
+    return expt_config           
