@@ -3,16 +3,15 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Jul 10 18:09:34 2023
-Last modified on Sept. 1, 2024
+Last modified on December 19, 2024
 
 Description
 -----------
 
-Functions for loading data from a pickle file, and visualizing (diagnostics)
+Functions for and visualizing (diagnostics)
 
 Contains the functions 
     - visualize_fish for plotting fish body positions and trajectories
-    - loadAllFromPickle to load datasets from a pickle file
     - a program (main function) to load datasets from the pickle file,
       select frames to plot, etc.
 """
@@ -21,75 +20,13 @@ import numpy as np
 import matplotlib  # should replace this by just matplotlib.colormaps
 import matplotlib.pyplot as plt
 import os
-import pickle
-import tkinter as tk
-import tkinter.filedialog
 
-from toolkit import link_weighted, repair_disjoint_heads, \
+
+from toolkit import link_weighted, repair_disjoint_heads, load_from_pickle, \
     repair_double_length_fish, repair_head_positions
 
-def loadAllFromPickle(pickleFileName = None, 
-                      basePath = None):
-    """
 
-    Load contents from Pickle file
-    Assumes pickle file contains datasets, CSVcolumns, expt_config
-    If pickleFileName is a full path name, load it
-    If pickleFileName is a fileName or partial path and basePath exists, join and load
-    If pickleFileName is empty, provide a dialog box
-    
-    Parameters
-    ----------
-    pickleFileName : pickle file name; can include path to append to basePath
-    basePath = None : main path for behavior analysis
-
-    Returns
-    -------
-    datasets : all datasets in the Pickle file
-    CSVcolumns : see behaviors_main()
-    expt_config : contains fps, arena_radius_mm, etc.
-    params : analysis parameters; see behaviors_main()
-    """
-
-    badFile = True # for verifying
-    while badFile:
-        if pickleFileName == None or pickleFileName == '':
-            root = tk.Tk()
-            root.withdraw()  # Hide the root window
-            titleString = 'Select pickle file'
-            pickleFileName = tk.filedialog.askopenfilename(title=titleString,
-                                                          filetypes=[("pickle files", "*.pickle")])
-        else:
-            if not os.path.isabs(pickleFileName):
-                # Get parent folder information
-                if basePath == None or basePath == '':
-                    # Get path from dialog
-                    root = tk.Tk()
-                    root.withdraw()  # Hide the root window
-                    basePath = tk.filedialog.askdirectory(title=f"Select folder containing specified pickle file, {pickleFileName}")
-                pickleFileName = os.path.join(basePath, pickleFileName)
-        if os.path.isfile(pickleFileName):
-            badFile = False
-        else:
-            print("\n\nInvalid pickle file path or name.")
-            print("Please try again; will force dialog box.")
-            pickleFileName = None
-
-    with open(pickleFileName, 'rb') as handle:
-        b = pickle.load(handle)
-
-    # Assign variables
-    datasets = b[0]
-    CSVcolumns = b[1]
-    expt_config = b[2]
-    params = b[3]
-    # fps = b[2]    
-    # arena_radius_mm = b[3]
-    
-    return datasets, CSVcolumns, expt_config, params
-
-
-def visualize_fish(dataset, CSVcolumns, startFrame, endFrame):
+def visualize_fish(position_data, dataset, CSVcolumns, startFrame, endFrame):
     """
     Plot fish body positions (position 1 == head) over some range of frames
        body{x, y} are Nframes x 10 x Nfish=2 arrays of x and y positions.
@@ -105,12 +42,12 @@ def visualize_fish(dataset, CSVcolumns, startFrame, endFrame):
 
     Parameters
     ----------
-    dataset: dataset dictionary of all behavior information for a given expt.
-        Note that dataset["all_data"] contains all the position information
+    position_data : position data for this dataset, presumably all_position_data[j]
         Rows = frame numbers
         Columns = x, y, angle data -- see CSVcolumns
         Dim 3 = fish (2 fish)
-    CSVcolumns: information on what the columns of dataset["all_data"] are
+    dataset: dataset dictionary of all behavior information for a given expt.
+    CSVcolumns: information on what the columns of position_data are
     startFrame : starting frame number to plot
     endFrame : ending frame number to plot
 
@@ -120,8 +57,8 @@ def visualize_fish(dataset, CSVcolumns, startFrame, endFrame):
 
     """
     
-    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
-    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_x = position_data[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = position_data[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
     frameArray = dataset["frameArray"]
     
     cmap1 = matplotlib.colormaps.get_cmap('cool')
@@ -167,7 +104,7 @@ def plot_one_fish(fig, body_x, body_y, frameArray, cmap,
     plt.plot(body_x.flatten(), -1.0*body_y.flatten(), color=cmap(relativej), linestyle='solid')
 
 
-def flag_possible_IDswitch(dataset, CSVcolumns):
+def flag_possible_IDswitch(position_data, dataset, CSVcolumns):
     """
     Assess possible flags for switched fish IDs
     Consider angle, head-head distance, etc.
@@ -179,12 +116,12 @@ def flag_possible_IDswitch(dataset, CSVcolumns):
     
     Parameters
     ----------
-    dataset: dataset dictionary of all behavior information for a given expt.
-        Note that dataset["all_data"] contains all the position information
+    position_data : position data for this dataset, presumably all_position_data[j]
         Rows = frame numbers
         Columns = x, y, angle data -- see CSVcolumns
         Dim 3 = fish (2 fish)
-    CSVcolumns: information on what the columns of dataset["all_data"] are
+    dataset: dataset dictionary of all behavior information for a given expt.
+    CSVcolumns: information on what the columns of position_data are
 
     Returns
     -------
@@ -210,8 +147,8 @@ def flag_possible_IDswitch(dataset, CSVcolumns):
                                         diff_fish_length_fraction_thresh)
     
     # All positions
-    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
-    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_x = position_data[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = position_data[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
     
     #print('\n\n\n*** DIAGNOSTIC! ***\n')
     #body_x = body_x[0:500,:,:]
@@ -262,7 +199,7 @@ def how_many_both_approaching_frames(dataset):
     Parameters
     ----------
     dataset: dataset dictionary of all behavior information for a given expt.
-        Note that dataset["all_data"] contains all the position information
+        Note that position_data contains all the position information
         Rows = frame numbers
         Columns = x, y, angle data -- see CSVcolumns
         Dim 3 = fish (2 fish)
@@ -297,18 +234,20 @@ if __name__ == '__main__':
     picklePath  = basePath + r'\2 week old - pairs TestSubset\Analysis'
     pickleFileName = os.path.join(picklePath, r'test.pickle')
     
-    datasets, CSVcolumns, expt_config, params = \
-        loadAllFromPickle(pickleFileName = pickleFileName) # or None
+    [FIX Load FUNCTION] all_position_data, datasets, CSVcolumns, expt_config, params = \
+        load_from_pickle(pickleFileName = pickleFileName) # or None
     
     print('\nAll dataset names:')
     for j in range(len(datasets)):
         print('   ' , datasets[j]["dataset_name"])
     
     whichDataset = '3b_k7'
+    chosenSetPositionData = None
     chosenSet = None
     for j in range(len(datasets)):
         if datasets[j]["dataset_name"]==whichDataset:
             chosenSet = datasets[j]
+            chosenSetPositionData = all_position_data[j]
     
     showSpeedGraphs = False
     if showSpeedGraphs:
@@ -358,12 +297,12 @@ if __name__ == '__main__':
 
     startFrame = 180
     endFrame = 191
-    visualize_fish(chosenSet, CSVcolumns, 
+    visualize_fish(chosenSetPositionData, chosenSet, CSVcolumns, 
                    startFrame=startFrame, endFrame=endFrame) # 7430, 7490
     print(f'Values at frame {startFrame}')
     print('Radial position, each fish:', chosenSet["radial_position_mm"][startFrame,:])
     print('Polar angle, each fish:', chosenSet["polar_angle_rad"][startFrame,:])
-    print('Heading angle, each fish:', chosenSet["all_data"][startFrame,5,:])
+    print('Heading angle, each fish:', chosenSetPositionData[startFrame,5,:])
     print('Radial alignment, each fish:', chosenSet["radial_alignment_rad"][startFrame,:])
     
     # (wrongID_head, wrongID_body) = flag_possible_IDswitch(chosenSet, CSVcolumns)
@@ -371,21 +310,22 @@ if __name__ == '__main__':
     # frameRange = 3
     # startFrame = wrongID_body[0] - frameRange
     # endFrame = wrongID_body[0] + frameRange
-    # visualize_fish(chosenSet, CSVcolumns, 
+    # visualize_fish(chosenSetPositionData, chosenSet, CSVcolumns, 
     #                startFrame=startFrame, endFrame=endFrame) 
 
     print('Repair Head Positions')
-    print('Angle 2107 1:', chosenSet["all_data"][2107,5,1])
+    print('Angle 2107 1:', chosenSetPositionData[2107,5,1])
     repair_heads = True
     if repair_heads:
         j = 345
         print('Before ...')
-        print(chosenSet["all_data"][j,CSVcolumns["body_column_x_start"],0])
-        x0 = chosenSet["all_data"][:,CSVcolumns["body_column_x_start"],0].copy()
-        chosenSet = repair_head_positions(chosenSet, CSVcolumns, tol=0.001)
+        print(chosenSetPositionData[j,CSVcolumns["body_column_x_start"],0])
+        x0 = chosenSetPositionData[:,CSVcolumns["body_column_x_start"],0].copy()
+        chosenSetPositionData = repair_head_positions(chosenSetPositionData, 
+                                                      CSVcolumns, tol=0.001)
         print('After ...')
-        print(chosenSet["all_data"][j,CSVcolumns["body_column_x_start"],0])
-        x = chosenSet["all_data"][:,CSVcolumns["body_column_x_start"],0]
+        print(chosenSetPositionData[j,CSVcolumns["body_column_x_start"],0])
+        x = chosenSetPositionData[:,CSVcolumns["body_column_x_start"],0]
         angle = chosenSet["heading_angle"][:,0]
         print(f'Mean x[0] difference: {np.mean(x-x0):.2f} px')
         print(f'Std. dev. of x[0] difference: {np.std(x-x0):.2f} px')
@@ -397,18 +337,19 @@ if __name__ == '__main__':
 
 
     print('Here 0')
-    print('Angle 2107 1:', chosenSet["all_data"][2107,5,1])
+    print('Angle 2107 1:', chosenSetPositionData[2107,5,1])
     # Fix disjoint heads
     fix_disjoint_heads = False
     if fix_disjoint_heads:
-        chosenSet = repair_disjoint_heads(chosenSet, CSVcolumns, 
-                              Dtol=3.0, tol=0.001)
+        chosenSetPositionData, chosenSet = \
+            repair_disjoint_heads(chosenSetPositionData, chosenSet,
+                                  CSVcolumns, Dtol=3.0, tol=0.001)
     # body_column_x_start=6
     # body_column_y_start=16
     # body_Ncolumns=10
     # print('Here')
-    # print(chosenSet["all_data"][2107,body_column_x_start:(body_column_x_start+body_Ncolumns),1])
-    # print(chosenSet["all_data"][2107,5,1])
+    # print(chosenSetPositionData[2107,body_column_x_start:(body_column_x_start+body_Ncolumns),1])
+    # print(chosenSetPositionData[2107,5,1])
 
     # Fix double length
     body_column_x_start=6
@@ -418,35 +359,36 @@ if __name__ == '__main__':
     fix_double_length = False
     if fix_double_length:
         print('Here before double length fix')
-        print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0])
-        print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1])
+        print(chosenSetPositionData[idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0])
+        print(chosenSetPositionData[idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1])
         plt.figure()
-        plt.plot(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0],
-                   -chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),0], 
+        plt.plot(chosenSetPositionData[idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0],
+                   -chosenSetPositionData[idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),0], 
                    color='olivedrab', marker='x')
-        plt.plot(0.25+chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1],
-                   0.25-chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),1], 
+        plt.plot(0.25+chosenSetPositionData[idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1],
+                   0.25-chosenSetPositionData[idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),1], 
                    color='magenta', marker='x')
         lengthFactor = [1.5, 2.5]
-        chosenSet = repair_double_length_fish(chosenSet, CSVcolumns, 
-                              lengthFactor = lengthFactor, tol=0.001)
+        chosenSetPositionData = repair_double_length_fish(chosenSetPositionData, 
+                                                          CSVcolumns, 
+                                                          lengthFactor = lengthFactor, tol=0.001)
         print('Here after double length fix')
-        print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0])
-        print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1])
-        print(chosenSet["all_data"][idx_to_plot,5,0])
-        print(chosenSet["all_data"][idx_to_plot,5,1])
-        plt.plot(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0],
-                   -chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),0], 
+        print(chosenSetPositionData[idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0])
+        print(chosenSetPositionData[idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1])
+        print(chosenSetPositionData[idx_to_plot,5,0])
+        print(chosenSetPositionData[idx_to_plot,5,1])
+        plt.plot(chosenSetPositionData[idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0],
+                   -chosenSetPositionData[idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),0], 
                    color='limegreen', marker='o')
-        plt.plot(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1],
-                   -chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),1], 
+        plt.plot(chosenSetPositionData[idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1],
+                   -chosenSetPositionData[idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),1], 
                    color='hotpink', marker='o')
 
 
     # Fix IDs
     fixIDs = False
     if fixIDs:        
-        IDs, newIDs = link_weighted(chosenSet["all_data"], CSVcolumns)
+        IDs, newIDs = link_weighted(chosenSetPositionData, CSVcolumns)
     
     # Find frames in which both fish are approaching each other
     findApproaching = False
@@ -459,7 +401,7 @@ if __name__ == '__main__':
     body_column_x_start=6
     body_column_y_start=16
     body_Ncolumns=10
-    dx = np.abs(np.diff(chosenSet["all_data"][:,body_column_x_start:(body_column_x_start+body_Ncolumns),1], axis=1))
+    dx = np.abs(np.diff(chosenSetPositionData[:,body_column_x_start:(body_column_x_start+body_Ncolumns),1], axis=1))
     d0 = np.median(dx, axis=0)[0]
     d1 = np.median(dx, axis=0)[1]
     print('dx: ', d0, d1)
@@ -468,10 +410,10 @@ if __name__ == '__main__':
     if vizFish:
         startFrame = 2105
         endFrame = 2112
-        visualize_fish(chosenSet, CSVcolumns, 
+        visualize_fish(chosenSetPositionData, chosenSet, CSVcolumns, 
                        startFrame=startFrame, endFrame=endFrame) 
-        print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0])
-        print(chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),0])
-        print(chosenSet["all_data"][idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1])
-        print(chosenSet["all_data"][idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),1])
+        print(chosenSetPositionData[idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),0])
+        print(chosenSetPositionData[idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),0])
+        print(chosenSetPositionData[idx_to_plot,body_column_x_start:(body_column_x_start+body_Ncolumns),1])
+        print(chosenSetPositionData[idx_to_plot,body_column_y_start:(body_column_y_start+body_Ncolumns),1])
         

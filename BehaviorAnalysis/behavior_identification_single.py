@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Split from behavior_identification.py on July 22, 2024
-Last modified Dec. 9, 2024 -- Raghu Parthasarathy
+Last modified Dec. 19, 2024 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -35,19 +35,20 @@ from toolkit import make_frames_dictionary, dilate_frames, wrap_to_pi,\
     calculate_value_corr_all, plot_function_allSets
 
 
-def get_coord_characterizations(datasets, CSVcolumns, expt_config, params):
+def get_coord_characterizations(all_position_data, datasets, 
+                                CSVcolumns, expt_config, params):
     """
     For each dataset, simple coordinate characterizations
         (polar coordinates, radial alignment)
     
     Inputs:
-        datasets : dictionaries for each dataset
+        all_position_data : basic position information for all datasets, list of numpy arrays
+        datasets : all datasets, info, list of dictionaries 
         CSVcolumns : CSV column information (dictionary)
         expt_config : dictionary of configuration information
         params : dictionary of all analysis parameters
     Returns:
-        datasets : dictionaries for each dataset. datasets[j] contains
-                    all the information for dataset j.
+        datasets : dictionaries for each dataset. Now with coord keys.
     """
     
     # Number of datasets
@@ -58,7 +59,7 @@ def get_coord_characterizations(datasets, CSVcolumns, expt_config, params):
         
         # Get the radial position (distance to center) of each fish in each
         # frame.
-        polar_coords = get_polar_coords(datasets[j]["all_data"], 
+        polar_coords = get_polar_coords(all_position_data[j], 
                                           CSVcolumns, 
                                           datasets[j]["arena_center"], 
                                           datasets[j]["image_scale"])
@@ -72,14 +73,15 @@ def get_coord_characterizations(datasets, CSVcolumns, expt_config, params):
         datasets[j]["radial_alignment_rad"] = wrap_to_pi(radial_alignment)
     return datasets
 
-def get_single_fish_characterizations(datasets, CSVcolumns,
+def get_single_fish_characterizations(all_position_data, datasets, CSVcolumns,
                                              expt_config, params):
     """
     For each dataset, characterizations that involve single fish
         (e.g. fish length, bending angle, C-bend or J-bend, speed)
     
     Inputs:
-        datasets : dictionaries for each dataset
+        all_position_data : basic position information for all datasets, list of numpy arrays
+        datasets : all datasets, info, list of dictionaries 
         CSVcolumns : CSV column information (dictionary)
         expt_config : dictionary of configuration information
         params : dictionary of all analysis parameters
@@ -97,14 +99,14 @@ def get_single_fish_characterizations(datasets, CSVcolumns,
         # Get the length of each fish in each frame (sum of all segments)
         # Nframes x Nfish array
         datasets[j]["fish_length_array_mm"] = \
-            get_fish_lengths(datasets[j]["all_data"], 
+            get_fish_lengths(all_position_data[j], 
                              datasets[j]["image_scale"], CSVcolumns)
                 
         # Get the speed of each fish in each frame (frame-to-frame
         # displacement of head position, um/s); 0 for first frame
         # Nframes x 2 array
         datasets[j]["speed_array_mm_s"] = \
-            get_fish_speeds(datasets[j]["all_data"], CSVcolumns, 
+            get_fish_speeds(all_position_data[j], CSVcolumns, 
                             datasets[j]["image_scale"], expt_config['fps'])
             
         # Frames with speed above threshold (i.e. moving fish)
@@ -139,7 +141,7 @@ def get_single_fish_characterizations(datasets, CSVcolumns,
             
         # Calculate the bending angle: supplement of the angle between 
         # the front half and the back half
-        datasets[j]["bend_angle"] = calc_bend_angle(datasets[j], CSVcolumns)
+        datasets[j]["bend_angle"] = calc_bend_angle(all_position_data[j], CSVcolumns)
 
         isBending_frames_each, isBending_frames_any, isBending_frames_all = \
             get_isBending_frames(datasets[j], params["bend_min_deg"])
@@ -205,12 +207,12 @@ def get_single_fish_characterizations(datasets, CSVcolumns,
         # C-bends, R-bends, and J-bends; each is a dictionary with Nfish 
         # keys, one for each fish, each containing a numpy array of frames
         # Note that "isBending" (minimal threshold) has already been determined
-        Cbend_frames_each = get_Cbend_frames(datasets[j], CSVcolumns, 
+        Cbend_frames_each = get_Cbend_frames(datasets[j],  
                                              params["bend_Cmin_deg"])
-        Rbend_frames_each = get_Rbend_frames(datasets[j], CSVcolumns, 
+        Rbend_frames_each = get_Rbend_frames(datasets[j],  
                                              (params["bend_Jmax_deg"], 
                                               params["bend_Cmin_deg"]))
-        Jbend_frames_each = get_Jbend_frames(datasets[j], CSVcolumns, 
+        Jbend_frames_each = get_Jbend_frames(datasets[j],  
                                              (params["bend_min_deg"], 
                                               params["bend_Jmax_deg"]))
         # numpy array of frames with C-bend for *any* fish
@@ -267,7 +269,7 @@ def get_single_fish_characterizations(datasets, CSVcolumns,
         # Nframes x Nfish array
         # (Oct. 20, 2024: Not doing anything with this.)
         datasets[j]["tail_angle_rad"] = \
-            getTailAngle(datasets[j]["all_data"], CSVcolumns, 
+            getTailAngle(all_position_data[j], CSVcolumns, 
                          datasets[j]["heading_angle"])
        
         
@@ -286,11 +288,11 @@ def get_single_fish_characterizations(datasets, CSVcolumns,
     return datasets
 
     
-def get_fish_lengths(all_data, image_scale, CSVcolumns):
+def get_fish_lengths(position_data, image_scale, CSVcolumns):
     """
     Get the length of each fish in each frame (sum of all segments)
     Input:
-        all_data : all position data, from dataset["all_data"]
+        position_data : basic position information for this dataset, numpy array
         image_scale : scale, um/px; from dataset["image_scale"]
         CSVcolumns : CSV column information (dictionary)
     Output
@@ -300,32 +302,32 @@ def get_fish_lengths(all_data, image_scale, CSVcolumns):
     xend =int(CSVcolumns["body_column_x_start"])+int(CSVcolumns["body_Ncolumns"])
     ystart = int(CSVcolumns["body_column_y_start"])
     yend = int(CSVcolumns["body_column_y_start"])+int(CSVcolumns["body_Ncolumns"])
-    dx = np.diff(all_data[:,xstart:xend,:], axis=1)
-    dy = np.diff(all_data[:,ystart:yend,:], axis=1)
+    dx = np.diff(position_data[:,xstart:xend,:], axis=1)
+    dy = np.diff(position_data[:,ystart:yend,:], axis=1)
     dr = np.sqrt(dx**2 + dy**2)
     fish_lengths = np.sum(dr,axis=1)*image_scale/1000.0 # mm
     return fish_lengths
             
-def get_fish_speeds(all_data, CSVcolumns, image_scale, fps):
+def get_fish_speeds(position_data, CSVcolumns, image_scale, fps):
     """
     Get the speed of each fish in each frame (frame-to-frame
         displacement of head position)
     Input:
-        all_data : all position data, from dataset["all_data"]
+        position_data : basic position information for this dataset, numpy array
         CSVcolumns : CSV column information (dictionary)
         image_scale : scale, um/px; from dataset["image_scale"]
         fps : frames/second, from expt_config
     Output
         speed_array_mm_s  : (mm/s) Nframes x Nfish array
     """
-    head_x = all_data[:,CSVcolumns["head_column_x"],:] # x, both fish
-    head_y = all_data[:,CSVcolumns["head_column_y"],:] # y, both fish
+    head_x = position_data[:,CSVcolumns["head_column_x"],:] # x, both fish
+    head_y = position_data[:,CSVcolumns["head_column_y"],:] # y, both fish
     # Frame-to-frame speed, px/frame
     dr = np.sqrt((head_x[1:,:] - head_x[:-1,:])**2 + 
                     (head_y[1:,:] - head_y[:-1,:])**2)
     speed_array_mm_s = dr*image_scale*fps/1000.0
     # to make Nframes x Nfish set as 0 for the first frame
-    speed_array_mm_s = np.append(np.zeros((1, all_data.shape[2])), 
+    speed_array_mm_s = np.append(np.zeros((1, position_data.shape[2])), 
                                  speed_array_mm_s, axis=0)
     
     return speed_array_mm_s
@@ -447,13 +449,13 @@ def get_isCloseToEdge_frames(dataset, edge_proximity_threshold_mm, arena_radius_
 
 
 
-def getTailAngle(all_data, CSVcolumns, heading_angles):
+def getTailAngle(position_data, CSVcolumns, heading_angles):
     """
     Calculate the tail angle:  angle of last two body points 
         relative to heading angle (zero if aligned); 
         absolute value, radians.
     Input:
-        all_data : all position data, from dataset["all_data"]
+        position_data : basic position information for this dataset, numpy array
         CSVcolumns : CSV column information (dictionary)
         heading_angles : all heading angles (Nframes x Nfish); dataset[j]["heading_angles"]
     Output
@@ -461,9 +463,9 @@ def getTailAngle(all_data, CSVcolumns, heading_angles):
     """
     # Final tail positions, for each frame, for each fish
     # Each array is Nframes x (2 body points) x (Nfish==2)
-    tailpos_x = all_data[:,CSVcolumns["body_column_x_start"] + CSVcolumns["body_Ncolumns"] - 3: \
+    tailpos_x = position_data[:,CSVcolumns["body_column_x_start"] + CSVcolumns["body_Ncolumns"] - 3: \
                            CSVcolumns["body_column_x_start"] + CSVcolumns["body_Ncolumns"] - 1,:]
-    tailpos_y = all_data[:,CSVcolumns["body_column_y_start"] + CSVcolumns["body_Ncolumns"] - 3: \
+    tailpos_y = position_data[:,CSVcolumns["body_column_y_start"] + CSVcolumns["body_Ncolumns"] - 3: \
                            CSVcolumns["body_column_y_start"] + CSVcolumns["body_Ncolumns"] - 1,:]
     
     # tail angle, lab frame
@@ -478,20 +480,10 @@ def getTailAngle(all_data, CSVcolumns, heading_angles):
     
     # tail angle relative to heading angle
     tail_angle = np.abs(tail_angle_lab - heading_angles)
-    # print('\ndy')
-    # print(dy[95:106,0])
-    # print('\ndx')
-    # print(dx[95:106,0])
-    # print('\nTail angle lab')
-    # print(tail_angle_lab[95:106,0]*180.0/np.pi)
-    # print('\nHeading angle')
-    # print(heading_angles[95:106,0]*180.0/np.pi)
-    # print('\nTail angle')
-    # print(tail_angle[95:106,0]*180.0/np.pi)
-    # x = input('cont? ')
+
     return tail_angle
 
-def getTailCurvature(all_data, CSVcolumns, image_scale):
+def getTailCurvature(position_data, CSVcolumns, image_scale):
     """
     Calculate the curvature of the fish posterior (last 5 body
         datapoints) at each frame, for each fish.
@@ -499,7 +491,7 @@ def getTailCurvature(all_data, CSVcolumns, image_scale):
     NOTE: Not used; not robust!
     
     Input:
-        all_data : all position data, from dataset["all_data"]
+        position_data : basic position information for this dataset, numpy array
         CSVcolumns : CSV column information (dictionary)
         image_scale : scale, um/px; from dataset["image_scale"]
     Output
@@ -508,9 +500,9 @@ def getTailCurvature(all_data, CSVcolumns, image_scale):
     
     # All tail positions, for each frame, for each fish
     # Each array is Nframes x (Nbodypts/2==5) x (Nfish==2)
-    tailpos_x = all_data[:,CSVcolumns["body_column_x_start"] : \
+    tailpos_x = position_data[:,CSVcolumns["body_column_x_start"] : \
                            CSVcolumns["body_column_x_start"] + int(CSVcolumns["body_Ncolumns"]/2),:]
-    tailpos_y = all_data[:,CSVcolumns["body_column_y_start"] : \
+    tailpos_y = position_data[:,CSVcolumns["body_column_y_start"] : \
                            CSVcolumns["body_column_y_start"] + int(CSVcolumns["body_Ncolumns"]/2),:]
     
     # Calculate mean curvature. I'm sure there's a way to vectorize
@@ -596,13 +588,13 @@ def get_bout_statistics(dataset):
     return bouts_N, bout_duration_s, bout_rate_bpm, bout_ibi_s
     
 
-def get_polar_coords(all_data, CSVcolumns, arena_center, image_scale):
+def get_polar_coords(position_data, CSVcolumns, arena_center, image_scale):
     """
     Get the fish head position in polar coordinates relative to the
         arena center, for each fish in each frame.
         "y" defined as decreasing downward, so angle = atan(-y,x)
     Input:
-        all_data : all position data, from dataset["all_data"]
+        position_data : basic position information for this dataset, numpy array
         CSVcolumns : CSV column information (dictionary)
         arena_center : tuple of (x,y) positions of the Arena Center,
                        probably stored in dataset["arena_center"]
@@ -612,8 +604,8 @@ def get_polar_coords(all_data, CSVcolumns, arena_center, image_scale):
             radial_position_mm  : (mm) Nframes x Nfish array
             polar_angle_rad  : (radians) Nframes x Nfish array
     """
-    head_x = all_data[:,CSVcolumns["head_column_x"],:] # x, all fish, Nframes x Nfish
-    head_y = all_data[:,CSVcolumns["head_column_y"],:] # y, all fish, Nframes x Nfish
+    head_x = position_data[:,CSVcolumns["head_column_x"],:] # x, all fish, Nframes x Nfish
+    head_y = position_data[:,CSVcolumns["head_column_y"],:] # y, all fish, Nframes x Nfish
     # Radial position, px
     dx = head_x - arena_center[0]
     dy = head_y - arena_center[1]
@@ -646,7 +638,7 @@ def fit_y_eq_Bx_simple(x, y):
     return np.where(sxx != 0, sxy / sxx, np.inf)
     
     
-def calc_bend_angle(dataset, CSVcolumns, M=None):
+def calc_bend_angle(position_data, CSVcolumns, M=None):
     """
     Calculate the bending angle for each fish in each frame, as
     the best-fit line from points (x[M], y[M]) to (x[0], y[0]) 
@@ -657,16 +649,16 @@ def calc_bend_angle(dataset, CSVcolumns, M=None):
     so that a straight fish has angle 0.
     
     inputs
-        dataset: dataset dictionary of all behavior information for a given expt.
-        CSVcolumns : information on what the columns of dataset["all_data"] are
+        position_data : basic position information for this dataset, numpy array
+        CSVcolumns : information on what the columns of position_data are
         M : the index of the midpoint; will use N/2 if not input
      
     output
         bend_angle : in range [0, pi]; shape (Nframes, Nfish)
     """
     
-    x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
-    y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+    x = position_data[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    y = position_data[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
 
     Nframes, N, Nfish = x.shape
     if M is None:
@@ -739,14 +731,13 @@ def get_isBending_frames(dataset, bend_angle_threshold_deg = 10.0):
     return isBending_frames_each, isBending_frames_any, isBending_frames_all
 
 
-def get_Cbend_frames(dataset, CSVcolumns, Cbend_threshold = 100.0):
+def get_Cbend_frames(dataset, Cbend_threshold = 100.0):
     """ 
     Find frames in which one or more fish have a JC-bend: bend angle above
         the threshols.
     Inputs:
         dataset: dataset dictionary of all behavior information for a given expt.
                  Must include 'bend_angle' (radians) and 'frameArray'
-        CSVcolumns : information on what the columns of dataset["all_data"] are
         Cbend_threshold : min bend angle, *degrees*
     Output : 
         Cbend_frames : dictionary with keys for each fish number (typically
@@ -766,14 +757,13 @@ def get_Cbend_frames(dataset, CSVcolumns, Cbend_threshold = 100.0):
     return Cbend_frames
 
 
-def get_Rbend_frames(dataset, CSVcolumns, Rbend_thresholds = (50, 100)):
+def get_Rbend_frames(dataset, Rbend_thresholds = (50, 100)):
     """ 
     Find frames in which one or more fish have a "routine term": 
         bend angle between the thresholds.
     Inputs:
         dataset: dataset dictionary of all behavior information for a given expt.
                  Must include 'bend_angle' (radians) and 'frameArray'
-        CSVcolumns : information on what the columns of dataset["all_data"] are
         Rbend_thresholds : min and max bend angles, *degrees*
     Output : 
         Rbend_frames : dictionary with keys for each fish number (typically
@@ -793,14 +783,13 @@ def get_Rbend_frames(dataset, CSVcolumns, Rbend_thresholds = (50, 100)):
 
     return Rbend_frames
 
-def get_Jbend_frames(dataset, CSVcolumns, Jbend_thresholds = (10, 50)):
+def get_Jbend_frames(dataset, Jbend_thresholds = (10, 50)):
     """ 
     Find frames in which one or more fish have a J-bend: bend angle between
         the thresholds.
     Inputs:
         dataset: dataset dictionary of all behavior information for a given expt.
                  Must include 'bend_angle' (radians) and 'frameArray'
-        CSVcolumns : information on what the columns of dataset["all_data"] are
         Jbend_thresholds : min and max bend angles, *degrees*
     Output : 
         Jbend_frames : dictionary with keys for each fish number (typically

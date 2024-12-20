@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified Nov. 24, 2024 -- Raghu Parthasarathy
+Last modified Dec. 19, 2024 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -29,7 +29,7 @@ from scipy.stats import skew
 # from circle_fit_taubin import TaubinSVD
 
 
-def get_basic_two_fish_characterizations(datasets, CSVcolumns,
+def get_basic_two_fish_characterizations(all_position_data, datasets, CSVcolumns,
                                              expt_config, params):
     """
     For each dataset, perform “basic” two-fish characterizations  
@@ -37,7 +37,8 @@ def get_basic_two_fish_characterizations(datasets, CSVcolumns,
          relative heading alignment)
     
     Inputs:
-        datasets : dictionaries for each dataset
+        all_position_data : basic position information for all datasets, list of numpy arrays
+        datasets : all datasets, list of dictionaries 
         CSVcolumns : CSV column information (dictionary)
         expt_config : dictionary of configuration information
         params : dictionary of all analysis parameters
@@ -58,7 +59,7 @@ def get_basic_two_fish_characterizations(datasets, CSVcolumns,
         # Get the inter-fish distance (distance between head positions) in 
         # each frame (Nframes x 1 array). Units = mm
         datasets[j]["head_head_distance_mm"], datasets[j]["closest_distance_mm"] = \
-            get_interfish_distance(datasets[j]["all_data"], CSVcolumns,
+            get_interfish_distance(all_position_data[j], CSVcolumns,
                                    datasets[j]["image_scale"])
         
         # Get frames in which the inter-fish distance is small (i.e. less
@@ -82,7 +83,7 @@ def get_basic_two_fish_characterizations(datasets, CSVcolumns,
         # Relative orientation of fish (angle between heading and
         # connecting vector). Nframes x Nfish==2 array; radians
         datasets[j]["relative_orientation"] = \
-            get_relative_orientation(datasets[j], CSVcolumns)   
+            get_relative_orientation(all_position_data[j], datasets[j], CSVcolumns)   
 
         # Relative orientation of fish (angle between heading and
         # connecting vector). Nframes x Nfish==2 array; radians
@@ -91,8 +92,7 @@ def get_basic_two_fish_characterizations(datasets, CSVcolumns,
         
         # Get the sliding window cross-correlation of heading angles
         datasets[j]["xcorr_array"] = \
-            calcOrientationXCorr(datasets[j], CSVcolumns, 
-                                 params["angle_xcorr_windowsize"])
+            calcOrientationXCorr(datasets[j], params["angle_xcorr_windowsize"])
         
     # For each dataset, exclude bad tracking frames from calculations of
     # - the mean and std. absolute difference in fish length
@@ -146,13 +146,13 @@ def get_basic_two_fish_characterizations(datasets, CSVcolumns,
 
 
     
-def get_interfish_distance(all_data, CSVcolumns, image_scale):
+def get_interfish_distance(position_data, CSVcolumns, image_scale):
     """
     Get the inter-fish distance (calculated both as the distance 
         between head positions and as the closest distance)
         in each frame 
     Input:
-        all_data : all position data, from dataset["all_data"]
+        position_data : all position data for this dataset, from all_position_data[j]
         CSVcolumns : CSV column information (dictionary)
         image_scale : scale, um/px; from dataset["image_scale"]
     Output
@@ -161,16 +161,16 @@ def get_interfish_distance(all_data, CSVcolumns, image_scale):
     """
     
     # head-head distance
-    head_x = all_data[:,CSVcolumns["head_column_x"],:] # x, both fish
-    head_y = all_data[:,CSVcolumns["head_column_y"],:] # y, both fish
+    head_x = position_data[:,CSVcolumns["head_column_x"],:] # x, both fish
+    head_y = position_data[:,CSVcolumns["head_column_y"],:] # y, both fish
     dx = np.diff(head_x)
     dy = np.diff(head_y)
     # distance, mm
     head_head_distance_mm = (np.sqrt(dx**2 + dy**2))*image_scale/1000.0
     
     # body-body distance, for all pairs of points
-    body_x = all_data[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
-    body_y = all_data[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_x = position_data[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = position_data[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
     closest_distance_mm = np.zeros((body_x.shape[0],1))
     for idx in range(body_x.shape[0]):
         d0 = np.subtract.outer(body_x[idx,:,0], body_x[idx,:,1]) # all pairs of subtracted x positions
@@ -208,24 +208,29 @@ def get_close_pair_frames(distance_mm, frameArray, proximity_threshold_mm):
 
 
     
-def extract_pair_behaviors(dataset, params, CSVcolumns): 
+def extract_pair_behaviors(pair_behavior_frames, position_data, dataset, 
+                           params, CSVcolumns): 
     """
     For a single dataset, calls functions to identify frames corresponding 
     to each two-fish behavioral motif.
     
     Inputs:
-        dataset : dictionary, with keys like "all_data" containing all 
-                    position data
+        pair_behavior_frames : dictionary in which each key is a behavior,
+                    initialized with values all being empty integer arrays
+        position_data : position data for this dataset, presumably all_position_data[j]
+        dataset : dictionary with all dataset info
         params : parameters for behavior criteria
         CSVcolumns : CSV column parameters
     Outputs:
-        arrays of all frames in which the various behaviors are found:
-            perp_noneSee, perp_oneSees, 
-            perp_bothSee, contact_any, contact_head_body, 
-            contact_larger_fish_head, contact_smaller_fish_head,
-            contact_inferred, tail_rubbing_frames,
-            approaching_frames, approaching_frames_any, approaching_frames_all,
-            fleeing_frames, fleeing_frames_any, fleeing_frames_all
+        pair_behavior_frames : dictionary in which each key is a behavior string
+            and each value is a numpy array of frames identified for that behavior:
+            Keys defined outside this function; should be:
+                perp_noneSee, perp_oneSees, 
+                perp_bothSee, contact_any, contact_head_body, 
+                contact_larger_fish_head, contact_smaller_fish_head,
+                contact_inferred, tail_rubbing_frames,
+                approaching_frames, approaching_frames_any, approaching_frames_all,
+                fleeing_frames, fleeing_frames_any, fleeing_frames_all
 
     """
     
@@ -235,12 +240,12 @@ def extract_pair_behaviors(dataset, params, CSVcolumns):
     # Arrays of head, body positions abd angles, which are used by multiple 
     # functions.
     # Last dimension = fish (so array shapes are Nframes x {1 or 2}, Nfish==2)
-    head_pos_data = dataset["all_data"][:,CSVcolumns["head_column_x"]:CSVcolumns["head_column_y"]+1, :]
+    head_pos_data = position_data[:,CSVcolumns["head_column_x"]:CSVcolumns["head_column_y"]+1, :]
         # head_pos_data is Nframes x 2 (x and y positions) x 2 (Nfish) array of head positions
     angle_data = dataset["heading_angle"]
     # body_x and _y are the body positions, each of size Nframes x 10 x Nfish
-    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
-    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_x = position_data[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = position_data[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
         
     t1_2 = perf_counter()
     print(f'   t1_2 start 90degree analysis: {t1_2 - t1_start:.2f} seconds')
@@ -252,34 +257,36 @@ def extract_pair_behaviors(dataset, params, CSVcolumns):
                                          params["perp_maxDistance_mm"],
                                          params["cosSeeingAngle"], 
                                          dataset["fish_length_array_mm"])
-    perp_noneSee = orientation_dict["noneSee"]
-    perp_oneSees = orientation_dict["oneSees"]
-    perp_bothSee = orientation_dict["bothSee"]
-    perp_larger_fish_sees = orientation_dict["larger_fish_sees"]
-    perp_smaller_fish_sees = orientation_dict["smaller_fish_sees"]
+    pair_behavior_frames['perp_noneSee'] = orientation_dict["noneSee"]
+    pair_behavior_frames['perp_oneSees'] = orientation_dict["oneSees"]
+    pair_behavior_frames['perp_bothSee'] = orientation_dict["bothSee"]
+    pair_behavior_frames['perp_larger_fish_sees'] = orientation_dict["larger_fish_sees"]
+    pair_behavior_frames['perp_smaller_fish_sees'] = orientation_dict["smaller_fish_sees"]
  
     t1_3 = perf_counter()
     print(f'   t1_3 start contact analysis: {t1_3 - t1_start:.2f} seconds')
     # Any contact, or head-body contact
-    contact_dict = get_contact_frames(dataset, CSVcolumns,
+    contact_dict = get_contact_frames(position_data, dataset, CSVcolumns,
                                 params["contact_distance_threshold_mm"])
-    contact_any = contact_dict["any_contact"]
-    contact_head_body = contact_dict["head-body"]
-    contact_larger_fish_head = contact_dict["larger_fish_head_contact"]
-    contact_smaller_fish_head = contact_dict["smaller_fish_head_contact"]
-    contact_inferred_frames = get_inferred_contact_frames(dataset, CSVcolumns, 
+    pair_behavior_frames['contact_any'] = contact_dict["any_contact"]
+    pair_behavior_frames['contact_head_body'] = contact_dict["head-body"]
+    pair_behavior_frames['contact_larger_fish_head'] = contact_dict["larger_fish_head_contact"]
+    pair_behavior_frames['contact_smaller_fish_head'] = contact_dict["smaller_fish_head_contact"]
+    pair_behavior_frames['contact_inferred'] = \
+        get_inferred_contact_frames(position_data, dataset, CSVcolumns, 
                         params["contact_inferred_window"],                                  
                         params["contact_inferred_distance_threshold_mm"],
-                        contact_any)
+                        pair_behavior_frames['contact_any'])
     # Include inferred contact frames in "any" contact.
-    contact_any = np.unique(np.concatenate((contact_any, 
-                                            contact_inferred_frames),0))
+    pair_behavior_frames['contact_any'] = np.unique(np.concatenate((pair_behavior_frames['contact_any'], 
+                                            pair_behavior_frames['contact_inferred']),0))
 
     t1_4 = perf_counter()
     print(f'   t1_4 start tail-rubbing analysis: {t1_4 - t1_start:.2f} seconds')
     # Tail-rubbing
     tailrub_maxTailDist_px = params["tailrub_maxTailDist_mm"]*1000/dataset["image_scale"]
-    tail_rubbing_frames = get_tail_rubbing_frames(body_x, body_y, 
+
+    pair_behavior_frames['tail_rubbing'] = get_tail_rubbing_frames(body_x, body_y, 
                                           dataset["head_head_distance_mm"], 
                                           angle_data, 
                                           params["tail_rub_ws"], 
@@ -292,30 +299,30 @@ def extract_pair_behaviors(dataset, params, CSVcolumns):
     # Approaching or fleeing
     (approaching_frames, fleeing_frames, approaching_frames_any, \
         approaching_frames_all, fleeing_frames_any, fleeing_frames_all) = \
-             get_approach_flee_frames(dataset, 
+             get_approach_flee_frames(position_data, dataset, 
                                       CSVcolumns, 
                                       speed_threshold_mm_s = params["approach_speed_threshold_mm_second"],
                                       min_frame_duration = params["approach_min_frame_duration"],
                                       cos_angle_thresh = params["approach_cos_angle_thresh"])
-
-
+    pair_behavior_frames['approaching_Fish0'] = approaching_frames[0]
+    pair_behavior_frames['approaching_Fish1'] = approaching_frames[1]
+    pair_behavior_frames['approaching_any'] = approaching_frames_any
+    pair_behavior_frames['approaching_all'] = approaching_frames_all
+    pair_behavior_frames['fleeing_Fish0'] = fleeing_frames[0]
+    pair_behavior_frames['fleeing_Fish1'] = fleeing_frames[1]
+    pair_behavior_frames['fleeing_any'] = fleeing_frames_any
+    pair_behavior_frames['fleeing_all'] = fleeing_frames_all
+    
     t1_end = perf_counter()
     print(f'   t1_end end analysis: {t1_end - t1_start:.2f} seconds')
 
     # removed "circling_wfs," from the list
 
-    return perp_noneSee, perp_oneSees, \
-        perp_bothSee, perp_larger_fish_sees, \
-        perp_smaller_fish_sees, \
-        contact_any, contact_head_body, contact_larger_fish_head, \
-        contact_smaller_fish_head, contact_inferred_frames, \
-        tail_rubbing_frames, \
-        approaching_frames, approaching_frames_any, approaching_frames_all, \
-        fleeing_frames, fleeing_frames_any, fleeing_frames_all
+    return pair_behavior_frames
 
 
                             
-def get_contact_frames(dataset, CSVcolumns, contact_distance_threshold_mm):
+def get_contact_frames(position_data, dataset, CSVcolumns, contact_distance_threshold_mm):
     """
     Returns a dictionary of window frames for contact between two fish, 
     which can be close distance between any fish body positions or 
@@ -324,6 +331,7 @@ def get_contact_frames(dataset, CSVcolumns, contact_distance_threshold_mm):
     Assumes frames are contiguous, as should have been checked earlier.
 
     Args:
+        position_data : position data for this dataset, presumably all_position_data[j]
         dataset : dictionary with all dataset info, including head-head
                   distance (mm), dataset["closest_distance_mm"],
                   dataset["image_scale"], 
@@ -340,8 +348,8 @@ def get_contact_frames(dataset, CSVcolumns, contact_distance_threshold_mm):
     """
     
     # body_x and _y are the body positions, each of size Nframes x 10 x Nfish
-    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
-    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_x = position_data[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = position_data[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
     
     contact_dict = {"any_contact": [], "head-body": [], 
                     "larger_fish_head_contact": [], 
@@ -376,7 +384,7 @@ def get_contact_frames(dataset, CSVcolumns, contact_distance_threshold_mm):
     return contact_dict
 
 
-def get_inferred_contact_frames(dataset, CSVcolumns, frameWindow, 
+def get_inferred_contact_frames(position_data, dataset, CSVcolumns, frameWindow, 
                                 contact_inferred_distance_threshold_mm,
                                 contact_any):
     """
@@ -392,8 +400,9 @@ def get_inferred_contact_frames(dataset, CSVcolumns, frameWindow,
        (total distance < Nfish*contact_inferred_distance_threshold).
     
     Args:
+        position_data : position data for this dataset, presumably all_position_data[j]
         dataset : dictionary with all dataset info, including head-head
-                  distance (mm), and all positions
+                  distance (mm)
         CSVcolumns : CSV column parameters
         frameWindow : number of preceding frames to examine
         contact_inferred_distance_threshold_mm: the inferred contact distance threshold, *mm*
@@ -409,8 +418,8 @@ def get_inferred_contact_frames(dataset, CSVcolumns, frameWindow,
     """
     
     # body positions
-    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
-    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_x = position_data[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = position_data[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
 
     # shouldn't need to be a set, but can't hurt.
     badFrames_firstFrames = set(dataset["bad_bodyTrack_frames"]["combine_frames"][0,:])
@@ -689,7 +698,7 @@ def get_tail_rubbing_frames(body_x, body_y, head_separation,
 
 
 
-def calcOrientationXCorr(dataset, CSVcolumns, window_size = 25, makeDiagnosticPlots = False):
+def calcOrientationXCorr(dataset, window_size = 25, makeDiagnosticPlots = False):
     """
     Heading angle Co-orientation behavior; see July 2023 notes
     Calculate cross-correlation of fish heading angles, over a sliding window
@@ -697,7 +706,6 @@ def calcOrientationXCorr(dataset, CSVcolumns, window_size = 25, makeDiagnosticPl
         *ending* at j
     Inputs:
         dataset: dataset dictionary of all behavior information for a given expt.
-        CSVcolumns : information on what the columns of dataset["all_data"] are
         window_size : number frames for sliding window
         makeDiagnosticPlots : if true, plot angles, xcorr
     Outputs : 
@@ -767,7 +775,7 @@ def calcOrientationXCorr(dataset, CSVcolumns, window_size = 25, makeDiagnosticPl
     return xcorr
 
 
-def get_approach_flee_frames(dataset, CSVcolumns, 
+def get_approach_flee_frames(position_data, dataset, CSVcolumns, 
                            speed_threshold_mm_s = 20, 
                            cos_angle_thresh = 0.5,
                            min_frame_duration = (2, 2)):
@@ -790,9 +798,11 @@ def get_approach_flee_frames(dataset, CSVcolumns,
            away; allow anything not approaching)
     Note that speed has previously been calculated 
         (dataset['speed_array_mm_s'], Nframes x Nfish==2 array)
+        
     Inputs:
+        position_data : position data for this dataset, presumably all_position_data[j]
         dataset: dataset dictionary of all behavior information for a given expt.
-        CSVcolumns : information on what the columns of dataset["all_data"] are
+        CSVcolumns : information on what the columns of position_data are
         min_frame_duration : number of frames over which condition must be met.
                       Tuple, for Approaching [0] and Fleeing [1]
                       Default (2, 2)
@@ -816,8 +826,8 @@ def get_approach_flee_frames(dataset, CSVcolumns,
 
     # All body positions, as in C-bending function
     angle_data = dataset["heading_angle"]
-    body_x = dataset["all_data"][:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
-    body_y = dataset["all_data"][:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_x = position_data[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = position_data[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
     
     Nframes = body_x.shape[0]
 
@@ -940,13 +950,14 @@ def get_approach_flee_frames(dataset, CSVcolumns,
         approaching_frames_all, fleeing_frames_any, fleeing_frames_all
     
 
-def get_relative_orientation(dataset, CSVcolumns):
+def get_relative_orientation(position_data, dataset, CSVcolumns):
     """ 
     Calculate the relative orientation of each fish with respect to the
     head-to-head vector to the other fish.
     Inputs:
+        position_data : position data for this dataset, presumably all_position_data[j]
         dataset: dataset dictionary of all behavior information for a given expt.
-        CSVcolumns : information on what the columns of dataset["all_data"] are
+        CSVcolumns : information on what the columns of position_data are
     Output : 
         relative_orientation : numpy array Nframes x Nfish==2 of 
             relative orientation (phi), radians, for fish 0 and fish 1
@@ -954,7 +965,7 @@ def get_relative_orientation(dataset, CSVcolumns):
     # All heading angles
     angle_data = dataset["heading_angle"]
     # all head positions
-    head_pos_data = dataset["all_data"][:,CSVcolumns["head_column_x"]:CSVcolumns["head_column_y"]+1, :]
+    head_pos_data = position_data[:,CSVcolumns["head_column_x"]:CSVcolumns["head_column_y"]+1, :]
         # head_pos_data is Nframes x 2 (x and y positions) x 2 (Nfish) array of head positions
 
     # head-head distance, px, and distance vector for all frames
@@ -985,7 +996,7 @@ def get_relative_heading_angle(dataset, CSVcolumns):
     Requires Nfish = 2 (verified)
     Inputs:
         dataset: dataset dictionary of all behavior information for a given expt.
-        CSVcolumns : information on what the columns of dataset["all_data"] are
+        CSVcolumns : information on what the columns of position_data are
     Output : 
         relative_heading_angle : numpy array of shape (Nframes,), radians
     """

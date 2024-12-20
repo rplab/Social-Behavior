@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, December 9, 2024
+Last modified by Rghuveer Parthasarathy, December 19, 2024
 
 Description
 -----------
@@ -34,7 +34,7 @@ import pickle
 import pandas as pd
 import yaml
 import tkinter as tk
-import tkinter.filedialog
+import tkinter.filedialog as filedialog
 from scipy import signal
 
 # Function to get a valid path from the user (base Path or config path)
@@ -79,6 +79,38 @@ def get_basePath():
                     return selected_path
         else:
             print("Invalid path. Please try again.")
+
+
+def get_loading_option():
+    """
+    Prompt the user to select a loading option (from CSVs or Pickle)
+    
+    Returns
+    -------
+    loading_option : str
+        The selected loading option.
+    """
+    options = {
+        1: "load_from_CSV",
+        2: "load_from_pickle"
+        # Add more options here as needed
+    }
+    
+    print("\nLoading options:")
+    print("   load_from_CSV -- Reads CSV files. Do this for the first analysis of an experiment")
+    print("   load_from_pickle -- Loads trajectories from pre-existing pickle file; re-analyzes")
+    print("\nSelect loading option:")
+    for key, value in options.items():
+        print(f"   {key}: {value} (default)" if key == 1 else f"   {key}: {value}")
+    
+    try:
+        user_input = input("Enter the number corresponding to your choice: ")
+        selected_option = int(user_input) if user_input else 1
+    except ValueError:
+        selected_option = 1
+    
+    loading_option = options.get(selected_option, "load_from_CSV")
+    return loading_option
 
 
 def get_valid_file(fileTypeString = 'Config File'):
@@ -186,7 +218,7 @@ def load_expt_config(config_path, config_file):
     
 def load_analysis_parameters(basePath, params_file):
     """ 
-    Loads the analysis parameters file and performs various checks
+    Loads the analysis parameters file
     Inputs:
         basePath, params_file: path and file name of the yaml parameter file
     Outputs:
@@ -197,6 +229,59 @@ def load_analysis_parameters(basePath, params_file):
     with open(params_file_full, 'r') as f:
         all_param = yaml.safe_load(f)
     params = all_param['params']
+
+    return params
+        
+
+def check_analysis_parameters(params):
+    """
+    Checks that all the keys in the analysis parameters file exist.
+    If a key doesn't exist, prompts the user for its value with defaults from the file.
+    Performs various checks
+    Inputs:
+        params : dictionary of analysis parameters
+    Outputs:
+        params : dictionary of analysis parameters
+    """
+    
+    # Define the required keys and their default values
+    required_keys = {
+        "edge_rejection_threshold_mm": None,  
+        "edge_proximity_threshold_mm": 5,
+        "cos_theta_AP_threshold": -0.7,
+        "cos_theta_tangent_threshold": 0.34,
+        "cos_theta_90_thresh": 0.26,
+        "cosSeeingAngle": 0.5,
+        "perp_windowsize": 2,
+        "perp_maxDistance_mm": 12.0,
+        "contact_distance_threshold_mm": 2.5,
+        "contact_inferred_distance_threshold_mm": 3.5,
+        "contact_inferred_window": 3,
+        "tail_rub_ws": 2,
+        "tailrub_maxTailDist_mm": 2.0,
+        "tailrub_maxHeadDist_mm": 12.5,
+        "cos_theta_antipar": -0.8,
+        "bend_min_deg": 10,
+        "bend_Jmax_deg": 50, 
+        "bend_Cmin_deg": 100, 
+        "angle_xcorr_windowsize": 25,
+        "approach_speed_threshold_mm_second": 20,
+        "approach_cos_angle_thresh": 0.5,
+        "approach_min_frame_duration": [2,2],
+        "motion_speed_threshold_mm_second": 9,
+        "proximity_threshold_mm": 7,
+        "output_subFolder": 'Analysis',
+        "allDatasets_ExcelFile": 'behavior_counts.xlsx', 
+        "allDatasets_markFrames_ExcelFile":  'behaviors_in_each_frame.xlsx'
+        # "another_key": default_value,
+    }
+    
+    # Check for missing keys and prompt the user for their values
+    for key, default_value in required_keys.items():
+        if key not in params:
+            user_input = input(f"Enter value for {key} (default: {default_value}): ")
+            params[key] = user_input if user_input else default_value
+    
     # Set edge rejection criterion to None 'None', and if negative
     if isinstance(params["edge_rejection_threshold_mm"], str):
         if params["edge_rejection_threshold_mm"].lower() == 'none':
@@ -208,7 +293,60 @@ def load_analysis_parameters(basePath, params_file):
             params["edge_rejection_threshold_mm"] = None
     
     return params
-        
+
+def set_outputFile_params(params, expt_config, subGroupName):
+    """
+    Fill in keys in params corresponding to output folders, Excel file names
+
+    Parameters
+    ----------
+    params : dictionary of analysis parameters.
+    expt_config : dictionary of experiment parameters.
+    subGroupName : subgroup name (String) or None if no subgroup
+
+    Returns
+    -------
+    params : dictionary of analysis parameters.
+
+    """
+    # Append experiment and subGroup names to Analysis output folder names
+    if subGroupName is None:
+        params['output_subFolder'] =  expt_config['expt_name'] + '_' + \
+            params['output_subFolder']
+    else:
+        params['output_subFolder'] =  expt_config['expt_name'] + '_' + \
+            subGroupName + '_' + params['output_subFolder']
+    
+    # Add subgroup name (if it exists) and the experiment name (i.e.
+    # folder name) to the output Excel file names, appending these to
+    # (1) "behavior_counts.xlsx" (or whatever params["allDatasets_ExcelFile"]
+    #     is) for summary statistics of each behavior for each dataset
+    # (2) "behaviors_in_each_frame.xlsx" (or whatever params["allDatasets_markFrames_ExcelFile"])
+    #     is for marking behaviors in each frame
+    base_name, extension = os.path.splitext(params["allDatasets_ExcelFile"])
+    if subGroupName is None:
+        params["allDatasets_ExcelFile"] = f"{expt_config['expt_name']}_{base_name}{extension}"
+    else:
+        params["allDatasets_ExcelFile"] = f"{expt_config['expt_name']}_{subGroupName}_{base_name}{extension}" 
+    print(f"Modifying output allDatasets_ExcelFile file name to be: {params['allDatasets_ExcelFile']}")
+    base_name, extension = os.path.splitext(params["allDatasets_markFrames_ExcelFile"])
+    if subGroupName is None:
+        params["allDatasets_markFrames_ExcelFile"] = f"{expt_config['expt_name']}_{base_name}{extension}"
+    else:
+        params["allDatasets_markFrames_ExcelFile"] = f"{expt_config['expt_name']}_{subGroupName}_{base_name}{extension}"
+    print(f"Modifying output allDatasets_markFrames_ExcelFile file name to be: {params['allDatasets_markFrames_ExcelFile']}")
+    
+    
+    # If there are subgroups, modify the output Excel file name for
+    # summary statistics of each behavior for each dataset -- instead
+    # of "behavior_counts.xlsx" (or whatever params["allDatasets_ExcelFile"]
+    # currently is), append subGroupName
+    if not subGroupName==None:
+        base_name, extension = os.path.splitext(params["allDatasets_ExcelFile"])
+        params["allDatasets_ExcelFile"] = f"{base_name}_{subGroupName}{extension}"
+        print(f"Modifying output allDatasets_ExcelFile file name to be: {params['allDatasets_ExcelFile']}")
+
+    return params
 
 def get_CSV_filenames(basePath, expt_config, startString="results"):
     """
@@ -296,14 +434,17 @@ def load_all_position_data(allCSVfileNames, expt_config, CSVcolumns,
                             dish edge in a separate figure for each dataset.
         
     Returns:
-        datasets : dictionaries for each dataset. datasets[j] contains
-                    all the information for dataset j.
+        all_position_data : list of numpy arrays with position information for
+                    each dataset. Nframes x Ncolumns x Nfish
+        datasets : list of dictionaries, one for each dataset. 
+                    datasets[j] contains information for dataset j.
     
     """
     # Number of datasets
     N_datasets = len(allCSVfileNames)
 
-    # initialize a list of dictionaries for datasets
+    # initialize a list of numpy arrays and a list of dictionaries
+    all_position_data = [{} for j in range(N_datasets)]
     datasets = [{} for j in range(N_datasets)]
     os.chdir(dataPath)
 
@@ -319,16 +460,16 @@ def load_all_position_data(allCSVfileNames, expt_config, CSVcolumns,
         datasets[j]["arena_center"] = get_ArenaCenter(datasets[j]["dataset_name"], 
                                                       expt_config)
         # Estimate center location of Arena
-        # datasets[j]["arena_center"] = estimate_arena_center(datasets[j]["all_data"],
+        # datasets[j]["arena_center"] = estimate_arena_center(all_position_data[j],
         #                                                    CSVcolumns["head_column_x"],
         #                                                    CSVcolumns["head_column_y"])
 
         # Load all the position information as a numpy array
         print('Loading dataset: ', datasets[j]["dataset_name"])
-        datasets[j]["all_data"], datasets[j]["frameArray"] = \
+        all_position_data[j], datasets[j]["frameArray"] = \
             load_data(CSVfileName, CSVcolumns["N_columns"]) 
         datasets[j]["Nframes"] = len(datasets[j]["frameArray"])
-        datasets[j]["Nfish"] = datasets[j]["all_data"].shape[2]
+        datasets[j]["Nfish"] = all_position_data[j].shape[2]
         print('   ', 'Number of frames: ', datasets[j]["Nframes"] )
         datasets[j]["total_time_seconds"] = (np.max(datasets[j]["frameArray"]) - \
             np.min(datasets[j]["frameArray"]) + 1.0) / datasets[j]["fps"]
@@ -340,7 +481,7 @@ def load_all_position_data(allCSVfileNames, expt_config, CSVcolumns,
             plotAllPositions(datasets[j], CSVcolumns, expt_config['arena_radius_mm'], 
                              params["edge_rejection_threshold_mm"])
 
-    return datasets
+    return all_position_data, datasets
     
 def load_data(CSVfileName, N_columns):
     """
@@ -398,15 +539,15 @@ def load_data(CSVfileName, N_columns):
     return all_data, frameArray
 
 
-def fix_heading_angles(datasets, CSVcolumns):
+def fix_heading_angles(all_position_data, datasets, CSVcolumns):
     """ 
     Fix the heading angles -- rather than the strangely quantized angles from
     ZebraZoom, calculate the angle from arctan(y[1]-y[2], x[1]-x[2]) 
     See notes Sept. 2024
     
     Inputs
+        all_position_data : basic position information for all datasets, list of numpy arrays
         datasets : list of all dataset dictionaries. 
-                    Note "all_data" is Nframes x data columns x Nfish
         CSVcolumns : CSV column dictionary (what's in what column)
                                             
     Outputs
@@ -419,8 +560,8 @@ def fix_heading_angles(datasets, CSVcolumns):
     y2 = CSVcolumns["body_column_y_start"]+1 # y position #2
     y3 = CSVcolumns["body_column_y_start"]+2 # y position #3
     for j in range(len(datasets)):
-        datasets[j]['heading_angle'] = np.arctan2(datasets[j]["all_data"][:,y2,:]-datasets[j]["all_data"][:,y3,:], 
-                                                  datasets[j]["all_data"][:,x2,:]-datasets[j]["all_data"][:,x3,:])
+        datasets[j]['heading_angle'] = np.arctan2(all_position_data[j][:,y2,:]-all_position_data[j][:,y3,:], 
+                                                  all_position_data[j][:,x2,:]-all_position_data[j][:,x3,:])
         # put in range [0, 2*pi]; not actually necessary
         datasets[j]['heading_angle'][datasets[j]['heading_angle'] < 0.0] += 2*np.pi
     return datasets
@@ -574,6 +715,162 @@ def combine_events(events):
     
     combined_events_and_durations = np.stack((events[idx_keep], durations))
     return combined_events_and_durations
+
+def get_output_pickleFileNames(expt_name, subGroupName = None):
+    """
+    Get / construct pickle file name. 
+    First construct the "base" filename, then filenames for
+    both Pickle file outputs, appending "positionData" and "datasets"
+    
+    Parameters
+    ----------
+    expt_name : experiment name, probably expt_config['expt_name']
+    subGroupName : subGroupName, None if no subgroups
+
+    Returns
+    -------
+    pickleFileNames : tuple of three strings, name of pickle files for
+                     "positionData" and "datasets" pickle files, and "base" name
+
+    """                              
+    print('\nEnter the base filename for the output pickle files;')
+    print('   Do not include ".pickle"; appended later.')
+    print('   Enter "none" to skip pickle output.')
+    # Append experiment and subGroup names to Analysis output folder
+    if subGroupName is None:
+        defaultPickleFileNameBase =  expt_name 
+    else:
+        defaultPickleFileNameBase =  expt_name + '_' + subGroupName
+    pickleFileNameBase = input(f'   Press Enter for default {defaultPickleFileNameBase}: ')
+    if pickleFileNameBase == '':
+        pickleFileNameBase = defaultPickleFileNameBase
+    
+    # Make sure doesn't end with .pickle
+    if pickleFileNameBase.endswith('.pickle'):
+            pickleFileNameBase = pickleFileNameBase[:-7]
+    
+    pickleFileNames = (pickleFileNameBase + "_positionData.pickle", 
+                       pickleFileNameBase + "_datasets.pickle",
+                       pickleFileNameBase)
+    
+    return pickleFileNames
+    
+
+
+def write_pickle_file(dict_for_pickle, dataPath, outputFolderName, pickleFileName):
+    """
+    Write Pickle file containing a dictionary of variables in the analysis folder
+    
+    Parameters
+    ----------
+    dict_for_pickle : dictionary of variables to save in the Pickle file
+    dataPath : CSV data path
+    outputFolderName : output path, should be params['output_subFolder'],
+                       appended to dataPath
+    pickleFileName : string, filename, including .pickle
+
+    Returns
+    -------
+    None.
+
+    """
+    pickle_folder = os.path.join(dataPath, outputFolderName)
+    
+    # Create output directory, if it doesn't exist
+    if not os.path.exists(pickle_folder):
+        os.makedirs(pickle_folder)
+
+    print(f'\nWriting pickle file: {pickleFileName}\n')
+    with open(os.path.join(pickle_folder, pickleFileName), 'wb') as handle:
+        pickle.dump(dict_for_pickle, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def load_dict_from_pickle(pickleFileName=None):
+    """
+    Load contents from pickle file
+    Assumes pickle file contains a dictionary of variables;
+    returns these variables as a dictionary.
+    
+    Parameters
+    ----------
+    pickleFileName : pickle file name; can include path to append to basePath
+
+    Returns
+    -------
+    dict_of_variables : dictionary containing all variables in the Pickle file
+    """
+
+    badFile = True  # for verifying
+    while badFile:
+        if pickleFileName is None or pickleFileName == '':
+            root = tk.Tk()
+            root.withdraw()  # Hide the root window
+            titleString = 'Select pickle file'
+            pickleFileName = filedialog.askopenfilename(title=titleString,
+                                                        filetypes=[("pickle files", "*.pickle")])
+        else:
+            if not os.path.isabs(pickleFileName):
+                # Get parent folder information
+                # Get path from dialog
+                root = tk.Tk()
+                root.withdraw()  # Hide the root window
+                basePath = filedialog.askdirectory(title=f"Select folder containing specified pickle file, {pickleFileName}")
+                pickleFileName = os.path.join(basePath, pickleFileName)
+        if os.path.isfile(pickleFileName):
+            badFile = False
+        else:
+            print("\n\nInvalid pickle file path or name.")
+            print("Please try again; will force dialog box.")
+            pickleFileName = None
+
+    with open(pickleFileName, 'rb') as handle:
+        dict_of_variables = pickle.load(handle)
+
+    return dict_of_variables
+
+def assign_variables_from_dict(dict_of_variables, inputSet):
+    """
+    Assign dictionary elements loaded from pickle file, from load_dict_from_pickle(),
+    to variables. Hard-coded variables for each "inputSet" (positions or datasets etc.)
+    Input
+        dict_of_variables : dictionary containing all variables in the Pickle file
+        inputSet : 'positions' or 'datasets' for the different pickle files
+    Outputs
+        variable_tuple : tuple of variables
+    """
+    
+    if inputSet == 'positions':
+        variable_tuple = dict_of_variables['all_position_data']
+    elif inputSet == 'datasets': 
+        datasets = dict_of_variables['datasets']
+        CSVcolumns = dict_of_variables['CSVcolumns']
+        expt_config = dict_of_variables['expt_config']
+        params = dict_of_variables['params']
+        basePath = dict_of_variables['basePath']
+        dataPath = dict_of_variables['dataPath']
+        subGroupName = dict_of_variables['subGroupName']
+        
+        # Number of datasets
+        N_datasets = len(datasets)
+        Nfish = get_Nfish(datasets)
+   
+        variable_tuple = (datasets, CSVcolumns, expt_config, params, N_datasets,
+                          Nfish, basePath, dataPath, subGroupName)
+    else :
+        raise ValueError('Invalid inputSet for assigning variables')
+
+    return variable_tuple
+
+
+
+def get_Nfish(datasets):
+    # Check that the number of fish is the same for all datasets; note this
+    Nfish_values = [dataset.get("Nfish") for dataset in datasets]
+    if len(set(Nfish_values)) != 1:
+        raise ValueError("Not all datasets have the same 'Nfish' value")
+    Nfish = Nfish_values[0]
+    print(f'Number of fish: {Nfish}')
+    return Nfish
 
     
 def get_edgeRejection_frames(dataset, params, arena_radius_mm):
@@ -837,13 +1134,14 @@ def estimate_arena_center(alldata, xcol=3, ycol=4):
 
 
 
-def get_badTracking_frames_dictionary(datasets, params, CSVcolumns, tol=0.001):
+def get_badTracking_frames_dictionary(all_position_data, datasets, params, CSVcolumns, tol=0.001):
     """ 
     identify frames in which head or body tracking of one or more fish 
     is bad (zero values)
     
     Inputs:
-        datasets : all datasets, dictionary 
+        all_position_data : basic position information for all datasets, list of numpy arrays
+        datasets : all datasets, list of dictionaries 
         params : analysis parameters
         CSVcolumns : CSV column name dictionary
         tol : tolerance for determining "zeros" in position information
@@ -862,18 +1160,24 @@ def get_badTracking_frames_dictionary(datasets, params, CSVcolumns, tol=0.001):
         # Note that body is the most general of these -- use this for criteria
         # First keep as an array, then convert into a dictionary that includes
         #    durations of bad tracking events, etc.
-        bad_headTrack_frames = get_bad_headTrack_frames(datasets[j], params, 
-                                     CSVcolumns["head_column_x"],
-                                     CSVcolumns["head_column_y"], tol)
+        bad_headTrack_frames = get_bad_headTrack_frames(all_position_data[j], 
+                                                        datasets[j]["frameArray"], 
+                                                        params,
+                                                        CSVcolumns["head_column_x"],
+                                                        CSVcolumns["head_column_y"],
+                                                        tol)
         datasets[j]["bad_headTrack_frames"] = make_frames_dictionary(bad_headTrack_frames, 
                                                                      (), 
                                                                      behavior_name='Bad head track frames',
                                                                      Nframes=datasets[j]['Nframes'])
         print('   Number of bad head tracking frames: ', len(datasets[j]["bad_headTrack_frames"]["raw_frames"]))
-        bad_bodyTrack_frames = get_bad_bodyTrack_frames(datasets[j], params, 
-                                     CSVcolumns["body_column_x_start"],
-                                     CSVcolumns["body_column_y_start"],
-                                     CSVcolumns["body_Ncolumns"], 0.001)
+        bad_bodyTrack_frames = get_bad_bodyTrack_frames(all_position_data[j], 
+                                                        datasets[j]["frameArray"], 
+                                                        params, 
+                                                        CSVcolumns["body_column_x_start"],
+                                                        CSVcolumns["body_column_y_start"], 
+                                                        CSVcolumns["body_Ncolumns"], 
+                                                        0.001)
         datasets[j]["bad_bodyTrack_frames"] = make_frames_dictionary(bad_bodyTrack_frames, (), 
                                                                      behavior_name='Bad track frames',
                                                                      Nframes=datasets[j]['Nframes'])
@@ -883,12 +1187,15 @@ def get_badTracking_frames_dictionary(datasets, params, CSVcolumns, tol=0.001):
 
         
     
-def get_bad_headTrack_frames(dataset, params, xcol=3, ycol=4, tol=0.001):
+def get_bad_headTrack_frames(position_data, frameArray, params, 
+                             xcol=3, ycol=4, tol=0.001):
     """ 
     identify frames in which the head position of one or more fish is 
     zero, indicating bad tracking
     
     Inputs:
+        position_data : position data for this dataset, presumably all_position_data[j]
+        frameArray : numpy array of frame numbers, presumably dataset[j]["frameArray"]
         dataset : dataset dictionary. Note "all_data" is 
                   Nframes x data columns x Nfish
         params : parameters
@@ -899,17 +1206,17 @@ def get_bad_headTrack_frames(dataset, params, xcol=3, ycol=4, tol=0.001):
     Output:
         bad_headTrack_frames : array of frame numbers (not index numbers!)
     """
-    x = dataset["all_data"][:,xcol,:]
-    y = dataset["all_data"][:,ycol,:]
+    x = position_data[:,xcol,:]
+    y = position_data[:,ycol,:]
     # True if any of x, y is zero; 
     xy_zero = np.logical_or(np.abs(x)<tol, np.abs(y)<tol)
     bad_headTrack = np.any(xy_zero, axis=1)
 
-    bad_headTrack_frames = dataset["frameArray"][np.where(bad_headTrack)]
+    bad_headTrack_frames = frameArray[np.where(bad_headTrack)]
     return bad_headTrack_frames
 
     
-def get_bad_bodyTrack_frames(dataset, params, body_column_x_start=6, 
+def get_bad_bodyTrack_frames(position_data, frameArray, params, body_column_x_start=6, 
                              body_column_y_start=16, body_Ncolumns=10, 
                              tol=0.001):
     """ 
@@ -920,8 +1227,8 @@ def get_bad_bodyTrack_frames(dataset, params, body_column_x_start=6,
          for j = 2 to 9
     
     Inputs:
-        dataset : dataset dictionary. Note "all_data" is 
-                  Nframes x data columns x Nfish
+        position_data : position data for this dataset, presumably all_position_data[j]
+        frameArray : numpy array of frame numbers, presumably dataset[j]["frameArray"]
         params : parameters
         body_column_{x,y}_start" : column indices (0==first) of the x and y 
                     body position column
@@ -931,8 +1238,8 @@ def get_bad_bodyTrack_frames(dataset, params, body_column_x_start=6,
     Output:
         bad_bodyTrack_frames : array of frame numbers (not index numbers!)
     """
-    x = dataset["all_data"][:,body_column_x_start:(body_column_x_start+body_Ncolumns),:]
-    y = dataset["all_data"][:,body_column_y_start:(body_column_y_start+body_Ncolumns),:]
+    x = position_data[:,body_column_x_start:(body_column_x_start+body_Ncolumns),:]
+    y = position_data[:,body_column_y_start:(body_column_y_start+body_Ncolumns),:]
     # True if any of x, y is zero; 
     xy_zero = np.logical_or(np.abs(x)<tol, np.abs(y)<tol)
     # Look for any across body positions, and across fish
@@ -947,7 +1254,7 @@ def get_bad_bodyTrack_frames(dataset, params, body_column_x_start=6,
     bad_12_distance = np.any(dr_12 > 3*mean_dr_body, axis=1)
     # Flag frames with either zeros or large 1-2 distances.
     badidx = np.where(np.logical_or(bad_bodyTrack, bad_12_distance))
-    bad_bodyTrack_frames = np.array(dataset["frameArray"][badidx])
+    bad_bodyTrack_frames = np.array(frameArray[badidx])
     # print(bad_bodyTrack_frames)
     
     return bad_bodyTrack_frames
@@ -961,14 +1268,15 @@ def wrap_to_pi(x):
     return x_wrap
 
 
-def plotAllPositions(dataset, CSVcolumns, arena_radius_mm, 
+def plotAllPositions(position_data, dataset, CSVcolumns, arena_radius_mm, 
                      arena_edge_mm = None):
     """
     Plot head x and y positions for each fish, in all frames
     also dish center and edge
     
     Inputs:
-        dataset : dictionary with all dataset info
+        position_data : position data for this dataset, presumably all_position_data[j]
+        dataset : dictionary with all info for the current dataset
         CSVcolumns : CSV column information (dictionary)
         arena_radius_mm
         arena_edge_mm : threshold distance from arena_radius to illustrate; default None
@@ -984,10 +1292,10 @@ def plotAllPositions(dataset, CSVcolumns, arena_radius_mm,
     #arena_ring_x = dataset["arena_center"][0] + arena_radius_mm*1000/dataset["image_scale"]*cos_phi
     #arena_ring_y = dataset["arena_center"][1] + arena_radius_mm*1000/dataset["image_scale"]*sin_phi
     plt.figure()
-    plt.scatter(dataset["all_data"][:,CSVcolumns["head_column_x"],0].flatten(), 
-                dataset["all_data"][:,CSVcolumns["head_column_y"],0].flatten(), color='m', marker='x')
-    plt.scatter(dataset["all_data"][:,CSVcolumns["head_column_x"],1].flatten(), 
-                dataset["all_data"][:,CSVcolumns["head_column_y"],1].flatten(), color='darkturquoise', marker='x')
+    plt.scatter(position_data[:,CSVcolumns["head_column_x"],0].flatten(), 
+                position_data[:,CSVcolumns["head_column_y"],0].flatten(), color='m', marker='x')
+    plt.scatter(position_data[:,CSVcolumns["head_column_x"],1].flatten(), 
+                position_data[:,CSVcolumns["head_column_y"],1].flatten(), color='darkturquoise', marker='x')
     plt.scatter(dataset["arena_center"][0], dataset["arena_center"][1], 
                 color='red', s=100, marker='o')
     plt.plot(arena_ring[:,0], arena_ring[:,1], c='orangered', linewidth=3.0)
@@ -998,34 +1306,6 @@ def plotAllPositions(dataset, CSVcolumns, arena_radius_mm,
     plt.title(dataset["dataset_name"] )
     plt.axis('equal')
 
-
-def write_pickle_file(list_for_pickle, dataPath, outputFolderName, 
-                      pickleFileName):
-    """
-    Write Pickle file containing datasets, etc., in the analysis folder
-    
-    Parameters
-    ----------
-    list_for_pickle : list of datasets to save in the Pickle file
-    dataPath : CSV data path
-    outputFolderName : output path, should be params['output_subFolder']
-    pickleFileName : string, filename, including .pickle
-
-    Returns
-    -------
-    None.
-
-    """
-    pickle_folder = os.path.join(dataPath, outputFolderName)
-    
-    # Create output directory, if it doesn't exist
-    pickle_folder = os.path.join(dataPath, outputFolderName)
-    if not os.path.exists(pickle_folder):
-        os.makedirs(pickle_folder)
-
-    print(f'\nWriting pickle file: {pickleFileName}\n')
-    with open(os.path.join(pickle_folder, pickleFileName), 'wb') as handle:
-        pickle.dump(list_for_pickle, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     
 def write_output_files(params, dataPath, datasets):
@@ -1062,7 +1342,7 @@ def write_output_files(params, dataPath, datasets):
                 "perp_larger_fish_sees", "perp_smaller_fish_sees", 
                 "contact_any", "contact_head_body", 
                 "contact_larger_fish_head", "contact_smaller_fish_head", 
-                "contact_inferred", "tail_rubbing"]
+                "contact_inferred", "tail_rubbing", "anyPairBehavior"]
     for j in range(Nfish):
         key_list.extend([f"Cbend_Fish{j}"])
     key_list.extend(["Cbend_any"])  # formerly had a condition "if Nfish > 1:"
@@ -1159,7 +1439,6 @@ def write_output_files(params, dataPath, datasets):
     write_behaviorCounts_Excel(params["allDatasets_ExcelFile"], 
                               datasets, key_list_revised, 
                               initial_keys_revised, initial_strings_revised)
-
 
 
         
@@ -1485,7 +1764,7 @@ def calc_distances_matrix(pos_current, pos_previous):
 
 
 
-def link_weighted(pos_input, CSVcolumns, tol=0.001):
+def link_weighted(position_data, CSVcolumns, tol=0.001):
     """
     Re-do fish IDs (track linkage) based on whole-body distances
        and other weighted measures.
@@ -1501,13 +1780,11 @@ def link_weighted(pos_input, CSVcolumns, tol=0.001):
     -----------
     
     Inputs:
-        pos_input: all the position information for a given expt.
-            Possibly from dataset["all_data"] 
+        position_data : position data for this dataset, presumably all_position_data[j]
             Rows = frame numbers
             Columns = x, y, angle data -- see CSVcolumns
             Dim 3 = fish (2 fish)
-        CSVcolumns: information on what the columns of pos_input are
-           (same as columsn of dataset["all_data"] in other functions)
+        CSVcolumns: information on what the columns of position_data are
         tol : tolerance for "zero" (bad tracking), pixels
     
         
@@ -1516,12 +1793,12 @@ def link_weighted(pos_input, CSVcolumns, tol=0.001):
     """
     
     # Number of frames, and number of fish
-    Nframes = pos_input.shape[0]
-    Nfish = pos_input.shape[2]
+    Nframes = position_data.shape[0]
+    Nfish = position_data.shape[2]
     
     # All positions: Nframes x N body positions x Nfish arrays for x, y
-    body_x = pos_input[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
-    body_y = pos_input[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_x = position_data[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = position_data[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
 
     # Identify frames with good tracking (head, body values nonzero)
     # Each array is Nframes x Nfish
@@ -1585,7 +1862,7 @@ def link_weighted(pos_input, CSVcolumns, tol=0.001):
     return IDs, newIDs
         
 
-def repair_head_positions(datasets, CSVcolumns, tol=0.001):
+def repair_head_positions(all_position_data, CSVcolumns, tol=0.001):
     """ 
     Ignore "Index 0" head position and replace it with the interpolated 
     position from "Index 1-3" body positions. (Fixing ZebraZoom's unreliable
@@ -1599,13 +1876,13 @@ def repair_head_positions(datasets, CSVcolumns, tol=0.001):
        nonzero position data
        
     Inputs:
-        datasets : list of all dataset dictionaries. 
-                    Note "all_data" is Nframes x data columns x Nfish
-        CSVcolumns: information on what the columns of dataset["all_data"] are
+        all_position_data : basic position information for all datasets, 
+                            list of numpy arrays, each Nframes x data columns x Nfish
+        CSVcolumns: information on what the columns of all_position_data are
         tol : tolerance for "zero" (bad tracking), pixels
 
     Output:
-        datasets_repaired: In each, new ["all_data"] with 
+        all_position_data_repaired: New all_position_data with 
                             repaired head positions in both "head_column_{x,y}"
                             and the first body column for x, y (same)
                                             
@@ -1615,15 +1892,15 @@ def repair_head_positions(datasets, CSVcolumns, tol=0.001):
     
     # Create a new list for the repaired datasets
     # Avoiding confusing copy-in-place. Necessary?
-    datasets_repaired = []
+    all_position_data_repaired = []
 
-    for j in range(len(datasets)):
-        dataset = datasets[j]
+    for j in range(len(all_position_data)):
+        position_data = all_position_data[j]
     
         # x and y are shape Nframes x Npositions x Nfish
-        x = dataset["all_data"][:,CSVcolumns["body_column_x_start"] : 
+        x = position_data[:,CSVcolumns["body_column_x_start"] : 
                                 (CSVcolumns["body_column_x_start"]+Npositions),:]
-        y = dataset["all_data"][:,CSVcolumns["body_column_y_start"] :
+        y = position_data[:,CSVcolumns["body_column_y_start"] :
                                 (CSVcolumns["body_column_y_start"]+Npositions),:]
     
         # True if all x, y are nonzero; shape Nframes x Nfish
@@ -1651,11 +1928,11 @@ def repair_head_positions(datasets, CSVcolumns, tol=0.001):
         
         # Repair head position
         # Keeping same column redundancy as ZebraZoom
-        dataset_repaired = dataset.copy()
-        dataset_repaired["all_data"][:,CSVcolumns["body_column_x_start"],:] = x[:, 0, :]
-        dataset_repaired["all_data"][:,CSVcolumns["body_column_y_start"],:] = y[:, 0, :]  
-        dataset_repaired["all_data"][:,CSVcolumns["head_column_x"],:] = x[:, 0, :]
-        dataset_repaired["all_data"][:,CSVcolumns["head_column_y"],:] = y[:, 0, :]    
+        position_data_repaired = position_data.copy()
+        position_data_repaired[:,CSVcolumns["body_column_x_start"],:] = x[:, 0, :]
+        position_data_repaired[:,CSVcolumns["body_column_y_start"],:] = y[:, 0, :]  
+        position_data_repaired[:,CSVcolumns["head_column_x"],:] = x[:, 0, :]
+        position_data_repaired[:,CSVcolumns["head_column_y"],:] = y[:, 0, :]    
         '''
         # Calculate heading angle using slopes from linear regression
         
@@ -1676,12 +1953,12 @@ def repair_head_positions(datasets, CSVcolumns, tol=0.001):
         dataset_repaired["heading_angle"] = heading_angle
         '''
         
-        datasets_repaired.append(dataset_repaired)
+        all_position_data_repaired.append(position_data_repaired)
     
-    return datasets_repaired
+    return all_position_data_repaired
 
     
-def repair_disjoint_heads(dataset, CSVcolumns, Dtol=3.0, tol=0.001):
+def repair_disjoint_heads(position_data, dataset, CSVcolumns, Dtol=3.0, tol=0.001):
     """ 
     Fix tracking data in which a fish has a "disjoint head" -- the head
     position is far from the body positions.
@@ -1699,23 +1976,24 @@ def repair_disjoint_heads(dataset, CSVcolumns, Dtol=3.0, tol=0.001):
        nonzero position data
        
     Inputs:
-        dataset : dataset dictionary. Note "all_data" contains all position
-                  data, and has shape (Nframes x data columns x 2 fish)
-        CSVcolumns: information on what the columns of dataset["all_data"] are
+        position_data : position data for this dataset, presumably all_position_data[j]
+        dataset : dataset dictionary for this dataset
+        CSVcolumns: information on what the columns of all_position_data are
         Dtol : tolerance for head-body separation, default 3x mean
                separation distance between other body positions
         tol : tolerance for "zero" (bad tracking), pixels
         
     Output:
-        dataset_repaired : overwrites ["all_data"] with repaired head positions
+        position_data_repaired : positions, with repaired head positions
+        dataset_repaired : overwrites ["heading_angle"] with repaired heading angle
     """
     
     Npositions = CSVcolumns["body_Ncolumns"]
     # .copy() to avoid repairing in place
     # x and y are shape Nframes x Npositions x Nfish
-    x = dataset["all_data"][:,CSVcolumns["body_column_x_start"] : 
+    x = position_data[:,CSVcolumns["body_column_x_start"] : 
                             (CSVcolumns["body_column_x_start"]+Npositions),:].copy()
-    y = dataset["all_data"][:,CSVcolumns["body_column_y_start"] :
+    y = position_data[:,CSVcolumns["body_column_y_start"] :
                             (CSVcolumns["body_column_y_start"]+Npositions),:].copy()
     angles = dataset["heading_angle"].copy()
 
@@ -1746,16 +2024,17 @@ def repair_disjoint_heads(dataset, CSVcolumns, Dtol=3.0, tol=0.001):
                                             x[disjoint_idx,1,j]- x[disjoint_idx,2,j])
 
     # Repair
+    position_data_repaired = position_data.copy()
     dataset_repaired = dataset.copy()
-    dataset_repaired["all_data"][:,CSVcolumns["body_column_x_start"] : 
+    position_data_repaired[:,CSVcolumns["body_column_x_start"] : 
                         (CSVcolumns["body_column_x_start"]+Npositions),:] = x
-    dataset_repaired["all_data"][:,CSVcolumns["body_column_y_start"] :
+    position_data_repaired[:,CSVcolumns["body_column_y_start"] :
                         (CSVcolumns["body_column_y_start"]+Npositions),:] = y
     dataset_repaired["heading_angle"] = angles
     
-    return dataset_repaired
+    return position_data_repaired, dataset_repaired
 
-def repair_double_length_fish(dataset, CSVcolumns, 
+def repair_double_length_fish(position_data, dataset, CSVcolumns, 
                               lengthFactor = [1.5, 2.5], tol=0.001):
     """ 
     Fix tracking data in which there is only one identified fish, with the 
@@ -1766,19 +2045,19 @@ def repair_double_length_fish(dataset, CSVcolumns,
     angle
     
     Inputs:
-        dataset : dataset dictionary. Note "all_data" contains all position
-                  data, and has shape (Nframes x data columns x 2 fish)
+        position_data : position data for this dataset, presumably all_position_data[j]
+        dataset : dataset dictionary for this dataset
                   Note that dataset["fish_length_array_mm"] 
                      contains fish lengths (mm)
-        CSVcolumns: information on what the columns of dataset["all_data"] are
+        CSVcolumns: information on what the columns of all_position_data are
         lengthFactor : a list with two values; 
                        split fish into two if length is between these
                        factors of median fish length
         tol : tolerance for "zero" (bad tracking), pixels
         
     Output:
-        dataset_repaired : overwrites ["all_data"] with repaired head 
-        positions
+        position_data_repaired : positions, with repaired head positions
+        dataset_repaired : overwrites ["heading_angle"] with repaired heading angle
     """
     
     # median fish length (px) for each fish; take average across fish
@@ -1787,9 +2066,9 @@ def repair_double_length_fish(dataset, CSVcolumns,
     
     # .copy() to avoid repairing in place
     Npositions = CSVcolumns["body_Ncolumns"]
-    x = dataset["all_data"][:,CSVcolumns["body_column_x_start"] : 
+    x = position_data[:,CSVcolumns["body_column_x_start"] : 
                             (CSVcolumns["body_column_x_start"]+Npositions),:].copy()
-    y = dataset["all_data"][:,CSVcolumns["body_column_y_start"] :
+    y = position_data[:,CSVcolumns["body_column_y_start"] :
                             (CSVcolumns["body_column_y_start"]+Npositions),:].copy()
     
     # True if all x, y are zero; shape Nframes x Nfish
@@ -1814,6 +2093,7 @@ def repair_double_length_fish(dataset, CSVcolumns,
 
     # Repair
     # Note that it doesn't matter which ID is which, since we'll re-link later
+    position_data_repaired = position_data.copy()
     dataset_repaired = dataset.copy()
     midPosition = int(np.floor(Npositions/2.0))  # 5 for usual 10 body positions
     interpIndices = np.linspace(0, Npositions-1, num=midPosition).astype(int) 
@@ -1838,18 +2118,18 @@ def repair_double_length_fish(dataset, CSVcolumns,
         y1_new = np.interp(np.arange(0,Npositions), interpIndices, y_last)
         angles1_new = np.arctan2(y1_new[0]- y1_new[2], x1_new[0]- x1_new[2])
 
-        dataset_repaired["all_data"][frameIdx,CSVcolumns["body_column_x_start"] : 
+        position_data_repaired[frameIdx,CSVcolumns["body_column_x_start"] : 
                             (CSVcolumns["body_column_x_start"]+Npositions),0] = x0_new
-        dataset_repaired["all_data"][frameIdx,CSVcolumns["body_column_y_start"] :
+        position_data_repaired[frameIdx,CSVcolumns["body_column_y_start"] :
                             (CSVcolumns["body_column_y_start"]+Npositions),0] = y0_new
-        dataset_repaired["all_data"][frameIdx,CSVcolumns["body_column_x_start"] : 
+        position_data_repaired[frameIdx,CSVcolumns["body_column_x_start"] : 
                             (CSVcolumns["body_column_x_start"]+Npositions),1] = x1_new
-        dataset_repaired["all_data"][frameIdx,CSVcolumns["body_column_y_start"] :
+        position_data_repaired[frameIdx,CSVcolumns["body_column_y_start"] :
                             (CSVcolumns["body_column_y_start"]+Npositions),1] = y1_new
         dataset_repaired["heading_angle"][:, 0] = angles0_new
         dataset_repaired["heading_angle"][:, 1] = angles1_new
     
-    return dataset_repaired
+    return position_data_repaired, dataset_repaired
  
 
 def combine_all_values_constrained(datasets, keyName='speed_array_mm_s', 

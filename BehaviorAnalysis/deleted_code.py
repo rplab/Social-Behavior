@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Wed Jul  5 17:54:16 2023
-Last modified on August 14, 2024
+Last modified on Nov. 24, 2024
 
 Description
 -----------
@@ -11,6 +11,95 @@ Description
 Misc. deleted code
 
 """
+
+
+def write_pickle_file(list_for_pickle, dataPath, outputFolderName, 
+                      pickleFileName):
+    """
+    Write Pickle file containing datasets, etc., in the analysis folder
+    
+    Parameters
+    ----------
+    list_for_pickle : list of variables to save in the Pickle file
+    dataPath : CSV data path
+    outputFolderName : output path, should be params['output_subFolder']
+    pickleFileName : string, filename, including .pickle
+
+    Returns
+    -------
+    None.
+
+    """
+    pickle_folder = os.path.join(dataPath, outputFolderName)
+    
+    # Create output directory, if it doesn't exist
+    pickle_folder = os.path.join(dataPath, outputFolderName)
+    if not os.path.exists(pickle_folder):
+        os.makedirs(pickle_folder)
+
+    print(f'\nWriting pickle file: {pickleFileName}\n')
+    with open(os.path.join(pickle_folder, pickleFileName), 'wb') as handle:
+        pickle.dump(list_for_pickle, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def load_from_pickle(pickleFileName = None, basePath = None):
+    """
+
+    Load contents from Pickle file
+    Assumes pickle file contains datasets, CSVcolumns, expt_config, params;
+        returns these things
+    If pickleFileName is a full path name, load it
+    If pickleFileName is a fileName or partial path and basePath exists, 
+        join and load
+    If pickleFileName is empty, provide a dialog box
+    
+    Parameters
+    ----------
+    pickleFileName : pickle file name; can include path to append to basePath
+    basePath = None : main path for behavior analysis
+
+    Returns
+    -------
+    datasets : all datasets in the Pickle file
+    CSVcolumns : see behaviors_main()
+    expt_config : contains fps, arena_radius_mm, etc.
+    params : analysis parameters; see behaviors_main()
+    """
+
+    badFile = True # for verifying
+    while badFile:
+        if pickleFileName == None or pickleFileName == '':
+            root = tk.Tk()
+            root.withdraw()  # Hide the root window
+            titleString = 'Select pickle file'
+            pickleFileName = tk.filedialog.askopenfilename(title=titleString,
+                                                          filetypes=[("pickle files", "*.pickle")])
+        else:
+            if not os.path.isabs(pickleFileName):
+                # Get parent folder information
+                if basePath == None or basePath == '':
+                    # Get path from dialog
+                    root = tk.Tk()
+                    root.withdraw()  # Hide the root window
+                    basePath = tk.filedialog.askdirectory(title=f"Select folder containing specified pickle file, {pickleFileName}")
+                pickleFileName = os.path.join(basePath, pickleFileName)
+        if os.path.isfile(pickleFileName):
+            badFile = False
+        else:
+            print("\n\nInvalid pickle file path or name.")
+            print("Please try again; will force dialog box.")
+            pickleFileName = None
+
+    with open(pickleFileName, 'rb') as handle:
+        b = pickle.load(handle)
+
+    # Assign variables
+    datasets = b[0]
+    CSVcolumns = b[1]
+    expt_config = b[2]
+    params = b[3]
+    
+    return datasets, CSVcolumns, expt_config, params
 
 
 #%% Circling
@@ -464,3 +553,173 @@ def get_CSV_folder_and_filenames(expt_config, basePath, startString="results"):
             allCSVfileNames.append(filename)
 
     return dataPath, allCSVfileNames, subGroupName
+
+
+# from compare_experiment_behaviors
+
+def read_behavior_Excel(file_path, sheet_name = "Relative Durations"):
+    """
+    Reads an Excel file, loading the sheet called sheet_name 
+       (probably "Relative Durations") into dataframe df
+    In addition, first checks that sheet_name exists. 
+    If it does not, gives an error and print the sheets 
+    in the Excel file
+    Code mostly from Claude3
+
+    Parameters
+    ----------
+    file_path : file name and path
+    sheet_name : sheet name to load
+
+    Returns
+    -------
+    df : pandas dataframe
+    
+    """
+    
+    try:
+        # Read the Excel file
+        excel_file = pd.ExcelFile(file_path)
+        
+        # Check if "Relative Durations" sheet exists
+        if sheet_name in excel_file.sheet_names:
+            # Load the specified sheet into df1
+            df = excel_file.parse(sheet_name)
+        else:
+            # If the sheet doesn't exist, raise an error
+            raise ValueError(f"Sheet {sheet_name} not found. Available sheets: {excel_file.sheet_names}")
+            
+    except ValueError as e:
+        print(f"Error: {e}")
+        df = None  # Set df1 to None if the desired sheet is not found
+    
+    return df
+
+# from compare_experiment_behaviors
+def write_results_to_csv(stats1, stats2, output_file, stat_tests=None):
+    """ 
+    NOTE: As of Nov. 2024, this function is not used.
+    
+    Writes stats results from two calc_stats_dataframes() 
+    outputs and optional stat_tests to a CSV file
+    
+    Parameters:
+        stats1, stats2 : dictionaries with keys corresponding to column names, 
+                         each containing a dictionary of statistics
+        output_file : string, path to the output CSV file
+        stat_tests : optional, dictionary with statistical test results
+    """
+    required_keys = {'column_name', 'mean', 'N', 'std', 'sem'}
+
+    # Verify keys in stats1 and stats2
+    for st in [stats1, stats2]:
+        for column, column_stats in st.items():
+            if set(column_stats.keys()) != required_keys:
+                raise ValueError(f"Invalid keys in stats dictionary. Expected {required_keys}, "
+                                 f"but got {set(column_stats.keys())} for column {column}")
+
+    headers = ['column_name', 
+               'mean_1', 'N_1', 'std_1', 'sem_1',
+               'mean_2', 'N_2', 'std_2', 'sem_2']
+    
+    if stat_tests is not None:
+        headers.extend(['p_MWU', 'p_KS'])
+    
+    with open(output_file, 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(headers)
+        
+        for column in stats1.keys():
+            if column in stats2:
+                row = [
+                    column,
+                    '{:.3G}'.format(stats1[column]['mean']),
+                    '{:.3G}'.format(stats2[column]['mean']),
+                    str(stats1[column]['N']),
+                    str(stats2[column]['N']),
+                    '{:.3G}'.format(stats1[column]['std']),
+                    '{:.3G}'.format(stats2[column]['std']),
+                    '{:.3G}'.format(stats1[column]['sem']),
+                    '{:.3G}'.format(stats2[column]['sem'])
+                ]
+                
+                if stat_tests is not None and column in stat_tests:
+                    row.extend([
+                        '{:.3G}'.format(stat_tests[column]['p_MWU']),
+                        '{:.3G}'.format(stat_tests[column]['p_KS'])
+                    ])
+                
+                writer.writerow(row)
+
+# from compare_experiment_behaviors
+def verify_and_get_column_headings(df1, df2):
+    # Get column headings for both DataFrames
+    # Check that both are the same
+    # Code from Claude3
+    headings1 = list(df1.columns)
+    headings2 = list(df2.columns)
+
+    # Check if the headings are identical
+    if headings1 == headings2:
+        return headings1
+    else:
+        # If headings don't match, find the differences
+        diff1 = set(headings1) - set(headings2)
+        diff2 = set(headings2) - set(headings1)
+        
+        error_message = "Column headings are not the same.\n"
+        if diff1:
+            error_message += f"Columns in df1 but not in df2: {diff1}\n"
+        if diff2:
+            error_message += f"Columns in df2 but not in df1: {diff2}"
+        
+        raise ValueError(error_message)
+        
+        
+# from compare_experiment_behaviors
+def ratio_with_sim_uncertainty(x, sigx, y, sigy, n_samples=10000):
+    """
+    Calculate the ratio of y to x with asymmetric uncertainties 
+       estimated from simulated normal distribution.
+    x are the mean values for various behaviors, with s.e.m. sigx;
+    y are the mean values for various behaviors, with s.e.m. sigy;
+    To estimate uncertainty, make a Gaussian random distribution 
+        and draw x, y pairs; calculate median (not mean, to avoid
+        skew and negative numbers) and upper and lower 1 sigma
+        percentiles of this.
+    A bit silly -- should do a bootstrap on the original data that x 
+    and y came from -- but this is a fine estimate.
+    
+    Parameters:
+        x (array-like): Array of x values, one per behavior
+        sigx (array-like): Array of s.e.m. of each x value.
+        y (array-like): like x.
+        sigy (array-like): like x.
+        n_samples (int): Number of samples to generate. Default 10000.
+    
+    Returns:
+        r_mean (float): Mean ratio of y to x for each behavior
+        r_lower (float): Lower bound of the uncertainty in the ratio.
+        r_upper (float): Upper bound of the uncertainty in the ratio.
+    """
+    
+    N_behaviors = len(x)
+    
+    # Initialize array to store ratios
+    ratios = np.zeros(N_behaviors)
+    r_lower = np.zeros(N_behaviors)
+    r_upper = np.zeros(N_behaviors)
+    
+    # Bootstrap resampling
+    for j in range(N_behaviors):
+        # random values
+        x_sim = np.random.normal(loc=x[j], scale=sigx[j], size=n_samples)
+        y_sim = np.random.normal(loc=y[j], scale=sigy[j], size=n_samples)
+        r_sim = y_sim / x_sim
+                
+        # Calculate ratios for resampled data
+        ratios[j] = np.median(r_sim)
+        r_lower[j] = ratios[j] - np.percentile(r_sim, 16)
+        r_upper[j] = np.percentile(r_sim, 84) - ratios[j]
+        
+    return ratios, r_lower, r_upper
