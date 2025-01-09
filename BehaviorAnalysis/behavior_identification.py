@@ -445,6 +445,7 @@ def get_inferred_contact_frames(position_data, dataset, CSVcolumns, frameWindow,
     ## Method (ii)
     # shouldn't need to be a set, but can't hurt.
     badFrames_allFrames = set(dataset["bad_bodyTrack_frames"]["edit_frames"])
+
     contact_inferred_distance_threshold_px = contact_inferred_distance_threshold_mm*1000/dataset["image_scale"]
     inf_contact_frames_2 = []
     Nfish = body_x.shape[2]
@@ -454,8 +455,8 @@ def get_inferred_contact_frames(position_data, dataset, CSVcolumns, frameWindow,
     blocks = []
     current_block = []
     
-    minFrame = int(max(0, min(badFrames_allFrames)-1))
-    maxFrame = int(min(body_x.shape[0], max(badFrames_allFrames)+2))
+    minFrame = int(max(1, min(badFrames_allFrames, default = 1)))
+    maxFrame = int(min(body_x.shape[0]+1, max(badFrames_allFrames)))
     for f in range(minFrame, maxFrame):
         # print('testing f: ', f)
         if f in badFrames_allFrames:
