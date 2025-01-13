@@ -398,6 +398,7 @@ def get_inferred_contact_frames(position_data, dataset, CSVcolumns, frameWindow,
        frames, and in which fish have not moved much during this period, 
        accounting for possibly switched Track IDs 
        (total distance < Nfish*contact_inferred_distance_threshold).
+    If there are no bad frames, return an empty array
     
     Args:
         position_data : position data for this dataset, presumably all_position_data[j]
@@ -445,6 +446,10 @@ def get_inferred_contact_frames(position_data, dataset, CSVcolumns, frameWindow,
     ## Method (ii)
     # shouldn't need to be a set, but can't hurt.
     badFrames_allFrames = set(dataset["bad_bodyTrack_frames"]["edit_frames"])
+
+    # If there are no bad frames, return the empty array. FUNCTION ENDS!
+    if not badFrames_allFrames:
+        return np.array(inf_contact_frames_1)
 
     contact_inferred_distance_threshold_px = contact_inferred_distance_threshold_mm*1000/dataset["image_scale"]
     inf_contact_frames_2 = []
