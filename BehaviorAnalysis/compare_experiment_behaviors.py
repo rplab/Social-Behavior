@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Fri Dec. 1, 2023
-Last modified on Nov. 27, 2024
+Last modified on January 14, 2025
 
 Description
 -----------
@@ -17,10 +17,7 @@ for description of the code and process.
 Also "Behavior Code Revisions November 2023" document
 
 Inputs:
-    None.
-    - manually modify main() to specify the path and file names corresponding
-        to each experiment name
-    - run this program
+    None; run this program
     
 Outputs:
     - Makes, saves graphs
@@ -473,7 +470,7 @@ def plot_cols_side_by_side(stats_both, df_both, exclude_from_all,
     
 
 def plot_behavior_ratio(column_ratios, dataLabels = ('Set1', 'Set2'),
-                        showLegend = True, outputFileName = None):
+                        showLegend = True, titleSheet = '', outputFileName = None):
     """
     Plot the ratios of behavior frequencies (ratio of means
     with uncertainty) found in datasets 1 and 2 versus each other;
@@ -485,6 +482,7 @@ def plot_behavior_ratio(column_ratios, dataLabels = ('Set1', 'Set2'),
     column_ratios : dictionary of df2/df2 column ratios and uncertainties
     dataLabels : tuple of dataLabel1, 2 for labeling plots
     showLegend : if true, show a legend
+    titleSheet : append to title of plot
     outputFileName : filename for figure output, if not None
     
     Returns
@@ -510,7 +508,7 @@ def plot_behavior_ratio(column_ratios, dataLabels = ('Set1', 'Set2'),
 
     # Set labels and title
     plt.ylabel(f"Ratio: {dataLabel_2} / {dataLabel_1}", fontsize=16)
-    plt.title("Ratios of Behavior Properties", fontsize=16)
+    plt.title(f"{titleSheet} Ratios of Behaviors", fontsize=16)
 
     current_x_limits = plt.xlim()
     # dashed line at ratio = 1
@@ -566,29 +564,42 @@ def calculate_column_ratios(df1, df2, Nbootstrap=1000, exclude_columns=[]):
     for col in analyze_columns:
         values1 = df1[col].values
         values2 = df2[col].values
-        # Initialize arrays to store bootstrap results
-        ratios = np.zeros(Nbootstrap)
-        # Perform bootstrap resampling
-        for j in range(Nbootstrap):
-            # Resample with replacement
-            sample1 = np.random.choice(values1, size=len(values1), replace=True)
-            sample2 = np.random.choice(values2, size=len(values2), replace=True)
-            
-            # Calculate ratio of means for this resampling
-            ratios[j] = np.mean(sample2) / np.mean(sample1)
-            
-        # Remove zeros or inf
-        ratios = ratios[np.isfinite(ratios)]
-        ratios = ratios[np.abs(ratios)>0.0]
         
-        # Store results for this column
-        thismean = np.mean(ratios)
-        column_ratios[col] = {
-            'mean': thismean,
-            'uncertainty': np.std(ratios),
-            'unc_lower': thismean - np.percentile(ratios, 16),
-            'unc_upper': np.percentile(ratios, 84) - thismean
-        }
+        # Are all the array values zero?
+        all_zero = all(value == 0 for value in values1) and \
+            all(value == 0 for value in values2)
+        
+        if all_zero:
+            column_ratios[col] = {
+                'mean': np.nan,
+                'uncertainty': np.nan,
+                'unc_lower': np.nan,
+                'unc_upper': np.nan
+            }            
+        else:
+            # Initialize arrays to store bootstrap results
+            ratios = np.zeros(Nbootstrap)
+            # Perform bootstrap resampling
+            for j in range(Nbootstrap):
+                # Resample with replacement
+                sample1 = np.random.choice(values1, size=len(values1), replace=True)
+                sample2 = np.random.choice(values2, size=len(values2), replace=True)
+                
+                # Calculate ratio of means for this resampling
+                ratios[j] = np.mean(sample2) / np.mean(sample1)
+                
+            # Remove zeros or inf
+            ratios = ratios[np.isfinite(ratios)]
+            ratios = ratios[np.abs(ratios)>0.0]
+            
+            # Store results for this column
+            thismean = np.mean(ratios)
+            column_ratios[col] = {
+                'mean': thismean,
+                'uncertainty': np.std(ratios),
+                'unc_lower': thismean - np.percentile(ratios, 16),
+                'unc_upper': np.percentile(ratios, 84) - thismean
+            }
         
         #plt.figure()
         #plt.hist(ratios, bins=50)
@@ -987,6 +998,7 @@ def main():
                                  'perp_smaller_fish_sees',
                                  'contact_larger_fish_head',
                                  'contact_smaller_fish_head',
+                                 'edge_frames', 
                                  'bad_bodyTrack_frames'])
     
     # Exclude from log-log plot
@@ -1046,7 +1058,7 @@ def main():
         # Note that I'm plotting stats of set 2/ set 1,
         # to match "y / x" from the earlier graph
         plot_behavior_ratio(column_ratios, (dataLabels[0], dataLabels[1]),
-                            showLegend=False,
+                            showLegend=False, titleSheet = sheet_name, 
                             outputFileName=ratio_output_path)
         
         sidebyside_output_name = f"{baseName}_{sheet_name}_BehaviorSideBySide{out_ext}"
