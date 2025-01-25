@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Split from behavior_identification.py on July 22, 2024
-Last modified Dec. 19, 2024 -- Raghu Parthasarathy
+Last modified Jan. 25, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -207,20 +207,14 @@ def get_single_fish_characterizations(all_position_data, datasets, CSVcolumns,
         # C-bends, R-bends, and J-bends; each is a dictionary with Nfish 
         # keys, one for each fish, each containing a numpy array of frames
         # Note that "isBending" (minimal threshold) has already been determined
-        Cbend_frames_each = get_Cbend_frames(datasets[j],  
-                                             params["bend_Cmin_deg"])
-        Rbend_frames_each = get_Rbend_frames(datasets[j],  
-                                             (params["bend_Jmax_deg"], 
-                                              params["bend_Cmin_deg"]))
-        Jbend_frames_each = get_Jbend_frames(datasets[j],  
-                                             (params["bend_min_deg"], 
-                                              params["bend_Jmax_deg"]))
+        
+        Jbend_frames_each, Rbend_frames_each, Cbend_frames_each = \
+            get_bend_behavior_frames(datasets[j], params)
+        
         # numpy array of frames with C-bend for *any* fish
-        Cbend_frames_any = np.unique(np.concatenate(list(Cbend_frames_each.values())))
-        # numpy array of frames with R-bend for *any* fish
-        Rbend_frames_any = np.unique(np.concatenate(list(Rbend_frames_each.values())))
-        # numpy array of frames with J-bend for *any* fish
-        Jbend_frames_any = np.unique(np.concatenate(list(Jbend_frames_each.values())))
+        Cbend_frames_any = np.unique(np.concatenate(Cbend_frames_each))
+        Rbend_frames_any = np.unique(np.concatenate(Rbend_frames_each))
+        Jbend_frames_any = np.unique(np.concatenate(Jbend_frames_each))
         
         # For C-bends, R-bends, and J-bends, for each fish and for any fish,
         # make a dictionary containing frames, 
@@ -231,11 +225,10 @@ def get_single_fish_characterizations(all_position_data, datasets, CSVcolumns,
         #    arbitrary number of elements in the Cbend_frames_each, 
         #    RBend_frames_each, and Jbend_frames_each dictionaries
 
-        Ce_arrays = [Cbend_frames_each[key] for key in sorted(Cbend_frames_each.keys())]
-        Re_arrays = [Rbend_frames_each[key] for key in sorted(Rbend_frames_each.keys())]
-        Je_arrays = [Jbend_frames_each[key] for key in sorted(Jbend_frames_each.keys())]
-        CRJ_arrays = Ce_arrays + [Cbend_frames_any] + Re_arrays + [Rbend_frames_any] \
-                     + Je_arrays + [Jbend_frames_any] 
+        CRJ_arrays = Cbend_frames_each + [Cbend_frames_any] \
+                     + Rbend_frames_each + [Rbend_frames_any] \
+                     + Jbend_frames_each + [Jbend_frames_any] 
+
         # Create the second tuple of strings
         CRJ_keys = tuple(f'Cbend_Fish{i}' for i in range(len(Cbend_frames_each))) + ('Cbend_any',) \
                   + tuple(f'Rbend_Fish{i}' for i in range(len(Rbend_frames_each))) + ('Rbend_any',) \
@@ -731,10 +724,98 @@ def get_isBending_frames(dataset, bend_angle_threshold_deg = 10.0):
     return isBending_frames_each, isBending_frames_any, isBending_frames_all
 
 
+def get_bend_behavior_frames(dataset, params):
+    """
+    Analyze bend behaviors for each fish in the dataset.
+    Find frames in which one or more fish have a J, R, or C-bend.
+    Find blocks of frames with bend angle above the minimum threshold, and then
+    identify this block as J, C, or R based on the maximum bend angle in that block
+    
+    Inputs:
+        dataset: dataset dictionary of all behavior information for a given expt.
+                 Must include 'bend_angle' (radians) and 'frameArray'
+        params: Dictionary containing bend angle thresholds in degrees
+    Returns:
+        Jbend_frames: Frames with J-bends for each fish
+        Rbend_frames: Frames with R-bends for each fish
+        Cbend_frames: Frames with C-bends for each fish
+        Each of these is a dictionary with keys for each fish number (typically
+                       0, 1) each of which contains a numpy array of frames with 
+                       identified bend frames for each fish
+    
+    """
+    # Convert bend angles from radians to degrees
+    # bend_angles_deg = np.rad2deg(dataset['bend_angle'])
+    
+    # Extract parameters
+    bend_min_rad = params['bend_min_deg']*np.pi/180.0
+    bend_Cmin_rad = params['bend_Cmin_deg']*np.pi/180.0
+    bend_Jmax_rad = params['bend_Jmax_deg']*np.pi/180.0
+    
+    # Get number of fish and frames
+    Nfish = dataset['bend_angle'].shape[1]
+    Nframes = dataset['bend_angle'].shape[0]
+    
+    # Initialize output arrays
+    Jbend_frames = [None] * Nfish
+    Rbend_frames = [None] * Nfish
+    Cbend_frames = [None] * Nfish
+    
+    # Iterate through each fish
+    for fish in range(Nfish):
+        # Initialize boolean arrays
+        isJbend = np.zeros(Nframes, dtype=bool)
+        isRbend = np.zeros(Nframes, dtype=bool)
+        isCbend = np.zeros(Nframes, dtype=bool)
+        
+        # Find contiguous blocks of frames above bend_min
+        above_min = dataset['bend_angle'][:, fish] > bend_min_rad
+        above_min_int = above_min.astype(int)
+        transitions = np.diff(above_min_int)
+        
+        # Find start and end of contiguous blocks
+        # Find block starts (transitions from 0 to 1)
+        block_starts = np.where(transitions == 1)[0] + 1
+        # Find block ends (transitions from 1 to 0)
+        block_ends = np.where(transitions == -1)[0]
+        
+        # Handle edge cases if the array starts or ends with True
+        if above_min[0]:
+            block_starts = np.concatenate(([0], block_starts))
+        if above_min[-1]:
+            block_ends = np.concatenate((block_ends, [len(above_min) - 1]))
+    
+        # Ensure starts and ends match
+        assert len(block_starts) == len(block_ends), "Mismatch in block starts and ends"
+
+        # Analyze each contiguous block
+        for start, end in zip(block_starts, block_ends):
+            # Handle single-frame blocks and multi-frame blocks
+            block_max = np.max(dataset['bend_angle'][start:end+1, fish]) if start < end else dataset['bend_angle'][start, fish]
+            if block_max > bend_Cmin_rad:
+                # C-bend
+                isCbend[start:end+1] = True
+            elif bend_Jmax_rad < block_max <= bend_Cmin_rad:
+                # R-bend
+                isRbend[start:end+1] = True
+            elif block_max <= bend_Jmax_rad:
+                # J-bend
+                isJbend[start:end+1] = True
+ 
+        
+        # Store frames for each bend type
+        Jbend_frames[fish] = dataset['frameArray'][isJbend]
+        Rbend_frames[fish] = dataset['frameArray'][isRbend]
+        Cbend_frames[fish] = dataset['frameArray'][isCbend]
+    
+    return Jbend_frames, Rbend_frames, Cbend_frames
+
+
+
 def get_Cbend_frames(dataset, Cbend_threshold = 100.0):
     """ 
-    Find frames in which one or more fish have a JC-bend: bend angle above
-        the threshols.
+    Find frames in which one or more fish have a C-bend: bend angle above
+        the threshold.
     Inputs:
         dataset: dataset dictionary of all behavior information for a given expt.
                  Must include 'bend_angle' (radians) and 'frameArray'
