@@ -26,6 +26,7 @@ from toolkit import wrap_to_pi, combine_all_values_constrained, \
     plot_function_allSets, behaviorFrameCount_all, make_frames_dictionary
 from behavior_identification_single import average_bout_trajectory_allSets
 from scipy.stats import skew
+import itertools
 # from circle_fit_taubin import TaubinSVD
 
 
@@ -495,33 +496,42 @@ def get_inferred_contact_frames(position_data, dataset, CSVcolumns, frameWindow,
             if before_frame < 0 or after_frame >= body_x.shape[0]:
                 continue
             
+            # Get the indices of before_frame and after_frame in dataset["frameArray"]
+            before_frame_idx = np.where(dataset["frameArray"] == before_frame)[0][0]
+            after_frame_idx = np.where(dataset["frameArray"] == after_frame)[0][0]
+
             # Calculate head distances for each fish pair
             closest_distances = []
-            for j in range(Nfish):
-                # Head position is the first marker (index 0)
-                head_before_j = (body_x[before_frame, 0, j], 
-                                 body_y[before_frame, 0, j])
-                
-                # Find minimum distance for this fish
-                min_dist = np.inf
-                for k in range(Nfish):
-                    if j == k:
-                        continue
-                    head_after_k = (body_x[after_frame, 0, k], 
-                                    body_y[after_frame, 0, k])
-                    # Euclidean distance
+            min_total_distance = np.inf
+            best_mapping = None
+            
+            # Generate all possible one-to-one mappings
+            for mapping in itertools.permutations(range(Nfish)):
+                total_distance = 0
+                distances = []
+                for j in range(Nfish):
+                    head_before_j = (body_x[before_frame_idx, 0, j], 
+                                     body_y[before_frame_idx, 0, j])
+                    head_after_k = (body_x[after_frame_idx, 0, mapping[j]], 
+                                    body_y[after_frame_idx, 0, mapping[j]])
                     dist = np.sqrt(
                         (head_before_j[0] - head_after_k[0])**2 + 
                         (head_before_j[1] - head_after_k[1])**2
                     )
-                    min_dist = min(min_dist, dist)
+                    distances.append(dist)
+                    total_distance += dist
                 
-                closest_distances.append(min_dist)
+                # Check if this mapping has the minimal total distance
+                if total_distance < min_total_distance:
+                    min_total_distance = total_distance
+                    best_mapping = distances
+            
+            closest_distances = best_mapping
             
             # Check if total closest distances exceed threshold
             if np.sum(closest_distances) <= (Nfish * contact_inferred_distance_threshold_px):
                 refined_contacts.extend(block)
-        
+                
         inf_contact_frames_2 = np.array(sorted(refined_contacts), dtype=int)
 
     ## Combine, and remove duplication of frames
@@ -530,7 +540,7 @@ def get_inferred_contact_frames(position_data, dataset, CSVcolumns, frameWindow,
                                              inf_contact_frames_2), axis=0)
     else:
         inf_contact_frames = inf_contact_frames_1
-    
+            
     return inf_contact_frames
 
 

@@ -247,13 +247,20 @@ def main():
             behavior_keys.append('anyPairBehavior')
             pair_behavior_frames['anyPairBehavior'] = all_social_frames
 
-            # For each behavior, a dictionary containing frames, 
-            # frames with "bad" elements removed,
-            # and a 2xN array of initial frames and durations
+            # For each behavior, a dictionary containing frames, frames with
+            # "bad" elements removed, and a 2xN array of initial frames 
+            # and durations
+            # For most behaviors, will exclude bad tracking frames,
+            # but contact_any (because of contact_inferred) will keep these
             for b_key in behavior_keys:
+                keys_to_keep_badTrFrames = ['contact_any', 'contact_inferred']
+                if b_key in keys_to_keep_badTrFrames:
+                    tuple_of_frames_to_reject = (datasets[j]["edge_frames"]["raw_frames"],)
+                else :
+                    tuple_of_frames_to_reject = (datasets[j]["edge_frames"]["raw_frames"],
+                     datasets[j]["bad_bodyTrack_frames"]["raw_frames"])
                 datasets[j][b_key] = make_frames_dictionary(pair_behavior_frames[b_key],
-                                              (datasets[j]["edge_frames"]["raw_frames"],
-                                               datasets[j]["bad_bodyTrack_frames"]["raw_frames"]),
+                                               tuple_of_frames_to_reject,
                                                behavior_name = b_key,
                                                Nframes=datasets[j]['Nframes'])
             
