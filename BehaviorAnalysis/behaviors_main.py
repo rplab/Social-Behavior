@@ -7,15 +7,15 @@
 # First version  : Estelle Trieu 9/19/2022
 # Re-written by : Raghuveer Parthasarathy (2023)
 # version ='2.0' Raghuveer Parthasarathy -- begun May 2023; see notes.
-# last modified: Raghuveer Parthasarathy, Dec. 19, 2024
+# last modified: Raghuveer Parthasarathy, Feb. 4, 2025
 # ---------------------------------------------------1------------------------
 """
 
 import os
 import numpy as np
 import yaml
-from toolkit import get_basePath, get_loading_option, load_dict_from_pickle, \
-        assign_variables_from_dict, load_expt_config, load_analysis_parameters, \
+from toolkit import get_basePath, get_loading_option, load_and_assign_from_pickle, \
+        load_expt_config, load_analysis_parameters, \
         get_output_pickleFileNames, \
         check_analysis_parameters, set_outputFile_params, get_Nfish, \
         get_CSV_filenames, load_all_position_data, fix_heading_angles, \
@@ -129,24 +129,10 @@ def main():
     elif loading_option == 'load_from_pickle':
         # Load positions, datasets dictionary, etc., from pickle files.  
         # May contain analysis, but this will be redone
-
-        print('\n\nLoading from Pickle.')
-        print('\n   Note that this requires *two* pickle files:')
-        print('     (1) position data, probably in the CSV folder')
-        print('     (2) "datasets" and other information, probably in Analysis folder')
-        print('For each, enter the full path or just the filename; leave empty for a dialog box.')
-        print('\n')
-        pickleFileName1 = input('(1) Pickle file name for position data: ')
-        if pickleFileName1 == '': pickleFileName1 = None
-        pos_dict = load_dict_from_pickle(pickleFileName=pickleFileName1)
-        all_position_data = assign_variables_from_dict(pos_dict, inputSet = 'positions')
-        pickleFileName2 = input('(2) Pickle file name for datasets etc.: ')
-        if pickleFileName2 == '': pickleFileName2 = None
-        data_dict = load_dict_from_pickle(pickleFileName=pickleFileName2)
-        variable_tuple = assign_variables_from_dict(data_dict, inputSet = 'datasets')
+        all_position_data, variable_tuple = load_and_assign_from_pickle()
         (datasets, CSVcolumns, expt_config, params, N_datasets, Nfish,
          basePath, dataPath, subGroupName) = variable_tuple
-
+        
         # allow revision of experiment name
         new_expt_name = input(f'Enter the experiment name; default {expt_config["expt_name"]} (unchanged): ')
         if new_expt_name != '':

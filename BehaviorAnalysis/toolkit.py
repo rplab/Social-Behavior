@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, December 19, 2024
+Last modified by Rghuveer Parthasarathy, Feb. 4, 2025
 
 Description
 -----------
@@ -785,6 +785,37 @@ def write_pickle_file(dict_for_pickle, dataPath, outputFolderName, pickleFileNam
         pickle.dump(dict_for_pickle, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
+def load_and_assign_from_pickle():
+    """
+    Calls load_dict_from_pickle() and assign_variables_from_dict()
+    to load *two* pickle files and assign variables.
+    Asks users for filenames.
+    
+    Inputs:
+        None
+        
+    Outputs
+        all_position_data : all position data, from first pickle file
+        variable_tuple : tuple of variables, from the second pickle file
+    
+    """
+    print('\n\nLoading from Pickle.')
+    print('\n   Note that this requires *two* pickle files:')
+    print('     (1) position data, probably in the CSV folder')
+    print('     (2) "datasets" and other information, probably in Analysis folder')
+    print('For each, enter the full path or just the filename; leave empty for a dialog box.')
+    print('\n')
+    pickleFileName1 = input('(1) Pickle file name for position data; blank for dialog box: ')
+    if pickleFileName1 == '': pickleFileName1 = None
+    pos_dict = load_dict_from_pickle(pickleFileName=pickleFileName1)
+    all_position_data = assign_variables_from_dict(pos_dict, inputSet = 'positions')
+    pickleFileName2 = input('(2) Pickle file name for datasets etc.; blank for dialog box: ')
+    if pickleFileName2 == '': pickleFileName2 = None
+    data_dict = load_dict_from_pickle(pickleFileName=pickleFileName2)
+    variable_tuple = assign_variables_from_dict(data_dict, inputSet = 'datasets')
+    
+    return all_position_data, variable_tuple
+    
 def load_dict_from_pickle(pickleFileName=None):
     """
     Load contents from pickle file

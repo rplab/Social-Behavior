@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Split from behavior_identification.py on July 22, 2024
-Last modified Jan. 25, 2025 -- Raghu Parthasarathy
+Last modified Feb. 4, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -969,7 +969,7 @@ def average_bout_trajectory_oneSet(dataset, keyName = "speed_array_mm_s",
     
     for k in range(Nfish):
         # Start frames and durations for bouts (i.e. motion)
-        moving_frameInfo = dataset[f"isActive{k}"]["combine_frames"]
+        moving_frameInfo = dataset[f"isActive_Fish{k}"]["combine_frames"]
         
         # Remove columns based on conditions (start and end of dataset)
         valid_columns = (
