@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, Feb. 4, 2025
+Last modified by Rghuveer Parthasarathy, Feb. 11, 2025
 
 Description
 -----------
@@ -893,6 +893,176 @@ def assign_variables_from_dict(dict_of_variables, inputSet):
     return variable_tuple
 
 
+def combine_expts_from_pickle():
+    """
+    Load data from multiple experiments, each with two pickle files,
+    combine the variables, and save the output to two new pickle files.
+    
+    Asks user for number of experiments to combine and loads data from
+    each experiment's pickle files. Combines position data and datasets,
+    verifies consistency of parameters, and creates new combined output.
+    
+    Also can write new Excel, CSV, YAML files based on the composite 
+    dataset – optional, asks user.
+    
+    Returns
+    -------
+    None
+    """
+    # Get number of experiments to combine
+    while True:
+        try:
+            N_expts = int(input('\nHow many experiments would you like to combine? '))
+            if N_expts > 0:
+                break
+            print("Please enter a positive number.")
+        except ValueError:
+            print("Please enter a valid integer.")
+    
+    # Initialize lists to store data from all experiments
+    all_position_data_combined = []
+    datasets_combined = []
+    all_Nfish = []
+    all_expt_configs = []
+    all_params = []
+    all_subGroupNames = []
+    
+    # Load data from each experiment
+    for i in range(N_expts):
+        print(f'\nLoading data for experiment {i+1} of {N_expts}')
+        pos_data, var_tuple = load_and_assign_from_pickle()
+        
+        # Unpack variables from tuple
+        (datasets, CSVcolumns, expt_config, params, N_datasets, 
+         Nfish, basePath, dataPath, subGroupName) = var_tuple
+        
+        # Verify datasets length matches N_datasets
+        if len(datasets) != N_datasets:
+            raise ValueError(f'Experiment {i+1}: Length of datasets ({len(datasets)}) ' 
+                           f'does not match N_datasets ({N_datasets})')
+        
+        # Store data for later combining/comparison
+        all_position_data_combined.extend(pos_data)
+        datasets_combined.extend(datasets)
+        all_Nfish.append(Nfish)
+        all_expt_configs.append(expt_config)
+        all_params.append(params)
+        all_subGroupNames.append(subGroupName)
+    
+    # Verify Nfish is the same for all experiments
+    if len(set(all_Nfish)) != 1:
+        raise ValueError(f'Nfish varies across experiments: {all_Nfish}')
+    Nfish = all_Nfish[0]
+    
+    # Combine expt_config dictionaries
+    combined_expt_config = {}
+    for key in all_expt_configs[0].keys():
+        if key in ['imageScaleLocation', 'arenaCentersLocation']:
+            combined_expt_config[key] = None
+        else:
+            values = [config[key] for config in all_expt_configs]
+            if len(set(str(v) for v in values)) > 1:  # Convert to string for comparison
+                print(f'\nDifferent values found for expt_config["{key}"]:')
+                for i, v in enumerate(values):
+                    print(f'  Experiment {i+1}: {v}')
+                value = input('Enter value to use for combined dataset: ')
+                # Try to convert input to original type
+                orig_type = type(values[0])
+                try:
+                    combined_expt_config[key] = orig_type(value)
+                except ValueError:
+                    combined_expt_config[key] = value
+            else:
+                combined_expt_config[key] = values[0]
+    
+    # Combine params dictionaries
+    combined_params = {}
+    for key in all_params[0].keys():
+        if key == 'output_subFolder':
+            continue  # Skip this key as it will be set later
+        values = [p[key] for p in all_params]
+        if len(set(str(v) for v in values)) > 1:  # Convert to string for comparison
+            print(f'\nDifferent values found for params["{key}"]:')
+            for i, v in enumerate(values):
+                print(f'  Experiment {i+1}: {v}')
+            value = input('Enter value to use for combined dataset: ')
+            # Try to convert input to original type
+            orig_type = type(values[0])
+            try:
+                combined_params[key] = orig_type(value)
+            except ValueError:
+                combined_params[key] = value
+        else:
+            combined_params[key] = values[0]
+    
+    # Handle subGroupName
+    if len(set(all_subGroupNames)) > 1:
+        combined_subGroupName = all_subGroupNames
+    else:
+        combined_subGroupName = all_subGroupNames[0]
+    
+    # Get base filename for output
+    basePickleFileName = input('\nEnter base name for output pickle files; will add .pickle etc.: ')
+    outputPickleFileNames = [
+        f'{basePickleFileName}_positionData.pickle',
+        f'{basePickleFileName}_datasets.pickle'
+    ]
+    
+    # Get output path with option for text input or dialog
+    print('\nEnter output path or leave blank for dialog box (create folder if necessary):')
+    outputPath = input('Path: ').strip()
+    if not outputPath:
+        root = tk.Tk()
+        root.withdraw()
+        outputPath = filedialog.askdirectory(title="Select output directory; create if necessary")
+        if not outputPath:  # If user cancels dialog
+            raise ValueError("No output path selected")
+    
+    # Get subfolder name with default "Analysis"
+    subfolderName = input('\nEnter name for analysis subfolder; default "Analysis": ').strip()
+    if not subfolderName:
+        subfolderName = "Analysis"
+    
+    # Create full output paths
+    outputSubPath = os.path.join(outputPath, subfolderName)
+    
+    # Create subfolder if it doesn't exist
+    if not os.path.exists(outputSubPath):
+        os.makedirs(outputSubPath)
+    
+    # Create and write output pickle files
+    variables_dict = {'all_position_data': all_position_data_combined}
+    write_pickle_file(variables_dict, dataPath=outputPath,
+                     outputFolderName='',
+                     pickleFileName=outputPickleFileNames[0])
+    
+    # Update combined_params with output_subFolder
+    combined_params['output_subFolder'] = outputSubPath
+    
+    variables_dict = {
+        'datasets': datasets_combined,
+        'CSVcolumns': CSVcolumns,
+        'expt_config': combined_expt_config,
+        'params': combined_params,
+        'basePath': outputPath,  # Use outputPath as the new basePath
+        'dataPath': None,
+        'subGroupName': combined_subGroupName
+    }
+    write_pickle_file(variables_dict, dataPath=outputSubPath,
+                     outputFolderName='',
+                     pickleFileName=outputPickleFileNames[1])
+    
+    print('\nPickle files successfully combined and written to:')
+    print(f'  {os.path.join(outputPath, outputPickleFileNames[0])}')
+    print(f'  {os.path.join(outputSubPath, outputPickleFileNames[1])}')
+    
+    outputExcel = input('\nOutput Excel, CSV, and YAML files? y=yes, n=no: ')
+    if outputExcel.lower()=='y':
+        write_CSV_Excel_YAML(expt_config = combined_expt_config,
+                             params = combined_params, 
+                             dataPath = outputPath, 
+                             datasets = datasets_combined)
+
 
 def get_Nfish(datasets):
     # Check that the number of fish is the same for all datasets; note this
@@ -1339,11 +1509,12 @@ def plotAllPositions(position_data, dataset, CSVcolumns, arena_radius_mm,
 
 
     
-def write_output_files(params, dataPath, datasets):
+def write_output_files(params, output_path, datasets):
     """
     Write the output files (several) for all datasets
     Inputs:
         params : analysis parameters; we use the output file pathinfo
+        output_path : output path, probably os.path.join(dataPath, params['output_subFolder']
         dataPath : path containing CSV input files
         datasets : list of dictionaries: all dataset and analysis output
         
@@ -1355,7 +1526,6 @@ def write_output_files(params, dataPath, datasets):
     N_datasets = len(datasets)
     
     # Create output directory, if it doesn't exist
-    output_path = os.path.join(dataPath, params['output_subFolder'])
     if not os.path.exists(output_path):
         os.makedirs(output_path)
     
@@ -1416,6 +1586,7 @@ def write_output_files(params, dataPath, datasets):
                               params['allDatasets_markFrames_ExcelFile'])
     writer = pd.ExcelWriter(excel_file, engine='xlsxwriter')
     # Call the function to write frames for each dataset
+    print('   Marking behaviors in each frame for each dataset.')
     for j in range(N_datasets):
         # Annoyingly, Excel won't allow a worksheet name that's
         # more than 31 characters! Force it to use the last 31.
@@ -1425,12 +1596,11 @@ def write_output_files(params, dataPath, datasets):
     # Save and close the Excel file
     writer.close()
 
-    # For each dataset, summary  text file and basic measurements    
+    print('   Writing summary text file and basic measurements for each dataset.')
+    # For each dataset, summary text file and basic measurements    
     for j in range(N_datasets):
-        
         # Write for this dataset: summary in text file
         write_behavior_txt_file(datasets[j], key_list_revised)
-        
         # Write for this dataset: frame-by-frame "basic measurements"
         write_basicMeasurements_txt_file(datasets[j])
         
@@ -1467,9 +1637,11 @@ def write_output_files(params, dataPath, datasets):
             initial_keys_revised.append(key)
             initial_strings_revised.append(name)
 
+    print('   Writing summary file of all behavior counts, durations.')
     write_behaviorCounts_Excel(params["allDatasets_ExcelFile"], 
                               datasets, key_list_revised, 
                               initial_keys_revised, initial_strings_revised)
+    print('   Done writing output files.')
 
 
         
@@ -1600,11 +1772,42 @@ def write_basicMeasurements_txt_file(dataset):
         f.write(",".join(headers) + "\n")
         f.write("\n".join(rows))
     
+    
+def write_CSV_Excel_YAML(expt_config, params, dataPath, datasets):
+    """
+    Write the output files (CSV, Excel, and YAML (parameters))
+    Calls write_output_files(), add_statistics_to_excel()
+    
+    expt_config : experimental configuration dictionary
+    params : analysis parameters
+    dataPath : primary output folder, e.g. with CSV files
+    datasets : list of dictionaries of datasets
+    
+    """
+    print(f'\nWriting to dataPath: {dataPath}')
+    # Write the output files (CSV, Excel)
+    output_path = os.path.join(dataPath, params['output_subFolder'])
+    write_output_files(params, output_path, datasets)
+    
+    # Modify the Excel sheet containing behavior counts to include
+    # summary statistics for all datasets (e.g. average for 
+    # each behavior)
+    add_statistics_to_excel(params['allDatasets_ExcelFile'])
+    
+    # Write a YAML file with parameters, combining expt_config,
+    # analysis parameters, and dataPath of subgroup
+    more_param_output = dict({'dataPath': dataPath})
+    all_outputs = expt_config | params | more_param_output
+    print('\nWriting output YAML file.')
+    with open('all_params.yaml', 'w') as file:
+        yaml.dump(all_outputs, file)
+    
+
 
 def mark_behavior_frames_Excel(writer, dataset, key_list, sheet_name):
     """
-    Create and fill in a sheet in an existing Excel file, marking all frames with behaviors
-    found in this dataset.
+    Create and fill in a sheet in an existing Excel file, marking all frames 
+    with behaviors found in this dataset.
     Args:
         writer (pandas.ExcelWriter): The ExcelWriter object representing the Excel file.
         dataset (dict): Dictionary with all dataset info.
@@ -1613,23 +1816,28 @@ def mark_behavior_frames_Excel(writer, dataset, key_list, sheet_name):
     Returns:
         N/A
     """
-    
     # Create an empty dataframe with column names
-    df = pd.DataFrame(columns=['Frame'] + key_list)
-    
-    # Add frame numbers to the 'Frame' column
     maxFrame = int(np.max(dataset["frameArray"]))
+    df = pd.DataFrame(columns=['Frame'] + key_list)
     df['Frame'] = range(1, maxFrame + 1)
     
-    # Fill the dataframe with 'X' for each behavior
+    # Vectorized marking of behavior frames
     for k in key_list:
+        # Create a boolean mask for frames to mark
+        frame_mask = np.zeros(maxFrame, dtype=bool)
+        
         for run_idx in range(dataset[k]["combine_frames"].shape[1]):
-            start_frame = dataset[k]["combine_frames"][0, run_idx]
-            duration = dataset[k]["combine_frames"][1, run_idx]
+            start_frame = int(dataset[k]["combine_frames"][0, run_idx])
+            duration = int(dataset[k]["combine_frames"][1, run_idx])
             end_frame = start_frame + duration - 1
-            df.loc[start_frame-1:end_frame-1, k] = 'X'.center(17)
+            
+            # Update mask for this run
+            frame_mask[start_frame-1:end_frame] = True
+        
+        # Assign 'X' to marked frames
+        df.loc[frame_mask, k] = 'X'.center(17)
     
-    # Write the dataframe to the Excel file as a new sheet
+    # Write the dataframe to the Excel file
     df.to_excel(writer, sheet_name=sheet_name, index=False)
 
 
@@ -1706,6 +1914,11 @@ def write_behaviorCounts_Excel(ExcelFileName, datasets, key_list,
 
 
 def add_statistics_to_excel(file_path='behaviorCounts.xlsx'):
+    """
+    Modify the Excel sheet containing behavior counts to include
+    summary statistics for all datasets (e.g. average for 
+    each behavior)
+    """
     # Load the Excel file
     xls = pd.ExcelFile(file_path)
     writer = pd.ExcelWriter(file_path, engine='openpyxl', mode='a')
@@ -2933,7 +3146,7 @@ def load_global_expt_config(config_path, config_file):
     with open(config_file_full, 'r') as f:
         all_config = yaml.safe_load(f)
     all_expt_names = list(all_config.keys())
-    print('\n\nALl experiments: ')
+    print('\n\nAll experiments: ')
     for j, key in enumerate(all_expt_names):
         print(f'  {j}: {key}')
 

@@ -7,7 +7,7 @@
 # First version  : Estelle Trieu 9/19/2022
 # Re-written by : Raghuveer Parthasarathy (2023)
 # version ='2.0' Raghuveer Parthasarathy -- begun May 2023; see notes.
-# last modified: Raghuveer Parthasarathy, Feb. 4, 2025
+# last modified: Raghuveer Parthasarathy, Feb. 11, 2025
 # ---------------------------------------------------1------------------------
 """
 
@@ -22,8 +22,7 @@ from toolkit import get_basePath, get_loading_option, load_and_assign_from_pickl
         repair_head_positions, \
         make_frames_dictionary, get_edgeRejection_frames_dictionary, \
         get_badTracking_frames_dictionary, \
-        write_output_files, write_pickle_file, \
-        add_statistics_to_excel
+        write_CSV_Excel_YAML, write_pickle_file
 from behavior_identification_single import get_single_fish_characterizations, \
         get_coord_characterizations
 from behavior_identification import extract_pair_behaviors, \
@@ -278,20 +277,8 @@ def main():
                           outputFolderName = params['output_subFolder'], 
                           pickleFileName = pickleFileNames[1])
     
-    # Write the output files (CSV, Excel)
-    write_output_files(params, dataPath, datasets)
-    
-    # Modify the Excel sheets with behavior counts to include
-    # summary statistics for all datasets (e.g. average for 
-    # each behavior)
-    add_statistics_to_excel(params['allDatasets_ExcelFile'])
-    
-    # Write a YAML file with parameters, combining expt_config,
-    # analysis parameters, and dataPath of subgroup
-    more_param_output = dict({'dataPath': dataPath})
-    all_outputs = expt_config | params | more_param_output
-    with open('all_params.yaml', 'w') as file:
-        yaml.dump(all_outputs, file)
+    # Write the output files (CSV, Excel, and YAML (parameters))
+    write_CSV_Excel_YAML(expt_config, params, dataPath, datasets)
     
     # Return to original directory
     os.chdir(cwd)
