@@ -2,8 +2,8 @@
 # behavior_correlations.py
 """
 Author:   Raghuveer Parthasarathy
-Created on Wed Sep  6 13:38:21 2023
-Last modified on June 15, 2024; moved "get_duration_info()" here
+Created on Wed Sept. 6, 2023
+Last modified on February 18, 2025
 
 Description
 -----------
@@ -25,6 +25,8 @@ import pandas as pd
 import csv
 from scipy.stats import linregress
 import pickle
+import tkinter as tk
+from tkinter import ttk
 
 
 def get_duration_info(CSVfilename = ''):
@@ -158,7 +160,8 @@ def calcDeltaFramesEvents(datasets):
                  Fourth key: "deltaFrames", the frame delays between A, B 
                              for all events.
     behavior_key_list : list of all behaviors considered
-behav_corr, behavior_key_list = calcDeltaFramesEvents(datasets)
+
+    To use: behav_corr, behavior_key_list = calcDeltaFramesEvents(datasets)
     """
 
     behavior_key_list = ["perp_noneSee", 
@@ -170,6 +173,8 @@ behav_corr, behavior_key_list = calcDeltaFramesEvents(datasets)
                         "contact_inferred", "tail_rubbing", 
                         "Cbend_Fish0", "Cbend_Fish1", 
                         "Jbend_Fish0", "Jbend_Fish1", 
+                        "Rbend_Fish0", "Rbend_Fish1", 
+                        "isActive_any", "isMoving_any",
                         "approaching_Fish0", "approaching_Fish1",
                         "fleeing_Fish0", "fleeing_Fish1",
                         ]
@@ -256,7 +261,7 @@ def bin_deltaFrames(behav_corr, behavior_key_list, binWidthFrames = 25,
                              between A, B for all events.
                  Fourth key (new): : 
                      "counts" : counts in each bin for A, B at deltaFrames
-    binCenters: bin centers, from bin edges used for histogram
+    binCenters: bin centers (frames), from bin edges used for histogram
     """
     # for histogram of deltaFrames. Bin centers and edges. 
     # Force 0.0 to be at the center of a bin
@@ -264,7 +269,8 @@ def bin_deltaFrames(behav_corr, behavior_key_list, binWidthFrames = 25,
     binCenters1 = -1.0*np.flipud(binCenters2)[:-1]
     binCenters = np.concatenate((binCenters1, binCenters2))
     binEdges = np.concatenate((binCenters - binWidthFrames/2.0, 
-                               np.array([np.max(binCenters)+binWidthFrames/2.0])))
+                               np.array([np.max(binCenters)+binWidthFrames/2.0 - 1])))
+    
     # Number of datasets
     N_datasets = len(behav_corr)
     for j in range(N_datasets):
@@ -275,7 +281,7 @@ def bin_deltaFrames(behav_corr, behavior_key_list, binWidthFrames = 25,
                 # Histogram counts for deltaFrames_AB
                 behav_corr[j][behavior_A][behavior_B]["counts"] = \
                     np.histogram(behav_corr[j][behavior_A][behavior_B]["deltaFrames"], 
-                                 bins=binEdges)[0] # [0] to only get the counts array
+                                 bins=binEdges)[0] # [0] to only get the counts array                   
 
     if outputPickleFileName != None:
         list_for_pickle = [behav_corr, binCenters, behavior_key_list]
@@ -285,25 +291,27 @@ def bin_deltaFrames(behav_corr, behavior_key_list, binWidthFrames = 25,
             pickle.dump(list_for_pickle, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return behav_corr, binCenters
-    
+
+
+
 def calcBehavCorrAllSets(behav_corr, behavior_key_list, binCenters):
     """
     Average the correlations (binned Delta Frames for a 
             given behavior, relative to all the behaviors) across datasets,
             normalizing the pooled counts (not normalizing per datset)
     
-
     Parameters
     ----------
     behav_corr : nested dictionary, output by calcDeltaFramesEvents()
                  and then bin_deltaFrames()
     behavior_key_list : list of all behaviors, used in calcDeltaFramesEvents()
-    binCenters : bin centers, for plotting
+    binCenters : bin centers
 
     Returns
     -------
     behav_corr_allSets : Likelihood of behaviors preceding / following
-                         other behaviors. Two initial keys:
+                         other behaviors. Three initial keys:
+                        behav_corr_allSets['normSimple']
                         behav_corr_allSets['normAcrossBehavior']
                         behav_corr_allSets['normAcrossTime']
                         For each next two keys are behaviors A, B; 
@@ -340,17 +348,22 @@ def calcBehavCorrAllSets(behav_corr, behavior_key_list, binCenters):
     behav_corr_sum_behaviorB = np.sum(behav_corr_array_sum, axis=1)
     # Sum over time (for each behavior B)
     behav_corr_sum_time = np.sum(behav_corr_array_sum, axis=2)
-    
+    # for normalizing by overall time (frames) considered
+    frameRange = np.max(binCenters)- np.min(binCenters)
 
     # Put this into a nested dictionary
     # initialize nested dictionaries for datasets
     # There's probably a better way to do this...
-    behav_corr_allSets = {'normAcrossBehavior' : {}, 'normAcrossTime': {}}
+    behav_corr_allSets = {'normSimple' : {}, 
+                          'normAcrossBehavior' : {}, 'normAcrossTime': {}}
     for ibA, bA in enumerate(behavior_key_list):
+        behav_corr_allSets['normSimple'][bA] = {}
         behav_corr_allSets['normAcrossBehavior'][bA] = {}
         behav_corr_allSets['normAcrossTime'][bA] = {}
         for ibB, bB in enumerate(behavior_key_list):
             # print(ibA, bA, ibB, bB)
+            behav_corr_allSets['normSimple'][bA][bB] = \
+                behav_corr_array_sum[ibA, ibB, :] / (N_datasets * frameRange)
             behav_corr_allSets['normAcrossBehavior'][bA][bB] = \
                 behav_corr_array_sum[ibA, ibB, :] / \
                 behav_corr_sum_behaviorB[ibA, :]
@@ -361,6 +374,60 @@ def calcBehavCorrAllSets(behav_corr, behavior_key_list, binCenters):
     return behav_corr_allSets
 
 
+def calc_corr_asymm(behav_corr_allSets, behavior_key_list, binCenters, 
+                    maxFrameDelay = None):
+    """
+    Calculate the temporal asymmetry in the correlation function between 
+    each pair of behaviors
+    Note that different correlations only differ in normalization, so doesn't
+    matter what we use. Will use 'normSimple'.
+
+    Parameters
+    ----------
+    behav_corr_allSets : dictionary of each type of correlation for each 
+        behavior pair. 
+        E.g. for simple probability, 
+            behav_corr_allSets['normSimple'][behaviorA][ behaviorB] 
+            is a numpy array of probabilities at each binCenters
+        
+    behavior_key_list : list of all behaviors, used in calcDeltaFramesEvents()
+
+    binCenters : numpy array
+        center of each Delta t bin.
+        
+    maxFrameDelay : the abs. value max frame delay to consider ; Default None: 
+        consider the full range over which correlations were calculated
+
+    Returns
+    -------
+    corr_asymm : dictionary of correlation asymmetry for each behavior pair
+
+    """
+    # Calculate the asymmetries. Use a nested dictionary
+    # initialize nested dictionaries for datasets
+    # There's probably a better way to do this...
+    if maxFrameDelay is None:
+        maxFrameDelay = np.max(binCenters) + 0.001 # add a slight offset
+    corr_asymm = {}
+    for ibA, bA in enumerate(behavior_key_list):
+        corr_asymm[bA] = {}
+        thisProbA = behav_corr_allSets['normSimple'][bA]
+        for ibB, bB in enumerate(behavior_key_list):
+            thisProbAplus = np.sum(thisProbA[bB][(binCenters>0) & 
+                                                 (binCenters <= maxFrameDelay)])
+            thisProbAminus = np.sum(thisProbA[bB][(binCenters<0) &
+                                                  (binCenters >= -1.0*maxFrameDelay)])
+            if (thisProbAplus + thisProbAminus) > 0.0:
+                corr_asymm[bA][bB] = (thisProbAplus - thisProbAminus) / \
+                    (thisProbAplus + thisProbAminus)
+            else:
+                corr_asymm[bA][bB] = 0.0 # technically undefined, but I want zeros
+            # print(corr_asymm[bA][bB])
+
+    return corr_asymm
+
+
+
 def plot_behaviorCorrelation(behav_corr_allSets, binCenters, 
                              behavior_key_list, behaviorA, behaviorB='',
                              fps = 1.0):
@@ -368,12 +435,12 @@ def plot_behaviorCorrelation(behav_corr_allSets, binCenters,
     Plot Behavior B likelihood following/preceding Behavior A
     Can plot a single A-B pair, or all B for a given A
     If a single A-B pair, also include the mean value as a dashed line
-    Plots both types of normalizations (across Behaviors and across Time)
+    Plots all types of normalizations (simple, across Behaviors, and across Time)
     
     Inputs:
     behav_corr_allSets : Likelihood of behaviors preceding / following
                          other behaviors. From calcBehavCorrAllSets()
-    binCenters : bin centers, for plotting
+    binCenters : bin centers (frames), for plotting
     behaviorA , B: (string) Behavior A, B, to plot, if  just plotting 
                    one pair. Leave B empty ('') to skip plotting
                    a single A-B pair, and only plot all pairs
@@ -383,38 +450,63 @@ def plot_behaviorCorrelation(behav_corr_allSets, binCenters,
 
     # Just one AB pair    
     if not behaviorB=='':
-        plt.figure()
+
+        plt.figure(figsize=(6,5))
+        plt.plot(binCenters/fps, behav_corr_allSets['normSimple'][behaviorA][behaviorB],
+                 color='mediumvioletred')
+        meanCorr = np.mean(behav_corr_allSets['normSimple'][behaviorA][behaviorB])
+        plt.plot(binCenters/fps, meanCorr*np.ones(binCenters.shape), 
+                 linestyle='dashed', color='orchid')
+        plt.xlabel(r'$\Delta$t (s)', fontsize=20)
+        plt.ylabel('Relative likelihood', fontsize=20)
+        plt.title(f'{behaviorA} then {behaviorB}; simple norm.', fontsize=22)
+        plt.xticks(fontsize=14)
+        plt.yticks(fontsize=14)
+
+        plt.figure(figsize=(6,5))
         plt.plot(binCenters/fps, behav_corr_allSets['normAcrossBehavior'][behaviorA][behaviorB],
                  color='darkturquoise')
         meanCorr = np.mean(behav_corr_allSets['normAcrossBehavior'][behaviorA][behaviorB])
         plt.plot(binCenters/fps, meanCorr*np.ones(binCenters.shape), 
                  linestyle='dashed', color='turquoise')
-        plt.xlabel('$\Delta$t (s)', fontsize=20)
+        plt.xlabel(r'$\Delta$t (s)', fontsize=20)
         plt.ylabel('Relative likelihood', fontsize=20)
-        plt.title(f'{behaviorA} then {behaviorB}; norm. across behaviors.')
+        plt.title(f'{behaviorA} then {behaviorB}; norm. across behaviors.', fontsize=22)
         plt.xticks(fontsize=14)
         plt.yticks(fontsize=14)
         
-        plt.figure()
+        plt.figure(figsize=(6,5))
         plt.plot(binCenters/fps, behav_corr_allSets['normAcrossTime'][behaviorA][behaviorB],
                  color='darkorange')
         meanCorr = np.mean(behav_corr_allSets['normAcrossTime'][behaviorA][behaviorB])
         plt.plot(binCenters/fps, meanCorr*np.ones(binCenters.shape), 
                  linestyle='dashed', color='gold')
-        plt.xlabel('$\Delta$t (s)', fontsize=20)
+        plt.xlabel(r'$\Delta$t (s)', fontsize=20)
         plt.ylabel('Relative likelihood; norm. across time', fontsize=20)
-        plt.title(f'{behaviorA} then {behaviorB}; norm. across time.')
+        plt.title(f'{behaviorA} then {behaviorB}; norm. across time.', fontsize=22)
         plt.xticks(fontsize=14)
         plt.yticks(fontsize=14)
     
     # All pairs
+    
+    plt.figure(figsize=(8, 6))
+    for bB in behavior_key_list:
+        plt.plot(binCenters/fps, behav_corr_allSets['normSimple'][behaviorA][bB], 
+                 label=bB, linewidth=2.0)
+    plt.xlabel(r'$\Delta$t (s)', fontsize=16)
+    plt.ylabel('Relative likelihood', fontsize=16)
+    plt.title(f'{behaviorA} then each behavior; simple norm', fontsize=18)
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
+    plt.legend()
+
     plt.figure(figsize=(8, 6))
     for bB in behavior_key_list:
         plt.plot(binCenters/fps, behav_corr_allSets['normAcrossBehavior'][behaviorA][bB], 
                  label=bB, linewidth=2.0)
-    plt.xlabel('$\Delta$t (s)', fontsize=16)
+    plt.xlabel(r'$\Delta$t (s)', fontsize=16)
     plt.ylabel('Relative likelihood', fontsize=16)
-    plt.title(f'{behaviorA} then each behavior; norm. across behaviors')
+    plt.title(f'{behaviorA} then each behavior; norm. across behaviors', fontsize=18)
     plt.xticks(fontsize=12)
     plt.yticks(fontsize=12)
     plt.legend()
@@ -423,20 +515,71 @@ def plot_behaviorCorrelation(behav_corr_allSets, binCenters,
     for bB in behavior_key_list:
         plt.plot(binCenters/fps, behav_corr_allSets['normAcrossTime'][behaviorA][bB], 
                  label=bB, linewidth=2.0)
-    plt.xlabel('$\Delta$t (s)', fontsize=16)
+    plt.xlabel(r'$\Delta$t (s)', fontsize=16)
     plt.ylabel('Relative likelihood', fontsize=16)
-    plt.title(f'{behaviorA} then each behavior; norm. across time')
+    plt.title(f'{behaviorA} then each behavior; norm. across time', fontsize=18)
     plt.xticks(fontsize=14)
     plt.yticks(fontsize=14)
     plt.legend()
     # For export, Mar. 1, 2024
+    """
     plt.plot(np.array([0.0, 0.0]), np.array([0.0, 0.06]), linestyle=':', 
              color='gray')
     plt.ylim((0.0, 0.06))
     plt.xlim((-1.0, 1.0))
     plt.savefig('behavior_correlations_raw.eps', dpi=300)
+    """
 
-   
+
+def plot_corr_asymm(corr_asymm, crange = None):
+    """
+    plot a 2D heatmap of correlation temporal asymmetry for each behavior pair
+
+    Parameters
+    ----------
+    corr_asymm : dictionary, for each type of correlation, of correlation
+                    asymmetry for each behavior pair
+    crange : tuple of max, min correlation to which to scale the colormap
+
+    Returns
+    -------
+    None.
+
+    """
+    # Extract the behavior keys for the axes
+    behaviorkeys = list(corr_asymm.keys())
+
+    # Create a matrix of the values
+    matrix = np.array([[corr_asymm[key1][key2] for key2 in behaviorkeys] for key1 in behaviorkeys])
+
+    # Color range; am not checking that crange is a tuple with 2 elements
+    if crange is None:
+        vmin = None
+        vmax = None
+    else:
+        vmin = crange[0]
+        vmax = crange[1]
+        
+    # Plot the heatmap using matplotlib
+    plt.figure(figsize=(8, 6))
+    plt.imshow(matrix, cmap='coolwarm', interpolation='nearest', vmin=vmin, 
+               vmax=vmax)
+    plt.colorbar()
+    
+    # Add labels to the axes
+    plt.xticks(ticks=np.arange(len(behaviorkeys)), labels=behaviorkeys, rotation=90)
+    plt.yticks(ticks=np.arange(len(behaviorkeys)), labels=behaviorkeys)
+    
+    # Add title and axis labels
+    plt.title('Correlation asymmetry', fontsize=18)
+    plt.xlabel('Behavior', fontsize=16)
+    plt.ylabel('Behavior', fontsize=16)
+
+    # Show the plot
+    plt.show()
+
+
+
 def length_difference_correlation(CSVfilename = '', behavior_to_plot=''):
     """
     Calls get_duration_info to read the CSV output by 
@@ -526,3 +669,108 @@ def length_difference_correlation(CSVfilename = '', behavior_to_plot=''):
         print("The specified behavior is not found in the filtered DataFrame.")
 
     return duration_data
+
+
+
+def select_items_dialog(behavior_key_list, default_keys=['perp_noneSee', 
+        'perp_oneSees', 'perp_bothSee', 'contact_any', 'contact_head_body', 
+        'contact_inferred', 'tail_rubbing', 'Cbend_Fish0', 'Cbend_Fish1', 
+        'Jbend_Fish0', 'Jbend_Fish1', 'Rbend_Fish0', 'Rbend_Fish1', 
+        'isActive_any', 'isMoving_any', 'approaching_Fish0', 
+        'approaching_Fish1', 'fleeing_Fish0', 'fleeing_Fish1']):
+
+    """
+    Creates a dialog with checkboxes for each item in behavior_key_list.
+    Default selection is based on default_keys.
+    Returns a list of selected items.
+    written by Claude 3.5 Sonnet
+    
+    Args:
+        behavior_key_list (list): List of strings to display as options
+        default_keys (list, optional): List of strings to select by default
+    
+    Returns:
+        list: Selected items
+    """
+    if default_keys is None:
+        default_keys = []
+    
+    # Create a separate Tk instance to avoid console freezing
+    root = tk.Tk()
+    root.title("Select Items")
+    root.geometry("400x500")
+    
+    # Initialize result with an empty list
+    result = []
+    
+    frame = ttk.Frame(root, padding="10")
+    frame.pack(fill=tk.BOTH, expand=True)
+    
+    # Label at the top
+    ttk.Label(frame, text="Select items:").pack(anchor=tk.W, pady=(0, 10))
+    
+    # Create variables to track selection state
+    var_dict = {}
+    for item in behavior_key_list:
+        var = tk.BooleanVar(root)
+        # Explicitly set default values
+        if item in default_keys:
+            var.set(True)
+        else:
+            var.set(False)
+        var_dict[item] = var
+    
+    # Create a canvas with scrollbar for many items
+    canvas = tk.Canvas(frame)
+    scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+    scrollable_frame = ttk.Frame(canvas)
+    
+    scrollable_frame.bind(
+        "<Configure>",
+        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+    )
+    
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+    
+    # Add checkboxes for each item
+    for item in behavior_key_list:
+        ttk.Checkbutton(
+            scrollable_frame, 
+            text=item, 
+            variable=var_dict[item]
+        ).pack(anchor=tk.W, pady=2)
+    
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
+    
+    # OK and Cancel buttons
+    button_frame = ttk.Frame(root)
+    button_frame.pack(fill=tk.X, padx=10, pady=10)
+    
+    def on_ok():
+        nonlocal result
+        result = [item for item, var in var_dict.items() if var.get()]
+        root.quit()  # Use quit instead of destroy
+    
+    def on_cancel():
+        root.quit()  # Use quit instead of destroy
+    
+    ttk.Button(button_frame, text="OK", command=on_ok).pack(side=tk.RIGHT, padx=5)
+    ttk.Button(button_frame, text="Cancel", command=on_cancel).pack(side=tk.RIGHT, padx=5)
+    
+    # Center the window
+    root.update_idletasks()
+    width = root.winfo_width()
+    height = root.winfo_height()
+    x = (root.winfo_screenwidth() // 2) - (width // 2)
+    y = (root.winfo_screenheight() // 2) - (height // 2)
+    root.geometry('{}x{}+{}+{}'.format(width, height, x, y))
+    
+    # Start the main loop
+    root.mainloop()
+    
+    # After mainloop ends, destroy the window
+    root.destroy()
+    
+    return result
