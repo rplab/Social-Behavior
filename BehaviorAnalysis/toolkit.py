@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, Feb. 11, 2025
+Last modified by Rghuveer Parthasarathy, March 6, 2025
 
 Description
 -----------
@@ -2805,7 +2805,6 @@ def calculate_value_corr_all(datasets, keyName = 'speed_array_mm_s',
     and collect all these in a list of numpy arrays. 
     Note that calculate_value_autocorr_all() ignores bad tracking frames.
     
-
     List contains one numpy array per dataset, of size (# values, # fish d.o.f.)
         E.g. if there are two fish, speed would have 2 dof (speed of each fish)
                 and inter-fish distance would have 1 dof
@@ -2833,14 +2832,8 @@ def calculate_value_corr_all(datasets, keyName = 'speed_array_mm_s',
     Ndatasets = len(datasets)
     print(f'\nCombining {corr_type}-correlations of {keyName} for {Ndatasets} datasets')
     autocorr_all = []
-    # Check that all fps are the same, so that all time lag arrays will be the same
-    fps_all = np.zeros((Ndatasets,))
-    for j in range(Ndatasets):
-        fps_all = datasets[j]["fps"]
-    good_fps = np.abs(np.std(fps_all)/np.mean(fps_all)) < fpstol
     
-    if not good_fps:
-        raise ValueError("fps values are not the same across datasets!")
+    get_fps(datasets, fpstol = 1e-6) # will give error if not valid
 
     for j in range(Ndatasets):
         (autocorr_one, t_lag) = calculate_value_corr_oneSet(datasets[j], 
@@ -2849,9 +2842,31 @@ def calculate_value_corr_all(datasets, keyName = 'speed_array_mm_s',
                                             dilate_plus1 = dilate_plus1, 
                                             t_max = t_max, t_window = t_window)
         autocorr_all.append(autocorr_one)
-        
     return autocorr_all, t_lag
 
+def get_fps(datasets, fpstol = 1e-6):
+    """
+    Get the fps (frames per second) from all the datasets. These should
+    all be the same; verify this.
+    
+    Parameters:
+    datasets : list of dictionaries containing all analysis. 
+    fpstol = relative tolerance for checking that all fps are the same 
+    
+    Returns:
+    average of all the (identical) fps values.    
+    """
+    Ndatasets = len(datasets)
+    # Check that all fps are the same, so that all time lag arrays will be the same
+    fps_all = np.zeros((Ndatasets,))
+    for j in range(Ndatasets):
+        fps_all = datasets[j]["fps"]
+    good_fps = np.abs(np.std(fps_all)/np.mean(fps_all)) < fpstol
+    
+    if not good_fps:
+        raise ValueError("fps values are not the same across datasets!")
+    
+    return np.mean(fps_all)
 
 
 def plot_function_allSets(y_list, x_array = None, 
