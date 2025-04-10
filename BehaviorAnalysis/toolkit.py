@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, April 9, 2025
+Last modified by Rghuveer Parthasarathy, April 10, 2025
 
 Description
 -----------
@@ -69,14 +69,7 @@ def get_basePath():
                     print('expt_config.yaml is missing; maybe the filename has an "s" at the end?')
                 print("Invalid path. Please try again.")
             else: 
-                # Check path name
-                last_part_of_path = os.path.basename(os.path.normpath(selected_path))
-                if "csv files" not in last_part_of_path.lower():
-                    verifyName = input('Chosen folder name does not include "CSV files." Continue? (y/n): ') 
-                    if verifyName.lower() == 'y':
-                        return selected_path
-                else:
-                    return selected_path
+                return selected_path
         else:
             print("Invalid path. Please try again.")
 
