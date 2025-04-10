@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, March 6, 2025
+Last modified by Rghuveer Parthasarathy, April 9, 2025
 
 Description
 -----------
@@ -323,11 +323,11 @@ def set_outputFile_params(params, expt_config, subGroupName):
     #     is) for summary statistics of each behavior for each dataset
     # (2) "behaviors_in_each_frame.xlsx" (or whatever params["allDatasets_markFrames_ExcelFile"])
     #     is for marking behaviors in each frame
-    base_name, extension = os.path.splitext(params["allDatasets_ExcelFile"])
+    base_name1, extension1 = os.path.splitext(params["allDatasets_ExcelFile"])
     if subGroupName is None:
-        params["allDatasets_ExcelFile"] = f"{expt_config['expt_name']}_{base_name}{extension}"
+        params["allDatasets_ExcelFile"] = f"{expt_config['expt_name']}_{base_name1}{extension1}"
     else:
-        params["allDatasets_ExcelFile"] = f"{expt_config['expt_name']}_{subGroupName}_{base_name}{extension}" 
+        params["allDatasets_ExcelFile"] = f"{expt_config['expt_name']}_{subGroupName}_{base_name1}{extension1}" 
     print(f"Modifying output allDatasets_ExcelFile file name to be: {params['allDatasets_ExcelFile']}")
     base_name, extension = os.path.splitext(params["allDatasets_markFrames_ExcelFile"])
     if subGroupName is None:
@@ -342,8 +342,8 @@ def set_outputFile_params(params, expt_config, subGroupName):
     # of "behavior_counts.xlsx" (or whatever params["allDatasets_ExcelFile"]
     # currently is), append subGroupName
     if not subGroupName==None:
-        base_name, extension = os.path.splitext(params["allDatasets_ExcelFile"])
-        params["allDatasets_ExcelFile"] = f"{base_name}_{subGroupName}{extension}"
+        # base_name, extension = os.path.splitext(params["allDatasets_ExcelFile"])
+        params["allDatasets_ExcelFile"] = f"{base_name1}_{subGroupName}{extension1}"
         print(f"Modifying output allDatasets_ExcelFile file name to be: {params['allDatasets_ExcelFile']}")
 
     return params
