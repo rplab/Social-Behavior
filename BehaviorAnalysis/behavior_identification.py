@@ -34,7 +34,7 @@ def get_basic_two_fish_characterizations(all_position_data, datasets, CSVcolumns
                                              expt_config, params):
     """
     For each dataset, perform “basic” two-fish characterizations  
-        (e.g. inter-fish distance, relative orientation, 
+        (e.g. inter-fish distance, head-head vector, relative orientation, 
          relative heading alignment)
     
     Inputs:
@@ -62,7 +62,12 @@ def get_basic_two_fish_characterizations(all_position_data, datasets, CSVcolumns
         datasets[j]["head_head_distance_mm"], datasets[j]["closest_distance_mm"] = \
             get_interfish_distance(all_position_data[j], CSVcolumns,
                                    datasets[j]["image_scale"])
-        
+
+        # Get the inter-fish head-hed vector (Fish 0 - Fish 1) in 
+        # each frame (Nframes x 2 array). Units = px
+        datasets[j]["head_head_vec_px"] = \
+            calc_head_head_vector(all_position_data[j], CSVcolumns)
+
         # Get frames in which the inter-fish distance is small (i.e. less
         # than the threshold value of the "proximity_threshold_mm" parameter)
         close_pair_frames =  get_close_pair_frames(datasets[j]["closest_distance_mm"],
@@ -86,11 +91,16 @@ def get_basic_two_fish_characterizations(all_position_data, datasets, CSVcolumns
         datasets[j]["relative_orientation"] = \
             get_relative_orientation(all_position_data[j], datasets[j], CSVcolumns)   
 
-        # Relative orientation of fish (angle between heading and
-        # connecting vector). Nframes x Nfish==2 array; radians
+        # Sum of relative orientation (Calculate for any Nfish, though only
+        # meaningful for two.)
+        datasets[j]["relative_orientation_sum"] = \
+            np.sum(datasets[j]["relative_orientation"], axis=1)  
+        
+        # Relative the difference in heading angle between the two fish,
+        # range [0, pi]). Nframes x 1 array; radians
         datasets[j]["relative_heading_angle"] = \
             get_relative_heading_angle(datasets[j], CSVcolumns)   
-        
+
         # Get the sliding window cross-correlation of heading angles
         datasets[j]["xcorr_array"] = \
             calcOrientationXCorr(datasets[j], params["angle_xcorr_windowsize"])
@@ -966,6 +976,32 @@ def get_approach_flee_frames(position_data, dataset, CSVcolumns,
         approaching_frames_all, fleeing_frames_any, fleeing_frames_all
     
 
+def calc_head_head_vector(position_data, CSVcolumns):
+    """ 
+    Calculate the head-to-head vector, px, in each frame.
+    Valid only for Nfish==2; return None otherwise
+    
+    Inputs:
+        position_data : position data for this dataset, presumably all_position_data[j]
+        CSVcolumns : information on what the columns of position_data are
+    Output : 
+        dh_vec_px : vector from fish 0 to fish 1, px, in each frame.
+        
+        numpy array Nframes x 1 of Head[1] - Head[0]
+    """
+    
+    # all head positions
+    head_pos_data = position_data[:,CSVcolumns["head_column_x"]:CSVcolumns["head_column_y"]+1, :]
+        # head_pos_data is Nframes x 2 (x and y positions) x 2 (Nfish) array of head positions
+    
+    if head_pos_data.shape[2]!=2:
+        return None
+    else:
+        # head-head distance vector for all frames, px
+        dh_vec_px = head_pos_data[:,:,1] - head_pos_data[:,:,0]  
+        return dh_vec_px
+
+    
 def get_relative_orientation(position_data, dataset, CSVcolumns):
     """ 
     Calculate the relative orientation of each fish with respect to the
@@ -973,6 +1009,7 @@ def get_relative_orientation(position_data, dataset, CSVcolumns):
     Inputs:
         position_data : position data for this dataset, presumably all_position_data[j]
         dataset: dataset dictionary of all behavior information for a given expt.
+                Includes "heading_angle" from repair_heading_angles() 
         CSVcolumns : information on what the columns of position_data are
     Output : 
         relative_orientation : numpy array Nframes x Nfish==2 of 
@@ -980,24 +1017,20 @@ def get_relative_orientation(position_data, dataset, CSVcolumns):
     """
     # All heading angles
     angle_data = dataset["heading_angle"]
-    # all head positions
-    head_pos_data = position_data[:,CSVcolumns["head_column_x"]:CSVcolumns["head_column_y"]+1, :]
-        # head_pos_data is Nframes x 2 (x and y positions) x 2 (Nfish) array of head positions
 
-    # head-head distance, px, and distance vector for all frames
-    dh_vec = head_pos_data[:,:,1] - head_pos_data[:,:,0]  # also used later, for the connecting vector
+    dh_vec_px = calc_head_head_vector(position_data, CSVcolumns)
     
     v0 = np.stack((np.cos(angle_data[:, 0]), 
                    np.sin(angle_data[:, 0])), axis=1)
     v1 = np.stack((np.cos(angle_data[:, 1]), 
                    np.sin(angle_data[:, 1])), axis=1)
     
-    dot_product_0 = np.sum(v0 * dh_vec, axis=1)
-    magnitude_product_0 = np.linalg.norm(v0, axis=1) * np.linalg.norm(dh_vec, axis=1)
+    dot_product_0 = np.sum(v0 * dh_vec_px, axis=1)
+    magnitude_product_0 = np.linalg.norm(v0, axis=1) * np.linalg.norm(dh_vec_px, axis=1)
     phi0 = np.arccos(dot_product_0 / magnitude_product_0)
     
-    dot_product_1 = np.sum(v1 * -dh_vec, axis=1)
-    magnitude_product_1 = np.linalg.norm(v1, axis=1) * np.linalg.norm(dh_vec, axis=1)
+    dot_product_1 = np.sum(v1 * -dh_vec_px, axis=1)
+    magnitude_product_1 = np.linalg.norm(v1, axis=1) * np.linalg.norm(dh_vec_px, axis=1)
     phi1 = np.arccos(dot_product_1 / magnitude_product_1)
     
     relative_orientation = np.stack((phi0, phi1), axis=1)  

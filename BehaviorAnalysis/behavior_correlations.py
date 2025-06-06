@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Wed Sept. 6, 2023
-Last modified on April 6, 2025
+Last modified on April 9, 2025
 
 Description
 -----------
@@ -26,8 +26,6 @@ import csv
 from scipy.stats import linregress
 import scipy.stats as st
 import pickle
-import tkinter as tk
-from tkinter import ttk
 from toolkit import load_and_assign_from_pickle, get_fps
 
 def calc_correlations_with_defaults():
@@ -56,12 +54,12 @@ def calc_correlations_with_defaults():
     (datasets, CSVcolumns, expt_config, params, N_datasets, Nfish,
              basePath, dataPath, subGroupName) = variable_tuple
     fps = get_fps(datasets, fpstol = 1e-6)
-    behavior_key_list = get_behavior_key_list(datasets)
     behavior_key_list = ['Cbend_Fish0', 'Cbend_Fish1', 'Rbend_Fish0', 
                          'Rbend_Fish1', 'Jbend_Fish0', 'Jbend_Fish1', 
                          'perp_noneSee', 'perp_oneSees', 'perp_bothSee', 
-                         'contact_any', 'tail_rubbing', 'approaching_any', 
-                         'fleeing_any']
+                         'contact_any', 'tail_rubbing', 'approaching_Fish0', 
+                         'approaching_Fish1', 'approaching_any', 
+                         'fleeing_Fish0', 'fleeing_Fish1', 'fleeing_any']
     binWidthFrames = 5 # bin size for delays (number of frames)
     halfFrameRange = 50 # max frame delay to consider
     # Calculate frame-delays between each event pair for each dataset.
@@ -77,7 +75,12 @@ def calc_correlations_with_defaults():
     # Combine behavior correlations and probabilities for all datasets
     behav_corr_allSets = calcBehavCorrAllSets(behav_corr, behavior_key_list, binCenters)
     
-    behavior_key_list_subset = behavior_key_list
+    behavior_key_list_subset = ['Cbend_Fish0', 'Cbend_Fish1', 'Rbend_Fish0', 
+                         'Rbend_Fish1', 'Jbend_Fish0', 'Jbend_Fish1', 
+                         'perp_noneSee', 'perp_oneSees', 'perp_bothSee', 
+                         'contact_any', 'tail_rubbing', 
+                         'approaching_Fish0', 'approaching_Fish1', 
+                         'fleeing_Fish0', 'fleeing_Fish1']
     
     corr_asymm = calc_corr_asymm(behav_corr_allSets['DeltaCorr'], 
                                  behavior_key_list_subset, binCenters, 
@@ -86,42 +89,7 @@ def calc_correlations_with_defaults():
     return behav_corr, behav_corr_allSets, binCenters, behavior_key_list, \
         corr_asymm, fps, behavior_key_list_subset
 
-def get_behavior_key_list(datasets):
-    """
-    Get a list of all behaviors
-    Only looks at datasets[0]; gets the names of all sub-dictionaries
-        that contain the key "combine_frames" , since all behaviors
-        should have this.
-    
-    Inputs
-    ----------
-    datasets : dictionary; All datasets to analyze
 
-    Returns
-    -------
-                             
-    behavior_key_list : list of all behaviors considered 
-
-    To use: behavior_key_list = get_behavior_key_list(datasets)
-    """
-
-    # Get list of all behaviors; examine the first dataset
-    behavior_key_list = []
-    
-    # Iterate through each dictionary in the dataset
-    for key, value in datasets[0].items():
-        # Check if the dictionary has the key "combine_frames" 
-        # (Could have also done this with "behavior_name")
-        if isinstance(value, dict) and "combine_frames" in value:
-            print('Adding behavior key:   ', key)
-            # Add the value of "behavior_name" to the behavior_key_list list
-            behavior_key_list.append(key)
-    #print('PARTIAL BEHAVIORS!')
-    #behavior_key_list = ["approaching_Fish0", "approaching_Fish1",
-    #                    "fleeing_Fish0", "fleeing_Fish1"]
-    
-    return behavior_key_list
-    
     
 def calcDeltaFramesEvents(datasets, behavior_key_list):
     """
@@ -157,7 +125,8 @@ def calcDeltaFramesEvents(datasets, behavior_key_list):
                  Second key: "pA" : under behavior A, 
                              marginal probability for behavior A (i.e. 
                              simple probability indep of other behaviors).
-                             Normalized by total number of frames.
+                             Normalized by total number of frames, so 
+                             probability per frame.
                              "pA_unc" uncertainty of pA, assuming Poisson distr.
                  Third key: under behavior B; "deltaFrames", the frame delays  
                              between A, B for all events.
@@ -287,6 +256,7 @@ def calc_pAB(behav_corr, behavior_key_list, binCenters):
     From the binned "deltaFrames" delays between events of behaviors A, B
     for each dataset, calculate the normalized p(B (Delta t) | A) for each 
     frame delay, and the relative probability DeltaCorr = p(B | A) - p(B)
+    These are both probability per frame.
     
     Inputs
     ----------
@@ -641,7 +611,7 @@ def plot_behaviorCorrelation(behav_corr_dict, binCenters,
             plt.fill_between(binCenters/fps, corrAB - corrABunc, 
                              corrAB + corrABunc, color='mediumvioletred', alpha=0.3)
         plt.xlabel(r'$\Delta$t (s)', fontsize=20)
-        plt.ylabel('Relative likelihood', fontsize=20)
+        plt.ylabel('Probability', fontsize=20)
         plt.title(f'{behaviorA} then {behaviorB}; {titleString}', fontsize=22)
         plt.xticks(fontsize=14)
         plt.yticks(fontsize=14)
@@ -660,11 +630,11 @@ def plot_behaviorCorrelation(behav_corr_dict, binCenters,
             corrABunc = behav_corr_dict[behaviorA][bB]['C_unc']
             plt.fill_between(binCenters/fps, corrAB - corrABunc, 
                              corrAB + corrABunc, color=cmap[j,:], alpha=0.3)
-    plt.xlabel(r'$\Delta$t (s)', fontsize=16)
-    plt.ylabel('Relative likelihood', fontsize=16)
-    plt.title(f'{behaviorA} then each behavior; {titleString}', fontsize=18)
-    plt.xticks(fontsize=12)
-    plt.yticks(fontsize=12)
+    plt.xlabel(r'$\Delta$t (s)', fontsize=20)
+    plt.ylabel('Probability', fontsize=20)
+    plt.title(f'{behaviorA} then each behavior; {titleString}', fontsize=20)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
     plt.legend()
 
     # For export, Mar. 1, 2024
@@ -718,116 +688,13 @@ def plot_corr_asymm(corr_asymm, crange = None, titleString = ''):
     plt.yticks(ticks=np.arange(len(behaviorkeys)), labels=behaviorkeys)
     
     # Add title and axis labels
-    plt.title(f'{titleString} Correlation asymmetry', fontsize=18)
+    plt.title(f'{titleString} time asymmetry', fontsize=18)
     plt.xlabel('Behavior', fontsize=16)
     plt.ylabel('Behavior', fontsize=16)
 
     # Show the plot
     plt.show()
 
-
-def select_items_dialog(behavior_key_list, default_keys=['perp_noneSee', 
-        'perp_oneSees', 'perp_bothSee', 'contact_any', 'contact_head_body', 
-        'contact_inferred', 'tail_rubbing', 'Cbend_Fish0', 'Cbend_Fish1', 
-        'Jbend_Fish0', 'Jbend_Fish1', 'Rbend_Fish0', 'Rbend_Fish1', 
-        'isActive_any', 'isMoving_any', 'approaching_Fish0', 
-        'approaching_Fish1', 'fleeing_Fish0', 'fleeing_Fish1']):
-
-    """
-    Creates a dialog with checkboxes for each item in behavior_key_list.
-    Default selection is based on default_keys.
-    Returns a list of selected items.
-    written by Claude 3.5 Sonnet
-    
-    Args:
-        behavior_key_list (list): List of strings to display as options
-        default_keys (list, optional): List of strings to select by default
-    
-    Returns:
-        list: Selected items
-    """
-    if default_keys is None:
-        default_keys = []
-    
-    # Create a separate Tk instance to avoid console freezing
-    root = tk.Tk()
-    root.title("Select Items")
-    root.geometry("400x500")
-    
-    # Initialize result with an empty list
-    result = []
-    
-    frame = ttk.Frame(root, padding="10")
-    frame.pack(fill=tk.BOTH, expand=True)
-    
-    # Label at the top
-    ttk.Label(frame, text="Select items:").pack(anchor=tk.W, pady=(0, 10))
-    
-    # Create variables to track selection state
-    var_dict = {}
-    for item in behavior_key_list:
-        var = tk.BooleanVar(root)
-        # Explicitly set default values
-        if item in default_keys:
-            var.set(True)
-        else:
-            var.set(False)
-        var_dict[item] = var
-    
-    # Create a canvas with scrollbar for many items
-    canvas = tk.Canvas(frame)
-    scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
-    scrollable_frame = ttk.Frame(canvas)
-    
-    scrollable_frame.bind(
-        "<Configure>",
-        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-    )
-    
-    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-    canvas.configure(yscrollcommand=scrollbar.set)
-    
-    # Add checkboxes for each item
-    for item in behavior_key_list:
-        ttk.Checkbutton(
-            scrollable_frame, 
-            text=item, 
-            variable=var_dict[item]
-        ).pack(anchor=tk.W, pady=2)
-    
-    canvas.pack(side="left", fill="both", expand=True)
-    scrollbar.pack(side="right", fill="y")
-    
-    # OK and Cancel buttons
-    button_frame = ttk.Frame(root)
-    button_frame.pack(fill=tk.X, padx=10, pady=10)
-    
-    def on_ok():
-        nonlocal result
-        result = [item for item, var in var_dict.items() if var.get()]
-        root.quit()  # Use quit instead of destroy
-    
-    def on_cancel():
-        root.quit()  # Use quit instead of destroy
-    
-    ttk.Button(button_frame, text="OK", command=on_ok).pack(side=tk.RIGHT, padx=5)
-    ttk.Button(button_frame, text="Cancel", command=on_cancel).pack(side=tk.RIGHT, padx=5)
-    
-    # Center the window
-    root.update_idletasks()
-    width = root.winfo_width()
-    height = root.winfo_height()
-    x = (root.winfo_screenwidth() // 2) - (width // 2)
-    y = (root.winfo_screenheight() // 2) - (height // 2)
-    root.geometry('{}x{}+{}+{}'.format(width, height, x, y))
-    
-    # Start the main loop
-    root.mainloop()
-    
-    # After mainloop ends, destroy the window
-    root.destroy()
-    
-    return result
 
 
 def save_correlation_pickle(outputPickleFileName, behav_corr, behav_corr_allSets, 

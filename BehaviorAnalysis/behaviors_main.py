@@ -7,7 +7,7 @@
 # First version  : Estelle Trieu 9/19/2022
 # Re-written by : Raghuveer Parthasarathy (2023)
 # version ='2.0' Raghuveer Parthasarathy -- begun May 2023; see notes.
-# last modified: Raghuveer Parthasarathy, Feb. 11, 2025
+# last modified: Raghuveer Parthasarathy, June 5, 2025
 # ---------------------------------------------------1------------------------
 """
 
@@ -18,13 +18,14 @@ from toolkit import get_basePath, get_loading_option, load_and_assign_from_pickl
         load_expt_config, load_analysis_parameters, \
         get_output_pickleFileNames, \
         check_analysis_parameters, set_outputFile_params, get_Nfish, \
-        get_CSV_filenames, load_all_position_data, fix_heading_angles, \
-        repair_head_positions, \
+        get_CSV_filenames, load_all_position_data, repair_heading_angles, \
+        repair_head_positions, repair_double_length_fish, \
+        relink_fish_ids_all_datasets, calc_good_tracking_spans, \
         make_frames_dictionary, get_edgeRejection_frames_dictionary, \
         get_badTracking_frames_dictionary, \
         write_CSV_Excel_YAML, write_pickle_file
 from behavior_identification_single import get_single_fish_characterizations, \
-        get_coord_characterizations
+        get_coord_characterizations, get_fish_lengths
 from behavior_identification import extract_pair_behaviors, \
     get_basic_two_fish_characterizations
 
@@ -42,8 +43,13 @@ def main():
     Writes a pickle file containing all trajectory and analysis outputs (“datasets” variable), and other variables – optional but strongly recommended.
     
     Returns:
-        datasets: dictionary of all trajectory information and analysis
-    
+        datasets : list of dictionaries, one for each dataset. 
+                    datasets[j] contains information for dataset j.
+        all_position_data : list of numpy arrays with position information for
+                    each dataset. Nframes x Ncolumns x Nfish
+        CSVcolumns : dictionary of CSV column contents
+        
+
     """
 
     cwd = os.getcwd() # Note the current working directory
@@ -118,13 +124,34 @@ def main():
                                           showAllPositions)
         Nfish = get_Nfish(datasets)
         
-        # Fix (recalculate) head positions, based on indexes 1-3 
+        # Repair (recalculate) head positions, based on indexes 1-3 
         #(i.e. the 2nd, third, and fourth positions), linearly interpolating
         all_position_data = repair_head_positions(all_position_data, CSVcolumns)
     
-        # Fix (recalculate) heading angles
-        datasets = fix_heading_angles(all_position_data, datasets, CSVcolumns)
+        # Repair (recalculate) heading angles
+        datasets = repair_heading_angles(all_position_data, datasets, CSVcolumns)
         
+        # Calculate fish lengths (necessary for double-length repair)
+        for j in range(len(datasets)):
+            # Get the length of each fish in each frame (sum of all segments)
+            # Nframes x Nfish array
+            datasets[j]["fish_length_array_mm"] = \
+                get_fish_lengths(all_position_data[j], 
+                                 datasets[j]["image_scale"], CSVcolumns)
+
+        # Repair double-length fish
+        if Nfish==2:
+            all_position_data, datasets = \
+                repair_double_length_fish(all_position_data, datasets, CSVcolumns, 
+                                          lengthFactor = [1.5, 2.5], tol=0.001)
+            # Re-calculate fish lengths 
+            for j in range(len(datasets)):
+                datasets[j]["fish_length_array_mm"] = \
+                    get_fish_lengths(all_position_data[j], 
+                                     datasets[j]["image_scale"], CSVcolumns)
+
+        
+
     elif loading_option == 'load_from_pickle':
         # Load positions, datasets dictionary, etc., from pickle files.  
         # May contain analysis, but this will be redone
@@ -179,6 +206,20 @@ def main():
     datasets = get_badTracking_frames_dictionary(all_position_data, datasets, 
                                                  params, CSVcolumns, tol=0.001)
     
+    # Re-link all fish based on whole-body distance minimizing
+    all_position_data, datasets = relink_fish_ids_all_datasets(all_position_data,
+                                                     datasets, CSVcolumns)
+    # Re-calculate fish lengths 
+    for j in range(len(datasets)):
+        datasets[j]["fish_length_array_mm"] = \
+            get_fish_lengths(all_position_data[j], 
+                             datasets[j]["image_scale"], CSVcolumns)
+    
+    # Calculate statistics of continuous spans of good tracking
+    for j in range(len(datasets)):
+        datasets[j]["good_tracking_spans"] = calc_good_tracking_spans(datasets[j], 
+                                                                      verbose = False)
+
     #%% Identify close-to-edge frames for each dataset, for rejecting behaviors
     # Call get_edge_frames for each datasets[j] and put results in a 
     # dictionary that includes durations of edge events, etc.
@@ -192,7 +233,7 @@ def main():
     datasets = get_single_fish_characterizations(all_position_data, 
                                                  datasets, CSVcolumns,
                                                  expt_config, params)
-    
+
     #%% Analysis: multi-fish characterizations
 
     # For each dataset, perform “basic” two-fish characterizations 
@@ -283,7 +324,7 @@ def main():
     # Return to original directory
     os.chdir(cwd)
     
-    return datasets
+    return datasets, all_position_data, CSVcolumns
     
 if __name__ == '__main__':
-    datasets = main()
+    datasets, all_position_data, CSVcolumns = main()

@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Split from behavior_identification.py on July 22, 2024
-Last modified Feb. 4, 2025 -- Raghu Parthasarathy
+Last modified May 7, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -32,7 +32,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from toolkit import make_frames_dictionary, dilate_frames, wrap_to_pi,\
     combine_all_values_constrained, get_values_subset, plot_probability_distr, \
-    calculate_value_corr_all, plot_function_allSets
+    calculate_value_corr_all, plot_function_allSets, fit_gaussian_mixture
 
 
 def get_coord_characterizations(all_position_data, datasets, 
@@ -73,12 +73,14 @@ def get_coord_characterizations(all_position_data, datasets,
         datasets[j]["radial_alignment_rad"] = wrap_to_pi(radial_alignment)
     return datasets
 
+
 def get_single_fish_characterizations(all_position_data, datasets, CSVcolumns,
                                              expt_config, params):
     """
     For each dataset, characterizations that involve single fish
-        (e.g. fish length, bending angle, C-bend or J-bend, speed)
-    
+        (e.g. bending angle, C-bend or J-bend, speed, mean fish length)
+        Fish length calculation for each frame
+           moved out of this, to allow double-length repair
     Inputs:
         all_position_data : basic position information for all datasets, list of numpy arrays
         datasets : all datasets, info, list of dictionaries 
@@ -96,11 +98,6 @@ def get_single_fish_characterizations(all_position_data, datasets, CSVcolumns,
     print('Single-fish characterizations: ')
     for j in range(N_datasets):
         print('    for Dataset: ', datasets[j]["dataset_name"])
-        # Get the length of each fish in each frame (sum of all segments)
-        # Nframes x Nfish array
-        datasets[j]["fish_length_array_mm"] = \
-            get_fish_lengths(all_position_data[j], 
-                             datasets[j]["image_scale"], CSVcolumns)
                 
         # Get the speed of each fish in each frame (frame-to-frame
         # displacement of head position, um/s); 0 for first frame
@@ -265,10 +262,9 @@ def get_single_fish_characterizations(all_position_data, datasets, CSVcolumns,
             getTailAngle(all_position_data[j], CSVcolumns, 
                          datasets[j]["heading_angle"])
        
-        
-    # For each dataset, exclude bad tracking frames from calculation of
-    # the mean fish length
-    for j in range(N_datasets):
+        # For each dataset, exclude bad tracking frames from calculation of
+        # the mean fish length. 
+        # Also use Gaussian mixture model to get mean fish length (in good frames)
         print('Removing bad frames from stats for fish length, for Dataset: ', 
               datasets[j]["dataset_name"])
         goodIdx = np.where(np.in1d(datasets[j]["frameArray"], 
@@ -277,9 +273,40 @@ def get_single_fish_characterizations(all_position_data, datasets, CSVcolumns,
         goodLengthArray = datasets[j]["fish_length_array_mm"][goodIdx]
         datasets[j]["fish_length_mm_mean"] = np.mean(goodLengthArray)
         print(f'   Mean fish length: {datasets[j]["fish_length_mm_mean"]:.3f} mm')
+        # Fit gmm
+        datasets[j]["fish_length_mm_gmm_mean"] = get_fish_lengths_mean_gmm(datasets[j]) 
 
     return datasets
 
+def get_fish_lengths_mean_gmm(dataset, verbose = False):
+    """
+    Fit each fish's length data, for good tracking frames only, to 
+    a Gaussian mixture model and return the mean of the component near 
+    the median value.
+    
+    input:
+        dataset : single dataset (probably datasets[j]))
+        verbose : if True, print lengths
+    return:
+        numpy array of shape (Nfish, 1) containing the mean length, mm
+    """
+    goodIdx = np.where(np.in1d(dataset["frameArray"], 
+                               dataset["bad_bodyTrack_frames"]["raw_frames"], 
+                               invert=True))[0]
+    goodLengthArray = dataset["fish_length_array_mm"][goodIdx]
+    mean_length_mm_gmm = np.zeros((dataset["Nfish"],))
+    for k in range(dataset["Nfish"]):
+        length_med = np.median(goodLengthArray[:,k])
+        init_means = [length_med, 0.75*length_med, 3.0*length_med]
+        mean_length_mm_gmm[k] = \
+            fit_gaussian_mixture(goodLengthArray[:,k], n_gaussian=3, 
+                                 init_means=init_means)[0]
+        if verbose:
+            # Note [k,0] needed for formatting to work
+            print(f'   Mean fish length from gmm for fish {k}: ' + 
+                  f'{mean_length_mm_gmm[k,0]:.3f} mm')
+        
+    return mean_length_mm_gmm
     
 def get_fish_lengths(position_data, image_scale, CSVcolumns):
     """
@@ -585,7 +612,8 @@ def get_polar_coords(position_data, CSVcolumns, arena_center, image_scale):
     """
     Get the fish head position in polar coordinates relative to the
         arena center, for each fish in each frame.
-        "y" defined as decreasing downward, so angle = atan(-y,x)
+        "y" defined as decreasing downward, so polar angle = atan(y,x)
+        increases Clockwise from East.
     Input:
         position_data : basic position information for this dataset, numpy array
         CSVcolumns : CSV column information (dictionary)
@@ -604,7 +632,7 @@ def get_polar_coords(position_data, CSVcolumns, arena_center, image_scale):
     dy = head_y - arena_center[1]
     r = np.sqrt(dx**2 + dy**2)
     radial_position_mm = r*image_scale/1000.0
-    polar_angle_rad = np.arctan2(-1.0*dy, dx)
+    polar_angle_rad = np.arctan2(dy, dx)
     
     return radial_position_mm, polar_angle_rad
 
@@ -669,7 +697,11 @@ def calc_bend_angle(position_data, CSVcolumns, M=None):
         # determine four-quadrant angle from sign of avg step (not elegant!)
         signx = np.sign(np.mean(np.diff(x1, axis=0), axis=0))
         signy = np.sign(np.mean(np.diff(y1, axis=0), axis=0))
-        vector1 = np.vstack([signx, signy*np.abs(slope1)])/np.sqrt(1 + slope1**2)  # shape: (2, Nfish)
+        # Calculate the unit vector for the heading, allowing infinite slope
+        vector1 = np.vstack([
+            np.where(np.isinf(slope1), 0, signx),
+            np.where(np.isinf(slope1), 1, signy * np.abs(slope1))
+        ]) / np.sqrt(1 + np.where(np.isinf(slope1), 0, slope1)**2)        
         
         # Calculate best-fit line for second segment
         x2 = x[j, M:, :] # shape (N/2, Nfish)
@@ -678,7 +710,11 @@ def calc_bend_angle(position_data, CSVcolumns, M=None):
         # determine four-quadrant angle (not elegant!)
         signx = np.sign(np.mean(np.diff(x2, axis=0), axis=0))
         signy = np.sign(np.mean(np.diff(y2, axis=0), axis=0))
-        vector2 = np.vstack([signx, signy*np.abs(slope2)])/np.sqrt(1 + slope2**2)  # shape: (2, Nfish)
+        # Calculate the unit vector for the heading, allowing infinite slope
+        vector2 = np.vstack([
+            np.where(np.isinf(slope2), 0, signx),
+            np.where(np.isinf(slope2), 1, signy * np.abs(slope2))
+        ]) / np.sqrt(1 + np.where(np.isinf(slope2), 0, slope2)**2)        
 
         # Calculate angle between lines
         # note that arccos is in range [0, pi]

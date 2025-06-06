@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, April 10, 2025
+Last modified by Rghuveer Parthasarathy, June 5, 2025
 
 Description
 -----------
@@ -30,12 +30,15 @@ import csv
 import os
 import matplotlib.pyplot as plt
 from scipy.optimize import linear_sum_assignment
+from sklearn.mixture import GaussianMixture
 import pickle
 import pandas as pd
 import yaml
 import tkinter as tk
+from tkinter import ttk
 import tkinter.filedialog as filedialog
 from scipy import signal
+import warnings
 
 # Function to get a valid path from the user (base Path or config path)
 def get_basePath():
@@ -532,34 +535,6 @@ def load_data(CSVfileName, N_columns):
     return all_data, frameArray
 
 
-def fix_heading_angles(all_position_data, datasets, CSVcolumns):
-    """ 
-    Fix the heading angles -- rather than the strangely quantized angles from
-    ZebraZoom, calculate the angle from arctan(y[1]-y[2], x[1]-x[2]) 
-    See notes Sept. 2024
-    
-    Inputs
-        all_position_data : basic position information for all datasets, list of numpy arrays
-        datasets : list of all dataset dictionaries. 
-        CSVcolumns : CSV column dictionary (what's in what column)
-                                            
-    Outputs
-        datasets: contains new "heading_angle" key in each dataset
-                    datasets[j]["heading_angle"]
-                                            
-    """
-    x2 = CSVcolumns["body_column_x_start"]+1 # x position #2
-    x3 = CSVcolumns["body_column_x_start"]+2 # x position #3
-    y2 = CSVcolumns["body_column_y_start"]+1 # y position #2
-    y3 = CSVcolumns["body_column_y_start"]+2 # y position #3
-    for j in range(len(datasets)):
-        datasets[j]['heading_angle'] = np.arctan2(all_position_data[j][:,y2,:]-all_position_data[j][:,y3,:], 
-                                                  all_position_data[j][:,x2,:]-all_position_data[j][:,x3,:])
-        # put in range [0, 2*pi]; not actually necessary
-        datasets[j]['heading_angle'][datasets[j]['heading_angle'] < 0.0] += 2*np.pi
-    return datasets
-
-
 
 def make_frames_dictionary(frames, frames_to_remove, behavior_name,
                            Nframes):
@@ -843,7 +818,7 @@ def load_dict_from_pickle(pickleFileName=None):
         if os.path.isfile(pickleFileName):
             badFile = False
         else:
-            print("\n\nInvalid pickle file path or name.")
+            print(f"\n\nInvalid pickle file path or name: {pickleFileName}")
             print("Please try again; will force dialog box.")
             pickleFileName = None
 
@@ -1508,7 +1483,6 @@ def write_output_files(params, output_path, datasets):
     Inputs:
         params : analysis parameters; we use the output file pathinfo
         output_path : output path, probably os.path.join(dataPath, params['output_subFolder']
-        dataPath : path containing CSV input files
         datasets : list of dictionaries: all dataset and analysis output
         
     Outputs:
@@ -1578,6 +1552,7 @@ def write_output_files(params, output_path, datasets):
     excel_file = os.path.join(output_path, 
                               params['allDatasets_markFrames_ExcelFile'])
     writer = pd.ExcelWriter(excel_file, engine='xlsxwriter')
+
     # Call the function to write frames for each dataset
     print('   Marking behaviors in each frame for each dataset.')
     for j in range(N_datasets):
@@ -1658,7 +1633,13 @@ def write_behavior_txt_file(dataset, key_list):
         results_file.write("Experimental parameters\n")
         results_file.write(f"   Image scale (um/px): {dataset['image_scale']:.1f}\n")
         results_file.write(f"   frames per second: {dataset['fps']:.1f}\n")
+        results_file.write(f"   Number of frames: {dataset['Nframes']}\n")
         results_file.write(f"   Duration: {dataset['total_time_seconds']:.1f} s\n")
+        results_file.write("Tracking Properties\n")
+        results_file.write(f"   Number of spans of continuous good tracking: {dataset['good_tracking_spans']['number']}\n")
+        results_file.write(f"   Mean length of spans of continuous good tracking: {dataset['good_tracking_spans']['mean_frames']:.1f} frames\n")
+        results_file.write(f"   Minimum length of spans of continuous good tracking: {dataset['good_tracking_spans']['min_frames']} frames\n")
+        results_file.write(f"   Maximum length of spans of continuous good tracking: {dataset['good_tracking_spans']['max_frames']} frames\n")
         results_file.write("Basic Properties\n")
         results_file.write(f"   Mean fish length: {dataset['fish_length_mm_mean']:.3f} mm\n")
         results_file.write(f"   Mean fish speed: {dataset['speed_mm_s_mean']:.3f} mm/s\n")
@@ -1718,49 +1699,48 @@ def write_basicMeasurements_txt_file(dataset):
     Nframes = dataset["Nframes"] # number of frames
     Nfish = dataset["Nfish"] # number of fish
     frames = np.arange(1, Nframes+1)
-    EdgeFlag = np.zeros((Nframes,),dtype=int)
+    
+    # Prepare edge and tracking flags more efficiently
+    EdgeFlag = np.zeros(Nframes, dtype=int)
     if len(dataset["edge_frames"]['raw_frames']) > 0:
         EdgeFlagIdx = dataset["edge_frames"]['raw_frames'] - 1
-    else:
-        EdgeFlagIdx = []
-    EdgeFlag[EdgeFlagIdx] = 1
-    BadTrackFlag = np.zeros((Nframes,),dtype=int)
+        EdgeFlag[EdgeFlagIdx] = 1
+        
+    BadTrackFlag = np.zeros(Nframes, dtype=int)
     BadTrackIdx = dataset["bad_bodyTrack_frames"]['raw_frames'] - 1
     BadTrackFlag[BadTrackIdx] = 1
 
-    # Create headers list
+    # Create headers
     headers = ["frame"]
     if Nfish == 2:
-        headers.extend(["head_head_distance_mm", "closest_distance_mm",
-                       "relative_heading_angle"])
-        for j in range(Nfish):
-            headers.extend([f"rel_orientation_rad_Fish{j}"])
-    for j in range(Nfish):
-        headers.extend([f"speed_mm_s_Fish{j}"])
-    for j in range(Nfish):
-        headers.extend([f"r_fromCtr_mm_Fish{j}"])
+        headers.extend(["head_head_distance_mm", "closest_distance_mm", "relative_heading_angle"])
+        headers.extend([f"rel_orientation_rad_Fish{j}" for j in range(Nfish)])
+    
+    headers.extend([f"speed_mm_s_Fish{j}" for j in range(Nfish)])
+    headers.extend([f"r_fromCtr_mm_Fish{j}" for j in range(Nfish)])
     headers.extend(["edge flag", "bad tracking"])
 
-    # Create a list of rows
+    # Create CSV data more efficiently with string building
+    # Prepare buffer for rows
     rows = []
-    
     for j in range(Nframes):
-        row = ["{:d}".format(frames[j])]
+        row_parts = [f"{frames[j]}"]
+        
         if Nfish == 2:
-            row.extend(["{:.3f}".format(dataset["head_head_distance_mm"][j].item()),
-                        "{:.3f}".format(dataset["closest_distance_mm"][j].item()),
-                        "{:.3f}".format(dataset["relative_heading_angle"][j].item())])
-            for k in range(Nfish):
-                row.extend(["{:.3f}".format(dataset["relative_orientation"][j, k].item())])
-        for k in range(Nfish):
-            row.extend(["{:.3f}".format(dataset["speed_array_mm_s"][j, k].item())])
-        for k in range(Nfish):
-            row.extend(["{:.3f}".format(dataset["radial_position_mm"][j, k].item())])
-        row.extend(["{:d}".format(EdgeFlag[j]),
-                    "{:d}".format(BadTrackFlag[j])])
-        rows.append(",".join(row))
+            row_parts.extend([
+                f"{dataset['head_head_distance_mm'][j].item():.3f}",
+                f"{dataset['closest_distance_mm'][j].item():.3f}",
+                f"{dataset['relative_heading_angle'][j].item():.3f}"
+            ])
+            row_parts.extend([f"{dataset['relative_orientation'][j, k].item():.3f}" for k in range(Nfish)])
+        
+        row_parts.extend([f"{dataset['speed_array_mm_s'][j, k].item():.3f}" for k in range(Nfish)])
+        row_parts.extend([f"{dataset['radial_position_mm'][j, k].item():.3f}" for k in range(Nfish)])
+        row_parts.extend([f"{EdgeFlag[j]}", f"{BadTrackFlag[j]}"])
+        
+        rows.append(",".join(row_parts))
     
-    # Write the CSV file
+    # Write the CSV file in one operation
     with open(f"{dataset['dataset_name']}_basicMeasurements.csv", "w", newline="") as f:
         f.write(",".join(headers) + "\n")
         f.write("\n".join(rows))
@@ -1782,19 +1762,16 @@ def write_CSV_Excel_YAML(expt_config, params, dataPath, datasets):
     output_path = os.path.join(dataPath, params['output_subFolder'])
     write_output_files(params, output_path, datasets)
     
-    # Modify the Excel sheet containing behavior counts to include
-    # summary statistics for all datasets (e.g. average for 
-    # each behavior)
+    # Modify the Excel file with statistics
     add_statistics_to_excel(params['allDatasets_ExcelFile'])
     
-    # Write a YAML file with parameters, combining expt_config,
-    # analysis parameters, and dataPath of subgroup
-    more_param_output = dict({'dataPath': dataPath})
+    # Write a YAML file with parameters
+    more_param_output = {'dataPath': dataPath}
     all_outputs = expt_config | params | more_param_output
     print('\nWriting output YAML file.')
     with open('all_params.yaml', 'w') as file:
         yaml.dump(all_outputs, file)
-    
+        
 
 
 def mark_behavior_frames_Excel(writer, dataset, key_list, sheet_name):
@@ -1809,29 +1786,36 @@ def mark_behavior_frames_Excel(writer, dataset, key_list, sheet_name):
     Returns:
         N/A
     """
-    # Create an empty dataframe with column names
     maxFrame = int(np.max(dataset["frameArray"]))
-    df = pd.DataFrame(columns=['Frame'] + key_list)
-    df['Frame'] = range(1, maxFrame + 1)
     
-    # Vectorized marking of behavior frames
+    # Create a sparse matrix approach - initialize empty dataframe
+    df = pd.DataFrame({'Frame': range(1, maxFrame + 1)})
+    
+    # Pre-allocate memory for all columns
     for k in key_list:
-        # Create a boolean mask for frames to mark
-        frame_mask = np.zeros(maxFrame, dtype=bool)
-        
-        for run_idx in range(dataset[k]["combine_frames"].shape[1]):
-            start_frame = int(dataset[k]["combine_frames"][0, run_idx])
-            duration = int(dataset[k]["combine_frames"][1, run_idx])
-            end_frame = start_frame + duration - 1
-            
-            # Update mask for this run
-            frame_mask[start_frame-1:end_frame] = True
-        
-        # Assign 'X' to marked frames
-        df.loc[frame_mask, k] = 'X'.center(17)
+        df[k] = ''
     
-    # Write the dataframe to the Excel file
+    # Process keys in batches for better performance
+    for k in key_list:
+        # Skip processing if no events for this behavior
+        if dataset[k]["combine_frames"].shape[1] == 0:
+            continue
+            
+        # Extract all frame ranges at once
+        start_frames = dataset[k]["combine_frames"][0, :].astype(int)
+        durations = dataset[k]["combine_frames"][1, :].astype(int)
+        
+        # For each range, mark the frames
+        for i in range(len(start_frames)):
+            start = start_frames[i] - 1  # Convert to 0-indexed
+            end = start + durations[i]
+            
+            # Use vectorized assignment (much faster than .loc for each frame)
+            df.iloc[start:end, df.columns.get_loc(k)] = 'X'.center(17)
+    
+    # Write dataframe to Excel in a single operation
     df.to_excel(writer, sheet_name=sheet_name, index=False)
+
 
 
 def write_behaviorCounts_Excel(ExcelFileName, datasets, key_list, 
@@ -1867,13 +1851,16 @@ def write_behaviorCounts_Excel(ExcelFileName, datasets, key_list,
     """
     Ndatasets = len(datasets)
 
-    # Durations relative to the number of "active" frames.
+    # Calculate relative durations in one pass
     for j in range(Ndatasets):
+        # Calculate these values once per dataset
+        active_any_total = datasets[j]["isActive_any"]["total_duration"]
+        active_all_total = datasets[j]["isActive_all"]["total_duration"]
+        
         for key in key_list:
-            datasets[j][key]['rel_duration_active_any'] = \
-                datasets[j][key]["total_duration"] / datasets[j]["isActive_any"]["total_duration"] 
-            datasets[j][key]['rel_duration_active_all'] = \
-                datasets[j][key]["total_duration"] / datasets[j]["isActive_all"]["total_duration"] 
+            total_duration = datasets[j][key]["total_duration"]
+            datasets[j][key]['rel_duration_active_any'] = total_duration / active_any_total 
+            datasets[j][key]['rel_duration_active_all'] = total_duration / active_all_total
     
     # Create a new Excel writer object
     writer = pd.ExcelWriter(ExcelFileName, engine='xlsxwriter')
@@ -1887,19 +1874,17 @@ def write_behaviorCounts_Excel(ExcelFileName, datasets, key_list,
         "Durations rel All Active": "rel_duration_active_all"
     }
 
+    # Process all sheets in one pass
     for sheet_name, data_key in sheets.items():
-        # Prepare data for the current sheet
-        data = []
-        for j in range(Ndatasets):
-            row = [datasets[j][key] for key in initial_keys]
-            for key in key_list:
-                row.append(datasets[j][key][data_key])
-            data.append(row)
-
-        # Create a DataFrame
+        # Create data for the dataframe
+        data = [
+            [datasets[j].get(key, {}) for key in initial_keys] + 
+            [datasets[j][key][data_key] for key in key_list]
+            for j in range(Ndatasets)
+        ]
+        
+        # Create DataFrame and write to Excel
         df = pd.DataFrame(data, columns=initial_strings + key_list)
-
-        # Write the DataFrame to the Excel sheet
         df.to_excel(writer, sheet_name=sheet_name, index=False)
 
     # Save the Excel file
@@ -1973,6 +1958,91 @@ def add_statistics_to_excel(file_path='behaviorCounts.xlsx'):
     writer.close()
 
 
+
+def calc_good_tracking_spans(dataset, verbose = False):
+    """
+    For a given dataset, identify continuous frames of good 
+    (i.e. not bad) tracking. Calculate the number of such spans, 
+    and their min, max, and mean duration
+    
+    Parameters:
+    -----------
+    dataset : single dataset dictionary. Containing (among other things)
+        - 'bad_bodyTrack_frames': dict with 'raw_frames' containing frame numbers with bad tracking
+          (Note: frame numbers start from 1, not 0)
+    verbose : if True, print various things
+        
+    Returns:
+    --------
+    good_tracking_spans : dictionary with keys
+        "number" : number of continuous-frame good tracking spans
+        "mean_frames" : mean number of frames of good tracking spans
+        "min_frames" : minimum number of frames of good tracking spans (int)
+        "max_frames" : maximum number of frames of good tracking spans (int)
+        
+    
+    """
+    bad_frames = dataset["bad_bodyTrack_frames"]["raw_frames"]
+    
+    # Create a boolean array indicating good frames (True) and bad frames (False)
+    # Accounting for the offset between frame numbers and array indices
+    
+    good_frames = np.ones(dataset["Nframes"], dtype=bool)
+    for frame in bad_frames:
+        if 1 <= frame <= dataset["Nframes"]:  # Ensure the frame number is valid
+            good_frames[frame-1] = False  # Adjust for the offset
+    
+    # Find continuous spans of good frames
+    spans = []
+    span_start = None
+    
+    # Initialize dictionary
+    good_tracking_spans = {
+        'number': 0,
+        'mean_frames': np.nan,
+        'min_frames': np.nan,
+        'max_frames': np.nan,
+    }
+    
+    for i in range(dataset["Nframes"]):
+        if good_frames[i] and span_start is None:
+            span_start = i
+        elif not good_frames[i] and span_start is not None:
+            spans.append((span_start, i-1))
+            span_start = None
+    
+    # Handle the case where the last span extends to the end
+    if span_start is not None:
+        spans.append((span_start, dataset["Nframes"]-1))
+    
+    # If no good spans found, return the initialized dictionary (number = 0)
+    if not spans:
+        print("No good tracking spans found.")
+        return good_tracking_spans
+    
+    # Find the largest span 
+    largest_span = max(spans, key=lambda x: x[1] - x[0] + 1)
+    largest_span_start, largest_span_end = largest_span
+    
+    good_tracking_spans["number"] = len(spans)
+    span_length = np.zeros((len(spans),))
+    
+    if verbose:
+        print(f"Number of spans of continuous good tracking: {good_tracking_spans['number']}")
+        print(f"Largest span: frames {largest_span_start+1}-{largest_span_end+1}")
+    
+    # Evaluate each span 
+    for j, (span_start, span_end) in enumerate(spans):
+        span_length[j] = span_end - span_start + 1
+    
+    good_tracking_spans['mean_frames'] = np.mean(span_length)
+    good_tracking_spans['min_frames'] = int(np.min(span_length))
+    good_tracking_spans['max_frames'] = int(np.max(span_length))
+    
+    return good_tracking_spans
+
+
+
 def calc_distances_matrix(pos_current, pos_previous):
     """
     "Distances matrix" is the sum of inter-body distances between
@@ -2001,103 +2071,174 @@ def calc_distances_matrix(pos_current, pos_previous):
 
 
 
-def link_weighted(position_data, CSVcolumns, tol=0.001):
+def find_smallest_good_idx(N, bad_frames):
     """
-    Re-do fish IDs (track linkage) based on whole-body distances
-       and other weighted measures.
-    Assesses bad tracking (zeros in track data), redundantly with
-       get_bad_bodyTrack_frames, etc., but simple and self-contained
-    Allow frame gap of bad tracking
-
-    Author:   Raghuveer Parthasarathy
-    Created on Thu Jan  4 11:26:30 2024
-    Last modified on Thu Jan  4 11:26:30 2024
+    Find the smallest element of range(N) that is not in bad_frames
+    """
+    bad_frames_set = set(bad_frames)
+    for x in range(N):
+        if x not in bad_frames_set:
+            return x
+        
     
-    Description
+def relink_fish_ids(all_position_data_exp, dataset, CSVcolumns, 
+                    verbose = False):
+    """
+    Relink fish IDs across frames based on minimizing the Euclidean distance 
+    between body positions in consecutive good tracking frames.
+    Swaps position data to match the re-linking.
+    Also swaps heading angle in dataset
+    
+    Parameters:
     -----------
-    
-    Inputs:
-        position_data : position data for this dataset, presumably all_position_data[j]
-            Rows = frame numbers
-            Columns = x, y, angle data -- see CSVcolumns
-            Dim 3 = fish (2 fish)
-        CSVcolumns: information on what the columns of position_data are
-        tol : tolerance for "zero" (bad tracking), pixels
-    
+    all_position_data_exp : numpy.ndarray
+        Position data for a single dataset with shape (Nframes, Ncolumns, Nfish)
+        probably input as all_position_data[j]
+    dataset : dict
+        Dataset information for one dataset, containing bad_bodyTrack_frames
+        probably input as datasets[j]
+    CSVcolumns : dict
+        Dictionary specifying the column indices for body positions
+    verbose : if true, show the number of re-assigned frames
         
-    Outputs:
-        newIDs
+    Returns:
+    --------
+    tuple
+        - position_data : numpy.ndarray: Updated position data with 
+            corrected fish IDs
+        - heading_angles : Nframes x Nfish, updated heading angle data 
+                            corresponding to corrected fish IDs
     """
+    # Create a copy of the data to avoid modifying the original
+    position_data = all_position_data_exp.copy()
+    heading_angles = dataset["heading_angle"].copy()
     
-    # Number of frames, and number of fish
-    Nframes = position_data.shape[0]
-    Nfish = position_data.shape[2]
+    # Extract bad tracking frames
+    bad_frames = dataset["bad_bodyTrack_frames"]["raw_frames"]
     
-    # All positions: Nframes x N body positions x Nfish arrays for x, y
-    body_x = position_data[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
-    body_y = position_data[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
-
-    # Identify frames with good tracking (head, body values nonzero)
-    # Each array is Nframes x Nfish
-    good_track_head = np.logical_and(body_x[:,0,:] > tol, 
-                                     body_y[:,0,:] > tol)
-    good_track_body = np.logical_and(np.all(body_x > tol, axis=1), 
-                                     np.all(body_y > tol, axis=1))
+    # Convert to zero-indexed for array access
+    bad_frames_zero_idx = np.array([f-1 for f in bad_frames])
     
-    # Verify that first frame information looks ok: no zeros
-    if np.any(good_track_head[0,:] == False):
-        raise ValueError("Bad tracking (head) in the first frame! -- link_weighted()")
-    if np.any(good_track_body[0,:] == False):
-        raise ValueError("Bad tracking (head) in the first frame! -- link_weighted()")
     
-    # Initial IDs
-    IDs = np.tile(np.arange(Nfish), (Nframes, 1))    
-    # IDs after re-linking; initialize to same
-    newIDs = IDs.copy()
+    # Get column indices for body positions
+    body_x_start = CSVcolumns["body_column_x_start"]
+    body_y_start = CSVcolumns["body_column_y_start"]
+    body_n_cols = CSVcolumns["body_Ncolumns"]
     
-    # Keep track of last index with good body tracking of all fish
-    last_good_index = 0
-    # Iterate over frames starting from the second frame
-    for j in range(1, Nframes):
-        if np.all(good_track_body[j-1,:]) and np.all(good_track_body[j,:]):
-            # Link between the current frame and the previous frame
-            pos_current = np.stack([body_x[j, :, :], body_y[j, :, :]], axis=-1)  # Shape: (Npos, Nfish, 2 (x and y))
-            pos_previous = np.stack([body_x[j-1, :, :], body_y[j-1, :, :]], axis=-1)  # Shape: (Npos, Nfish, 2)
-            
-            # Get distances_matrix, the sum of inter-body distances
-            # between each fish in frame j and each fish in frame j-1
-            distances_matrix = calc_distances_matrix(pos_current, 
-                                                     pos_previous)
-                        
-            # Use the distances_matrix for assignment of IDs.
-            # Note that this can be generalized to a weighted score 
-            # incorporating other factors; calculate a weighted sum of
-            # distances_matrix and whatever else, and apply the 
-            # linear sum assignment to that.
-            
-            # Use linear_sum_assignment to find the optimal assignment
-            row_indices, col_indices = linear_sum_assignment(distances_matrix)
-            newIDs[j, :] = col_indices
-            
-            last_good_index = j # this frame is good
-            
-        elif np.all(good_track_body[j,:]):
-            # Current frame is good, but previous is not
-            # Link between the current frame and last good frame
-            # See comments above
-            pos_current = np.stack([body_x[j, :, :], body_y[j, :, :]], axis=-1)  # Shape: (Npos, Nfish, 2 (x and y))
-            pos_previous = np.stack([body_x[last_good_index, :, :], body_y[last_good_index, :, :]], axis=-1)  # Shape: (Npos, Nfish, 2)
-            distances_matrix = calc_distances_matrix(pos_current, 
-                                                     pos_previous)
-            row_indices, col_indices = linear_sum_assignment(distances_matrix)
-            print(f'j = {j}, gap = {j - last_good_index - 1}')
-            newIDs[j, :] = col_indices
-            
-
-    switchIndexes= np.where(np.any(IDs != newIDs, axis=1))[0].flatten()
-    print("Frames for switched IDs (==index + 1)\n", switchIndexes+1)
-    return IDs, newIDs
+    body_x_end = body_x_start + body_n_cols
+    body_y_end = body_y_start + body_n_cols
+    
+    # Get the number of frames and fish
+    n_frames, _, n_fish = position_data.shape
+    
+    # Find the first good frame index (hopefully index 0, but not necessarily)
+    last_good_frame = find_smallest_good_idx(dataset["Nframes"], 
+                                             dataset["bad_bodyTrack_frames"]["raw_frames"])
+    # This variable will also be used as the last known good frame index 
+    # Check if first frame has good tracking
+    if last_good_frame > 0:
+        print('Dataset: ', dataset['dataset_name'], ' starts with bad frames.')
+        print('   Start relinking at frame: ', last_good_frame)
+    
+    # frames whose new assignment differs from frame 0
+    reassigned_frames = np.array([])
+    
+    # Process each frame starting from the second one
+    for frame in range(1, n_frames):
+        # Skip bad frames
+        if frame in bad_frames_zero_idx:
+            continue
         
+        # Get body positions for current and last good frame
+        body_x_current = position_data[frame, body_x_start:body_x_end, :]
+        body_y_current = position_data[frame, body_y_start:body_y_end, :]
+        
+        body_x_previous = position_data[last_good_frame, body_x_start:body_x_end, :]
+        body_y_previous = position_data[last_good_frame, body_y_start:body_y_end, :]
+        
+        # Stack x and y coordinates to get positions
+        pos_current = np.stack([body_x_current, body_y_current], axis=-1)    # Shape: (Npos, Nfish, 2)
+        pos_previous = np.stack([body_x_previous, body_y_previous], axis=-1) # Shape: (Npos, Nfish, 2)
+        
+        # Calculate distance matrix between all fish in current and previous frame
+        # For each body position point, calculate distance between current and previous
+        distances_matrix = np.zeros((n_fish, n_fish))
+        
+        for i in range(n_fish):
+            for j in range(n_fish):
+                # Calculate Euclidean distance between all body points of fish i in current frame
+                # and fish j in previous frame
+                point_distances = np.linalg.norm(pos_current[:, i, :] - pos_previous[:, j, :], axis=1)
+                distances_matrix[i, j] = np.sum(point_distances)
+        
+        # Find optimal assignment that minimizes total distance
+        row_indices, col_indices = linear_sum_assignment(distances_matrix)
+        
+        # If the assignment is different from identity, reorder the fish IDs
+        if not np.array_equal(col_indices, np.arange(n_fish)):
+            # Note this frame
+            reassigned_frames = np.append(reassigned_frames, frame)
+            
+            # Create a new array with reordered fish
+            new_position_data = position_data[frame].copy()
+            new_heading_angles = heading_angles[frame].copy()
+            
+            # Reorder fish IDs according to assignment
+            for new_id, old_id in enumerate(col_indices):
+                new_position_data[:, new_id] = position_data[frame, :, old_id]
+                new_heading_angles[new_id] = heading_angles[frame, old_id]
+            
+            # Update the position data for this frame
+            position_data[frame] = new_position_data
+            heading_angles[frame] = new_heading_angles
+            # print(frame, col_indices)
+            # x = input(f'switch: {frame}' )
+        
+        # Update last good frame
+        last_good_frame = frame
+        
+    reassigned_block_endFrames = reassigned_frames[np.where(
+        np.diff(reassigned_frames)>1.0)[0]]
+    # print(reassigned_block_endFrames)
+    num_reassigned_blocks = len(reassigned_block_endFrames)
+    if verbose:
+        print(f'Dataset {dataset["dataset_name"]}, re-linking.')
+        print(f'   re-assigned {num_reassigned_blocks} blocks of {dataset["Nframes"]} frames.')
+    
+    return position_data, heading_angles
+
+
+
+def relink_fish_ids_all_datasets(all_position_data, datasets, CSVcolumns):
+    """
+    Apply the fish ID relinking to all datasets.
+    
+    Parameters:
+    -----------
+    all_position_data : list of numpy.ndarray
+        List of position data arrays for each experiment
+    datasets : list of dict
+        List of dataset information for each experiment
+    CSVcolumns : dict
+        Dictionary specifying the column indices for body positions
+        
+    Returns:
+    --------
+    corrected_data -- list of numpy.ndarray
+        Updated "all_position_data" with corrected fish IDs for all experiments
+    datasets -- datasets list of dictionaries with heading_angle updated
+    """
+    corrected_data = []
+    
+    for data_idx in range(len(all_position_data)):
+        corrected_exp_data, heading_angles = \
+            relink_fish_ids(all_position_data[data_idx], 
+            datasets[data_idx], CSVcolumns)
+        corrected_data.append(corrected_exp_data)
+        datasets[data_idx]["heading_angle"] = heading_angles
+    
+    return corrected_data, datasets
+
 
 def repair_head_positions(all_position_data, CSVcolumns, tol=0.001):
     """ 
@@ -2106,7 +2247,7 @@ def repair_head_positions(all_position_data, CSVcolumns, tol=0.001):
     head positions.) 
     Could use to replace the heading angle with the interpolated angle
     (see commented code), but there are offset issues, and I'll just use the
-    previously-written fix_heading_angles()
+    previously-written repair_heading_angles()
     
     Check that body positions aren't zero; ignore otherwise
     Redundant code with get_bad_bodyTrack_frames(), for determining 
@@ -2194,6 +2335,36 @@ def repair_head_positions(all_position_data, CSVcolumns, tol=0.001):
     
     return all_position_data_repaired
 
+
+def repair_heading_angles(all_position_data, datasets, CSVcolumns):
+    """ 
+    Fix the heading angles -- rather than the strangely quantized angles from
+    ZebraZoom, calculate the angle from arctan(y[1]-y[2], x[1]-x[2]) 
+    See notes Sept. 2024
+    
+    Inputs
+        all_position_data : basic position information for all datasets, list of numpy arrays
+        datasets : list of all dataset dictionaries. 
+        CSVcolumns : CSV column dictionary (what's in what column)
+                                            
+    Outputs
+        datasets: contains new "heading_angle" key in each dataset
+                    datasets[j]["heading_angle"]
+                                            
+    """
+    
+    x2 = CSVcolumns["body_column_x_start"]+1 # x position #2
+    x3 = CSVcolumns["body_column_x_start"]+2 # x position #3
+    y2 = CSVcolumns["body_column_y_start"]+1 # y position #2
+    y3 = CSVcolumns["body_column_y_start"]+2 # y position #3
+    for j in range(len(datasets)):
+        datasets[j]['heading_angle'] = np.arctan2(all_position_data[j][:,y2,:]-all_position_data[j][:,y3,:], 
+                                                  all_position_data[j][:,x2,:]-all_position_data[j][:,x3,:])
+        # put in range [0, 2*pi]; not actually necessary
+        datasets[j]['heading_angle'][datasets[j]['heading_angle'] < 0.0] += 2*np.pi
+    return datasets
+
+
     
 def repair_disjoint_heads(position_data, dataset, CSVcolumns, Dtol=3.0, tol=0.001):
     """ 
@@ -2271,21 +2442,28 @@ def repair_disjoint_heads(position_data, dataset, CSVcolumns, Dtol=3.0, tol=0.00
     
     return position_data_repaired, dataset_repaired
 
-def repair_double_length_fish(position_data, dataset, CSVcolumns, 
+
+def repair_double_length_fish(all_position_data, datasets, CSVcolumns, 
                               lengthFactor = [1.5, 2.5], tol=0.001):
     """ 
     Fix tracking data in which there is only one identified fish, with the 
-    10 body positions spanning two actual fish and overall length 
-    roughly twice the actual single fish length.
+    10 body positions having an overall length 
+    roughly twice the actual single fish length (median), therefore
+    likely spanning two actual fish.
     Replace one fish with the first 5 positions, interpolated to 10 pts
-    and the other with the second 5, interpolated along with the heading 
-    angle
+    and the other with the second 5 positions, interpolated
+    Also recalculate the heading angle; call repair_heading_angle() for
+    consistency (uses 2nd and 3rd positions).
     
     Inputs:
-        position_data : position data for this dataset, presumably all_position_data[j]
-        dataset : dataset dictionary for this dataset
-                  Note that dataset["fish_length_array_mm"] 
-                     contains fish lengths (mm)
+        all_position_data : basic position information for all datasets, 
+                            list of numpy arrays, each Nframes x data columns x Nfish
+                            **Note** sending all_position_data as input overwrites
+                            (in place); input a copy if you don't want to do this
+        datasets : list of all dataset dictionaries. 
+                   Note that datasets[j]["fish_length_array_mm"] contains fish lengths (mm)
+                   **Note** sending all_position_data as input overwrites
+                   (in place); input a copy if you don't want to do this
         CSVcolumns: information on what the columns of all_position_data are
         lengthFactor : a list with two values; 
                        split fish into two if length is between these
@@ -2293,80 +2471,87 @@ def repair_double_length_fish(position_data, dataset, CSVcolumns,
         tol : tolerance for "zero" (bad tracking), pixels
         
     Output:
-        position_data_repaired : positions, with repaired head positions
-        dataset_repaired : overwrites ["heading_angle"] with repaired heading angle
+        all_position_data : positions, with repaired two-fish positions
+        datasets : overwrites ["heading_angle"] with repaired heading angles,
+                    and revises fish lengths.
     """
     
-    # median fish length (px) for each fish; take average across fish
-    mean_fish_length_mm = np.mean(np.median(dataset["fish_length_array_mm"], axis=0))
-    print('mean fish length (mm): ', mean_fish_length_mm)
-    
-    # .copy() to avoid repairing in place
-    Npositions = CSVcolumns["body_Ncolumns"]
-    x = position_data[:,CSVcolumns["body_column_x_start"] : 
-                            (CSVcolumns["body_column_x_start"]+Npositions),:].copy()
-    y = position_data[:,CSVcolumns["body_column_y_start"] :
-                            (CSVcolumns["body_column_y_start"]+Npositions),:].copy()
-    
-    # True if all x, y are zero; shape Nframes x Nfish
-    good_bodyTrack = np.logical_and(np.all(np.abs(x)>tol, axis=1), 
-                                    np.all(np.abs(y)>tol, axis=1))
-    # Indices of frames in which  only one fish was tracked 
-    rows_with_one_tracked = np.where(np.sum(good_bodyTrack, axis=1) == 1)[0]
-    print('Frame indexes with one fish \n', rows_with_one_tracked)
-    # Column indices (i.e. fish) where True values exist
-    oneFish_indices = np.argmax(good_bodyTrack[rows_with_one_tracked,:], axis=1)
-    print('One fish indices\n', oneFish_indices)
-    # Calculate length ratios
-    lengthRatios = dataset["fish_length_array_mm"][rows_with_one_tracked, 
-                                                oneFish_indices] / mean_fish_length_mm
-    # Find frame indices where length ratios meet the condition
-    doubleLength_indices = rows_with_one_tracked[np.logical_and(lengthFactor[0] < lengthRatios, 
-                             lengthRatios < lengthFactor[1])]
-
-    # Column indices (i.e. fish) where True values exist, only for these
-    # frames. Using same variable name
-    oneFish_indices = np.argmax(good_bodyTrack[doubleLength_indices,:], axis=1)
-
-    # Repair
-    # Note that it doesn't matter which ID is which, since we'll re-link later
-    position_data_repaired = position_data.copy()
-    dataset_repaired = dataset.copy()
-    midPosition = int(np.floor(Npositions/2.0))  # 5 for usual 10 body positions
-    interpIndices = np.linspace(0, Npositions-1, num=midPosition).astype(int) 
-    for j, frameIdx in enumerate(doubleLength_indices):
-        print('Double length Frame Idx: ', frameIdx)
-        # one fish from the first 5 positions.
-        x_first = x[frameIdx,0:midPosition,oneFish_indices[j]]
-        y_first = y[frameIdx,0:midPosition,oneFish_indices[j]]
-        # print('Frame Index: ', frameIdx)
-        print('which fish: ', oneFish_indices[j])
-        print(x_first)
-        print(y_first)
-        # print(np.arange(0,midPosition))
-        x0_new = np.interp(np.arange(0,Npositions), interpIndices, x_first)
-        y0_new = np.interp(np.arange(0,Npositions), interpIndices, y_first)
-        angles0_new = np.arctan2(y0_new[0]- y0_new[2], x0_new[0]- x0_new[2])
+    print('Repairing "double-length" fish.')
+    for j in range(len(datasets)):
+        # median fish length (px) for each fish; take average across fish
+        mean_fish_length_mm = np.mean(np.median(datasets[j]["fish_length_array_mm"], axis=0))
         
-        # the other fish from the last 5 positions.
-        x_last = x[frameIdx,midPosition:, oneFish_indices[j]]
-        y_last = y[frameIdx,midPosition:, oneFish_indices[j]]
-        x1_new = np.interp(np.arange(0,Npositions), interpIndices, x_last)
-        y1_new = np.interp(np.arange(0,Npositions), interpIndices, y_last)
-        angles1_new = np.arctan2(y1_new[0]- y1_new[2], x1_new[0]- x1_new[2])
+        # .copy() to avoid repairing in place
+        Npositions = CSVcolumns["body_Ncolumns"]
 
-        position_data_repaired[frameIdx,CSVcolumns["body_column_x_start"] : 
-                            (CSVcolumns["body_column_x_start"]+Npositions),0] = x0_new
-        position_data_repaired[frameIdx,CSVcolumns["body_column_y_start"] :
-                            (CSVcolumns["body_column_y_start"]+Npositions),0] = y0_new
-        position_data_repaired[frameIdx,CSVcolumns["body_column_x_start"] : 
-                            (CSVcolumns["body_column_x_start"]+Npositions),1] = x1_new
-        position_data_repaired[frameIdx,CSVcolumns["body_column_y_start"] :
-                            (CSVcolumns["body_column_y_start"]+Npositions),1] = y1_new
-        dataset_repaired["heading_angle"][:, 0] = angles0_new
-        dataset_repaired["heading_angle"][:, 1] = angles1_new
+        # body position data
+        x = all_position_data[j][:,CSVcolumns["body_column_x_start"] : 
+                                (CSVcolumns["body_column_x_start"]+Npositions),:].copy()
+        y = all_position_data[j][:,CSVcolumns["body_column_y_start"] :
+                                (CSVcolumns["body_column_y_start"]+Npositions),:].copy()
+        
+        # True if all x, y are nonzero; shape Nframes x Nfish
+        good_bodyTrack = np.logical_and(np.all(np.abs(x)>tol, axis=1), 
+                                        np.all(np.abs(y)>tol, axis=1))
+        # Indices of frames in which only one fish was tracked 
+        rows_with_one_tracked = np.where(np.sum(good_bodyTrack, axis=1) == 1)[0]
+        # Column indices (i.e. fish) where True values exist
+        oneFish_indices = np.argmax(good_bodyTrack[rows_with_one_tracked,:], 
+                                    axis=1)
+        # print('       One fish indices\n', oneFish_indices)
+        # Calculate length ratios
+        lengthRatios = datasets[j]["fish_length_array_mm"][rows_with_one_tracked, 
+                                   oneFish_indices] / mean_fish_length_mm
+        # Find frame indices where length ratios meet the condition
+        doubleLength_indices = rows_with_one_tracked[np.logical_and(lengthFactor[0] < lengthRatios, 
+                                 lengthRatios < lengthFactor[1])]
     
-    return position_data_repaired, dataset_repaired
+        # Column indices (i.e. fish) where True values exist, only for these
+        # frames. Using same variable name
+        oneFish_indices = np.argmax(good_bodyTrack[doubleLength_indices,:], 
+                                    axis=1)
+    
+        print(f'Dataset {datasets[j]["dataset_name"]}: median fish length (mm): {mean_fish_length_mm:.2f}')
+        print(f'   {len(rows_with_one_tracked)} frames with one fish.')
+        print(f'   {len(doubleLength_indices)} frames with one double-length fish.')
+        # Repair
+        # Note that it doesn't matter which ID is which, since we'll re-link later
+        position_data_repaired = all_position_data[j].copy()
+        dataset_repaired = datasets[j].copy()
+        midPosition = int(np.floor(Npositions/2.0))  # 5 for usual 10 body positions
+        interpIndices = np.linspace(0, Npositions-1, num=midPosition).astype(int) 
+        for k, frameIdx in enumerate(doubleLength_indices):
+            # print('     Double length Frame Idx: ', frameIdx)
+            # one fish from the first 5 positions.
+            x_first = x[frameIdx,0:midPosition,oneFish_indices[k]]
+            y_first = y[frameIdx,0:midPosition,oneFish_indices[k]]
+            # print('Frame Index: ', frameIdx)
+            #print('     which fish: ', oneFish_indices[k])
+            # print(np.arange(0,midPosition))
+            x0_new = np.interp(np.arange(0,Npositions), interpIndices, x_first)
+            y0_new = np.interp(np.arange(0,Npositions), interpIndices, y_first)
+            
+            # the other fish from the last 5 positions.
+            x_last = x[frameIdx,midPosition:, oneFish_indices[k]]
+            y_last = y[frameIdx,midPosition:, oneFish_indices[k]]
+            x1_new = np.interp(np.arange(0,Npositions), interpIndices, x_last)
+            y1_new = np.interp(np.arange(0,Npositions), interpIndices, y_last)
+    
+            position_data_repaired[frameIdx,CSVcolumns["body_column_x_start"] : 
+                                (CSVcolumns["body_column_x_start"]+Npositions),0] = x0_new
+            position_data_repaired[frameIdx,CSVcolumns["body_column_y_start"] :
+                                (CSVcolumns["body_column_y_start"]+Npositions),0] = y0_new
+            position_data_repaired[frameIdx,CSVcolumns["body_column_x_start"] : 
+                                (CSVcolumns["body_column_x_start"]+Npositions),1] = x1_new
+            position_data_repaired[frameIdx,CSVcolumns["body_column_y_start"] :
+                                (CSVcolumns["body_column_y_start"]+Npositions),1] = y1_new
+            
+        all_position_data[j] = position_data_repaired
+        datasets[j] = dataset_repaired
+    
+    datasets = repair_heading_angles(all_position_data, datasets, CSVcolumns)
+    
+    return all_position_data, datasets
  
 
 def combine_all_values_constrained(datasets, keyName='speed_array_mm_s', 
@@ -2546,7 +2731,7 @@ def get_values_subset(values_all, idx):
 def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None], 
                            xlabelStr='x', titleStr='Probability density',
                            yScaleType = 'log', flatten_dataset = False,
-                           ylim = None, polarPlot = False, 
+                           xlim = None, ylim = None, polarPlot = False, 
                            outputFileName = None):
     """
     Plot the probability distribution (normalized histogram) 
@@ -2566,6 +2751,7 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
        flatten_dataset : if true, flatten each dataset's array for 
                            individual dataset plots. If false, plot each
                            array column (fish, probably) separately
+       xlim : (optional) tuple of min, max x-axis limits
        ylim : (optional) tuple of min, max y-axis limits
        polarPlot : if True, use polar coordinates for the histogram.
                    Will not plot x and y labels.
@@ -2630,6 +2816,8 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
     plt.title(titleStr, fontsize=18)
     if polarPlot:
         ax.set_thetalim(bin_range[0], bin_range[1])
+    if xlim is not None:
+        plt.xlim(xlim)
     if ylim is not None:
         plt.ylim(ylim)
     plt.grid(True, linestyle='--', alpha=0.7)
@@ -2865,6 +3053,7 @@ def get_fps(datasets, fpstol = 1e-6):
 def plot_function_allSets(y_list, x_array = None, 
                            xlabelStr='x', ylabelStr='y', titleStr='Value',
                            average_in_dataset = False,
+                           xlim = None, ylim = None,
                            outputFileName = None):
     """
     Plot some function that has been calculated for all datasets, 
@@ -2879,6 +3068,8 @@ def plot_function_allSets(y_list, x_array = None,
        titleStr : string for title
        average_in_dataset : if true, average each dataset's arrays for 
                             the individual dataset plots
+       xlim : (optional) tuple of min, max x-axis limits
+       ylim : (optional) tuple of min, max y-axis limits
        outputFileName : if not None, save the figure with this filename 
                        (include extension)
     """ 
@@ -2930,6 +3121,10 @@ def plot_function_allSets(y_list, x_array = None,
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.tick_params(axis='both', which='major', labelsize=12)
     # plt.legend()
+    if xlim is not None:
+        plt.xlim(xlim)
+    if ylim is not None:
+        plt.ylim(ylim)
     plt.show()
     if outputFileName != None:
         plt.savefig(outputFileName, bbox_inches='tight')
@@ -3128,6 +3323,147 @@ def behaviorFrameCount_all(datasets, keyList,
     return datasets
 
 
+def get_behavior_key_list(datasets):
+    """
+    Get a list of all behaviors
+    Only looks at datasets[0]; gets the names of all sub-dictionaries
+        that contain the key "combine_frames" , since all behaviors
+        should have this.
+    
+    Inputs
+    ----------
+    datasets : dictionary; All datasets to analyze
+
+    Returns
+    -------
+                             
+    behavior_key_list : list of all behaviors considered 
+
+    To use: behavior_key_list = get_behavior_key_list(datasets)
+    """
+
+    # Get list of all behaviors; examine the first dataset
+    behavior_key_list = []
+    
+    # Iterate through each dictionary in the dataset
+    for key, value in datasets[0].items():
+        # Check if the dictionary has the key "combine_frames" 
+        # (Could have also done this with "behavior_name")
+        if isinstance(value, dict) and "combine_frames" in value:
+            print('Adding behavior key:   ', key)
+            # Add the value of "behavior_name" to the behavior_key_list list
+            behavior_key_list.append(key)
+    #print('PARTIAL BEHAVIORS!')
+    #behavior_key_list = ["approaching_Fish0", "approaching_Fish1",
+    #                    "fleeing_Fish0", "fleeing_Fish1"]
+    
+    return behavior_key_list
+    
+
+def select_items_dialog(behavior_key_list, default_keys=['perp_noneSee', 
+        'perp_oneSees', 'perp_bothSee', 'contact_any', 'contact_head_body', 
+        'contact_inferred', 'tail_rubbing', 'Cbend_Fish0', 'Cbend_Fish1', 
+        'Jbend_Fish0', 'Jbend_Fish1', 'Rbend_Fish0', 'Rbend_Fish1', 
+        'isActive_any', 'isMoving_any', 'approaching_Fish0', 
+        'approaching_Fish1', 'fleeing_Fish0', 'fleeing_Fish1']):
+
+    """
+    Creates a dialog with checkboxes for each item in a list of strings,
+    e.g. the keys of all possible behaviors in behavior_key_list.
+    Default selection is based on default_keys.
+    Returns a list of selected items.
+    written by Claude 3.5 Sonnet
+    
+    Args:
+        behavior_key_list (list): List of strings to display as options
+        default_keys (list, optional): List of strings to select by default
+    
+    Returns:
+        list: Selected items
+    """
+    if default_keys is None:
+        default_keys = []
+    
+    # Create a separate Tk instance to avoid console freezing
+    root = tk.Tk()
+    root.title("Select Items")
+    root.geometry("600x1000+100+100")
+    
+    # Initialize result with an empty list
+    result = []
+    
+    frame = ttk.Frame(root, padding="10")
+    frame.pack(fill=tk.BOTH, expand=True)
+    
+    # Label at the top
+    ttk.Label(frame, text="Select items:").pack(anchor=tk.W, pady=(0, 10))
+    
+    # Create variables to track selection state
+    var_dict = {}
+    for item in behavior_key_list:
+        var = tk.BooleanVar(root)
+        # Explicitly set default values
+        if item in default_keys:
+            var.set(True)
+        else:
+            var.set(False)
+        var_dict[item] = var
+    
+    # Create a canvas with scrollbar for many items
+    canvas = tk.Canvas(frame)
+    scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+    scrollable_frame = ttk.Frame(canvas)
+    
+    scrollable_frame.bind(
+        "<Configure>",
+        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+    )
+    
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+    
+    # Add checkboxes for each item
+    for item in behavior_key_list:
+        ttk.Checkbutton(
+            scrollable_frame, 
+            text=item, 
+            variable=var_dict[item]
+        ).pack(anchor=tk.W, pady=2)
+    
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
+    
+    # OK and Cancel buttons
+    button_frame = ttk.Frame(root)
+    button_frame.pack(fill=tk.X, padx=10, pady=10)
+    
+    def on_ok():
+        nonlocal result
+        result = [item for item, var in var_dict.items() if var.get()]
+        root.quit()  # Use quit instead of destroy
+    
+    def on_cancel():
+        root.quit()  # Use quit instead of destroy
+    
+    ttk.Button(button_frame, text="OK", command=on_ok).pack(side=tk.RIGHT, padx=5)
+    ttk.Button(button_frame, text="Cancel", command=on_cancel).pack(side=tk.RIGHT, padx=5)
+    
+    # Center the window
+    root.update_idletasks()
+    width = root.winfo_width()
+    height = root.winfo_height()
+    x = (root.winfo_screenwidth() // 2) - (width // 2)
+    y = (root.winfo_screenheight() // 2) - (height // 2)
+    root.geometry('{}x{}+{}+{}'.format(width, height, x, y))
+    
+    # Start the main loop
+    root.mainloop()
+    
+    # After mainloop ends, destroy the window
+    root.destroy()
+    
+    return result
+
 
 def load_global_expt_config(config_path, config_file):
     """ 
@@ -3174,3 +3510,90 @@ def load_global_expt_config(config_path, config_file):
         expt_config = all_config[all_expt_names[expt_choice]]
     
     return expt_config           
+
+
+def fit_gaussian_mixture(x, n_gaussian=3, init_means=None, random_state=42):
+    """
+    Fit a Gaussian Mixture Model to data with outliers and identify the component
+    initialized with the median value.
+    
+    Written by Claude Sonnet 3.7, with some modifications
+    
+    Ignore warnings, to avoid printing
+        UserWarning: KMeans is known to have a memory leak on Windows with MKL, when there are less chunks than available threads. You can avoid it by setting the environment variable OMP_NUM_THREADS=1
+    
+    Parameters:
+    -----------
+    x : numpy.ndarray
+        Input data array containing values with outliers
+    n_gaussian : int, default=3
+        Number of Gaussian components to fit
+    init_means : array-like, default=None
+        Initial means for GMM components. If None, will use 
+           [median, 0.75*median, 3*median]
+           Note that the output (properties of the "main" peak) will be the
+           properties of the peak with the *first* initialization value,
+           so the order of init_means matters!
+    random_state : int, default=42
+        Random seed for reproducibility
+        
+    Returns:
+    --------
+    tuple of float : Mean and std. dev of the component 
+        initialized at the first value
+    """
+    
+    # Ignore all warnings of type UserWarning
+    warnings.filterwarnings("ignore", category=UserWarning)
+
+    # Handle case where there's not enough data
+    if len(x) < n_gaussian or len(np.unique(x)) < n_gaussian:
+        return np.median(x)  # Fallback to median if not enough data
+    
+    # Initialize the model
+    gmm = GaussianMixture(
+        n_components=n_gaussian,
+        covariance_type='full',
+        random_state=random_state,
+        max_iter=100
+    )
+    
+    # Reshape data for scikit-learn
+    X = x.reshape(-1, 1)
+    
+    # Use custom initialization
+    if init_means is None:
+        median_val = np.median(x)
+        # Initialize means at median, 0.75*median, and 3*median
+        init_means = np.array([
+            [median_val],
+            [0.75 * median_val],
+            [3 * median_val]
+        ])
+    
+    # Only use as many initial means as requested components
+    init_means = init_means[:n_gaussian]
+    
+    # Reshape; make an array
+    init_means = np.array(init_means).reshape(-1,1) 
+    
+    # Set the initial parameters
+    gmm.means_init = init_means
+    
+    # Fit the model
+    try:
+        gmm.fit(X)
+        # Get component information
+        means = gmm.means_.flatten()
+        gmm_sigmas = np.sqrt(gmm.covariances_.flatten())
+        # Return the mean of the component initialized at the first 
+        #component in our initialization; should be the median
+        # Reset all filters to default
+        warnings.resetwarnings()
+        return means[0], gmm_sigmas[0]
+    except Exception as e:
+        # Fallback to median if GMM fitting fails
+        print(f'\nGMM fitting fails! Exception {e}\n Returning median, std.')
+        # Reset all filters to default
+        warnings.resetwarnings()
+        return np.median(x), np.std(x)

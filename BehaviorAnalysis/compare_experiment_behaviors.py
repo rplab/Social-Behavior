@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Fri Dec. 1, 2023
-Last modified on January 14, 2025
+Last modified on April 13, 2025
 
 Description
 -----------
@@ -27,12 +27,14 @@ Outputs:
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 import os
 import pandas as pd
 from scipy import stats
 import tkinter as tk
 from tkinter import filedialog
 
+from toolkit import select_items_dialog, get_behavior_key_list
 
 def get_two_filePaths_and_labels():
     """
@@ -164,12 +166,48 @@ def get_common_sheets(file_path1, file_path2):
     excel1 = pd.ExcelFile(file_path1)
     excel2 = pd.ExcelFile(file_path2)
     
-    sheets1 = set(excel1.sheet_names)
-    sheets2 = set(excel2.sheet_names)
+    sheets1 = excel1.sheet_names
+    sheets2 = excel2.sheet_names
     
-    common_sheets = list(sheets1.intersection(sheets2))
+    common_sheets = [x for x in sheets1 if x in sheets2] 
+    # avoiding set for sheets1, 2 and intersection, to preserve order
+    #   list(sheets1.intersection(sheets2))
     print(f"\nCommon sheets found: {common_sheets}")
     return common_sheets
+
+
+def select_sheets(common_sheets):
+    """
+    Ask user for the list of sheet names to use.
+    
+    Parameters
+    ----------
+    common_sheets: List of common sheet names
+        
+    Returns
+    -------
+    list
+        sheets_to_use: List of sheet names to use
+    """
+    # Print the numbered list of sheets
+    for i, sheet in enumerate(common_sheets, 1):
+        print(f"{i}. {sheet}")
+    
+    # Ask the user which sheets to use, default is all
+    user_input = input("Enter the numbers of the sheets to use (comma-separated), or press Enter to use all: ")
+    
+    # If user presses Enter, use all sheets
+    if not user_input:
+        return common_sheets
+    
+    # Convert user input to a list of integers
+    selected_indices = [int(x) for x in user_input.split(",")]
+    
+    # Get the selected sheets based on indices
+    sheets_to_use = [common_sheets[i-1] for i in selected_indices]
+    
+    return sheets_to_use
+
 
 
 
@@ -253,10 +291,11 @@ def write_results_to_excel(stats1, stats2, output_file,
         df.to_excel(writer, sheet_name=sheet_name, index=False)
         
         
-def plot_comparison(stats_both, df_both, exclude_from_loglog,  
-                    dataLabels = ('Set1', 'Set2'), 
+def plot_comparison(stats_both, df_both, include_columns, colors,
+                    dataLabels = ('Set1', 'Set2'),
                     logPlot = True, addDiagonals = True,
                     showTextLabels = False, showLegend = True,
+                    titleString = "Behavior Comparison",
                     outputFileName = None):
     """
     Plot the mean and s.e.m. of behavior frequencies found in 
@@ -269,12 +308,14 @@ def plot_comparison(stats_both, df_both, exclude_from_loglog,
     stats_both : tuple of stats1, stats2, dictionaries containing 
                  statistics for each column
     df_both : tuple of df1, df2, the original dataframes
-    exclude_from_loglog : list of columns (keys) to ignore in plot
+    include_columns : list of columns (keys) to include in plot
     dataLabels : tuple of dataLabel1, 2 for labeling plots
+    colors : N x 4, colors to use for plots
     logPlot : if True, use log axes
     addDiagonals : if True, add a gray line at the diagonal
     showTextLabels : if true, text by symbols
     showLegend : if true, show a legend
+    titleString : String for plot title
     outputFileName : filename for figure output, if not None
     
     Returns
@@ -286,8 +327,8 @@ def plot_comparison(stats_both, df_both, exclude_from_loglog,
     df1, df2 = df_both
     
     # Filter out excluded columns
-    stats1 = {k: v for k, v in stats1.items() if k not in exclude_from_loglog}
-    stats2 = {k: v for k, v in stats2.items() if k not in exclude_from_loglog}
+    stats1 = {k: v for k, v in stats1.items() if k in include_columns}
+    stats2 = {k: v for k, v in stats2.items() if k in include_columns}
     
     # Extract means and SEMs
     columns = list(stats1.keys())
@@ -301,13 +342,13 @@ def plot_comparison(stats_both, df_both, exclude_from_loglog,
     # Plotting
     plt.figure(figsize=(10, 8))
     
+    
     # Get the default color cycle
-    prop_cycle = plt.rcParams['axes.prop_cycle']
-    colors = prop_cycle.by_key()['color']
+    # prop_cycle = plt.rcParams['axes.prop_cycle']
+    # colors = prop_cycle.by_key()['color']
     
     # Plot means with error bars and individual points for each column
     for j, col in enumerate(columns):
-        color = colors[j % len(colors)]  # Cycle through colors if more columns than colors
         
         # Get individual points from each dataset
         points1 = df1[col].dropna().values
@@ -315,19 +356,20 @@ def plot_comparison(stats_both, df_both, exclude_from_loglog,
         
         # Plot horizontal spread at mean2
         plt.scatter(points1, np.full_like(points1, means2[j]), 
-                   alpha=0.3, s=60, color=color, 
-                   facecolors='none', edgecolors=color)
+                   alpha=0.3, s=60, color=colors[j,:], 
+                   facecolors='none', edgecolors=colors[j,:])
         # Plot vertical spread at mean1
         plt.scatter(np.full_like(points2, means1[j]), points2, 
-                   alpha=0.3, s=60, color=color, 
-                   facecolors='none', edgecolors=color)
+                   alpha=0.3, s=60, color=colors[j,:], 
+                   facecolors='none', edgecolors=colors[j,:])
         
         # Plot mean with error bars
         plt.errorbar(means1[j], means2[j], 
                      xerr=sems1[j], 
                      yerr=sems2[j], fmt='o', 
                      capsize=5, markersize=16,
-                     color=color, label=f"  {col}")
+                     color=colors[j,:], ecolor = colors[j,:], 
+                     label=f"  {col}")
 
     if logPlot:
         plt.xscale('log')
@@ -363,7 +405,7 @@ def plot_comparison(stats_both, df_both, exclude_from_loglog,
     plt.ylabel(dataLabel_2, fontsize=16)
     plt.xticks(fontsize=12)
     plt.yticks(fontsize=12)
-    plt.title("Relative Durations of Behaviors", fontsize=18)
+    plt.title(titleString, fontsize=18)
 
     ax = plt.gca()
     ax.set_aspect('equal', adjustable='box')
@@ -375,8 +417,9 @@ def plot_comparison(stats_both, df_both, exclude_from_loglog,
     plt.show()
 
 
-def plot_cols_side_by_side(stats_both, df_both, exclude_from_all, 
+def plot_cols_side_by_side(stats_both, df_both, include_columns, colors, 
                           offset_x=0.1, dataLabels=('Set1', 'Set2'), 
+                          titleString = 'Behaviors, side-by-side',
                           outputFileName=None, logYscale = True):
     """
     Plot the data points and statistics from two datasets side by side for each column.
@@ -389,12 +432,13 @@ def plot_cols_side_by_side(stats_both, df_both, exclude_from_all,
         (stats1, stats2) where each contains column statistics with 'mean' and 'sem'
     df_both : tuple of pandas.DataFrame
         (df1, df2) containing the raw data for each dataset
-    exclude_from_all : list
-        Column names to exclude from plotting
+    include_columns : list
+        Column names to include in plot
     offset_x : float, optional
         Horizontal offset for separating the two datasets (default: 0.25)
     dataLabels : tuple of str, optional
         Labels for the two datasets (default: ('Set1', 'Set2'))
+    titleString : plot title
     outputFileName : str, optional
         If provided, save the plot to this path
     """
@@ -402,21 +446,16 @@ def plot_cols_side_by_side(stats_both, df_both, exclude_from_all,
     df1, df2 = df_both
     
     # Filter out excluded columns
-    stats1 = {k: v for k, v in stats1.items() if k not in exclude_from_all}
-    stats2 = {k: v for k, v in stats2.items() if k not in exclude_from_all}
+    stats1 = {k: v for k, v in stats1.items() if k in include_columns}
+    stats2 = {k: v for k, v in stats2.items() if k in include_columns}
     
     # Extract columns and prepare figure
     columns = list(stats1.keys())
     plt.figure(figsize=(12, 6))
     
-    # Get the default color cycle
-    prop_cycle = plt.rcParams['axes.prop_cycle']
-    colors = prop_cycle.by_key()['color']
-    
     # Plot each column
     for j, col in enumerate(columns):
-        color = colors[j % len(colors)]
-        
+         
         # Get data points and statistics
         points1 = df1[col].dropna().values
         points2 = df2[col].dropna().values
@@ -425,16 +464,16 @@ def plot_cols_side_by_side(stats_both, df_both, exclude_from_all,
         
         # Plot dataset 1 (left side)
         plt.scatter([j-offset_x] * len(points1), points1, 
-                   marker='x', color=color, alpha=0.5)
+                   marker='x', color=colors[j,:], alpha=0.5)
         plt.errorbar(j-offset_x, mean1, yerr=sem1, 
-                    marker='<', color=color, markersize=10,
+                    marker='<', color=colors[j,:], markersize=10,
                     capsize=5)
         
         # Plot dataset 2 (right side)
         plt.scatter([j+offset_x] * len(points2), points2, 
-                   marker='x', color=color, alpha=0.5)
+                   marker='x', color=colors[j,:], alpha=0.5)
         plt.errorbar(j+offset_x, mean2, yerr=sem2, 
-                    marker='>', color=color, markersize=10,
+                    marker='>', color=colors[j,:], markersize=10,
                     capsize=5)
     
     # Customize the plot
@@ -452,8 +491,8 @@ def plot_cols_side_by_side(stats_both, df_both, exclude_from_all,
     
     # Set labels and title
     plt.xlabel('Behaviors')
-    plt.ylabel('Duration')
-    plt.title('Behavior Durations by Dataset')
+    plt.ylabel('Duration or Number')
+    plt.title(titleString)
     
     # Adjust layout to prevent label cutoff
     plt.tight_layout()
@@ -469,8 +508,11 @@ def plot_cols_side_by_side(stats_both, df_both, exclude_from_all,
     plt.show()
     
 
-def plot_behavior_ratio(column_ratios, dataLabels = ('Set1', 'Set2'),
-                        showLegend = True, titleSheet = '', outputFileName = None):
+def plot_behavior_ratio(column_ratios, colors, 
+                        dataLabels = ('Set1', 'Set2'),
+                        showLegend = True, titleSheet = '', 
+                        ylim = None,
+                        outputFileName = None):
     """
     Plot the ratios of behavior frequencies (ratio of means
     with uncertainty) found in datasets 1 and 2 versus each other;
@@ -480,9 +522,11 @@ def plot_behavior_ratio(column_ratios, dataLabels = ('Set1', 'Set2'),
     Parameters
     ----------
     column_ratios : dictionary of df2/df2 column ratios and uncertainties
+    colors : array of colors for plot
     dataLabels : tuple of dataLabel1, 2 for labeling plots
     showLegend : if true, show a legend
     titleSheet : append to title of plot
+    ylim : (optional) tuple of min, max y-axis limits
     outputFileName : filename for figure output, if not None
     
     Returns
@@ -499,9 +543,14 @@ def plot_behavior_ratio(column_ratios, dataLabels = ('Set1', 'Set2'),
                      yerr=np.vstack((column_ratios[col]['unc_lower'], 
                                      column_ratios[col]['unc_lower'])), 
                      label = f"  {col}", fmt='o', capsize=5,
-                     markersize=12)
+                     markerfacecolor = colors[j,:], 
+                     markeredgecolor = colors[j,:], 
+                     ecolor = colors[j,:], 
+                     markersize=14)
 
     column_names = column_ratios.keys()
+    if ylim is not None:
+        plt.ylim(ylim)
     plt.xticks(range(len(column_ratios)), column_names, fontsize=14, 
                rotation=45, ha='right')
     plt.yticks(fontsize=14)
@@ -525,7 +574,7 @@ def plot_behavior_ratio(column_ratios, dataLabels = ('Set1', 'Set2'),
     plt.show()
         
 
-def calculate_column_ratios(df1, df2, Nbootstrap=1000, exclude_columns=[]):
+def calculate_column_ratios(df1, df2, Nbootstrap=1000, include_columns=[]):
     """
     Calculate the mean and uncertainty of the ratio of values between 
     two DataFrames using Bootstrap resampling. (because uncertainties in mean 
@@ -535,7 +584,7 @@ def calculate_column_ratios(df1, df2, Nbootstrap=1000, exclude_columns=[]):
     df1 (pandas.DataFrame): The first DataFrame, from experiment 1
     df2 (pandas.DataFrame): The second DataFrame, from experiment 2
     Nbootstrap (int): Number of samples to generate for Bootstrapping. Default 1000.
-    exclude_columns: list of columns to ignore for analysis
+    include_columns: list of columns to include for analysis
 
     Returns:
     column_ratios: dictionary, keys being column name, with sub-keys being:
@@ -547,17 +596,9 @@ def calculate_column_ratios(df1, df2, Nbootstrap=1000, exclude_columns=[]):
     # Verify that the DataFrames have the same column headings
     if not df1.columns.equals(df2.columns):
         raise ValueError("DataFrames must have the same column headings.")
-    
-    
-    # Exclude 'Dataset' column, if not already excluded
-    if 'Dataset' not in exclude_columns:
-        exclude_columns.append('Dataset')
-    # Exclude 'Source' column, if not already excluded
-    if 'Source' not in exclude_columns:
-        exclude_columns.append('Source')
-    
+        
     # Columns to analyze
-    analyze_columns = [col for col in df1.columns if col not in exclude_columns]
+    analyze_columns = [col for col in df1.columns if col in include_columns]
         
     column_ratios = {}
 
@@ -601,10 +642,6 @@ def calculate_column_ratios(df1, df2, Nbootstrap=1000, exclude_columns=[]):
                 'unc_upper': np.percentile(ratios, 84) - thismean
             }
         
-        #plt.figure()
-        #plt.hist(ratios, bins=50)
-        #plt.xlabel(f'Ratio of {col}')
-        #plt.title(f'Bootstrapping, {col}')
 
     printOutput = False
     if printOutput:
@@ -617,10 +654,12 @@ def calculate_column_ratios(df1, df2, Nbootstrap=1000, exclude_columns=[]):
     return column_ratios
 
 
-
-def getOutputPath():
+def getOutputPath(file_paths = None):
     # Ask user for the output path (for plots and CSV file)
     # If empty, dialog box
+    # Inputs: file_paths, tuple of both input full file paths, to determine
+    #    default for dialog box
+    # Output: output path name
     
     outputPath = input('Enter the path (folder) for output, or leave blank to use a dialog box: ')
 
@@ -629,8 +668,61 @@ def getOutputPath():
     else:
         root = tk.Tk()
         root.withdraw()
-        outputPath = filedialog.askdirectory(title="Select a folder")
+        # default will be lowest common path
+        if file_paths is None:
+            outputPath = filedialog.askdirectory(title="Select a folder")
+        else:
+            default_output_path = common_lowermost_folder(file_paths[0], file_paths[1])
+            print(f'Default output path: {default_output_path}')
+            outputPath = filedialog.askdirectory(title="Select a folder",
+                                                 initialdir = default_output_path)
         return outputPath
+
+def common_lowermost_folder(path1, path2):
+    # Get the lower-most common folder of two paths
+    # Split the paths into components
+    parts1 = path1.split(os.sep)
+    parts2 = path2.split(os.sep)
+    
+    # Initialize the common path
+    common_path = []
+    
+    # Iterate over the components and find the common ones
+    for part1, part2 in zip(parts1, parts2):
+        if part1 == part2:
+            common_path.append(part1)
+        else:
+            break
+    
+    # Return the lowermost common folder
+    return os.sep.join(common_path)
+
+
+
+def get_all_columns(file_path, sheet_name, exclude_from_all=[]):
+    """
+    Get all possible columns to use, based on the columns in the 
+    specified sheet of an Excel file
+    
+    Inputs:
+        file_path : full file path of the Excel spreadsheet
+        sheet_name : sheet name
+        exclude_from_all : columns to exclude (list of strings)
+        
+    Outputs
+        columns_all : list of strings (column names, i.e. behavior names)
+    
+    """
+    df = pd.read_excel(file_path, sheet_name=sheet_name)
+    columns_all = df.columns.to_list()
+    
+    # Remove columns, e.g. "Dataset" and "Source"
+    for x in exclude_from_all:
+        if x in columns_all: columns_all.remove(x)
+
+    return columns_all
+
+
 
 def keep_dataframe_to_blank_line(df):
     """
@@ -661,9 +753,10 @@ def keep_dataframe_to_blank_line(df):
 def calc_stats_dataframes(df, exclude_columns):
     """
     Calculate statistics for columns in a single pandas dataframe.
+    Note that each column is a property or behavior
     
     Parameters:
-        df: processed dataframe
+        df: processed Pandas dataframe
         exclude_columns: list of columns to ignore for analysis
     
     Returns:
@@ -783,7 +876,6 @@ def analyze_dataframes(df1, df2, exclude_columns):
 
 
 
-
 def compare_datasets(file_paths, dataLabels, common_sheets, comparison_file_path):
     """
     Perform statistical tests on the two sets, which the user might use 
@@ -886,9 +978,12 @@ def load_and_combine_dataframes(outputStats = True, compareSets = False):
         print("No common sheets found between the files.")
         return None
     
+    # Ask user for sheets to use
+    sheets_to_use = select_sheets(common_sheets)
+
     # Output location
     print('Enter the output folder for the combined dataset')
-    outputPath = getOutputPath()
+    outputPath = getOutputPath(file_paths)
     
     # Output Excel file name
     inputstr = 'Output Excel file name; can omit ".xlsx"' + \
@@ -903,7 +998,7 @@ def load_and_combine_dataframes(outputStats = True, compareSets = False):
     
     # Process each common sheet
     with pd.ExcelWriter(Excel_output_file) as writer:
-        for sheet_name in common_sheets:
+        for sheet_name in sheets_to_use:
             # Read sheets from both files
             df1 = pd.read_excel(file_paths[0], sheet_name=sheet_name)
             df2 = pd.read_excel(file_paths[1], sheet_name=sheet_name)
@@ -955,7 +1050,7 @@ def load_and_combine_dataframes(outputStats = True, compareSets = False):
         if ext != '.xlsx':
             comparison_file_name = comparison_file_name + '.xlsx'
         comparison_file_path = os.path.join(outputPath, comparison_file_name)
-        compare_datasets(file_paths, dataLabels, common_sheets, comparison_file_path)
+        compare_datasets(file_paths, dataLabels, sheets_to_use, comparison_file_path)
 
     return True
 
@@ -963,6 +1058,7 @@ def load_and_combine_dataframes(outputStats = True, compareSets = False):
 
 def main():
         
+    print('\n\nCompare experiment behaviors, using output spreadsheets.')
     file_paths, dataLabels = get_two_filePaths_and_labels()
 
     # Get common sheets
@@ -972,8 +1068,11 @@ def main():
         print("No common sheets found between the files.")
         return
     
+    # Ask user for sheets to use
+    sheets_to_use = select_sheets(common_sheets)
+
     # Output location
-    outputPath = getOutputPath()
+    outputPath = getOutputPath(file_paths)
 
     # Output Excel file name
     fileNameExcel = input('Output Excel file name (can omit ".xlsx"): ')
@@ -983,38 +1082,42 @@ def main():
     
     # Output plot base name
     baseName0 = input('Base file name for comparison outputs.\n' + \
-                     '    Include image extension (e.g. "exptGraphs.eps"): ')
+                     '    Include image extension (e.g. "exptGraphs.eps", or .png): ')
     baseName, out_ext = os.path.splitext(baseName0)
     baseName = baseName.split('.')[0]
     
-
-    # Specify columns to exclude from calculations and plots
-    exclude_from_all = ['Frames per sec', 'Image scale (um/px)', 
-                        'Total Time (s)',
+    # Get the columns (behaviors) to use, based on the first 
+    # sheet of the first experiment
+    # (Assumes these are the same for all!)
+    # Automatically exclude some columns from calculations and plots
+    exclude_from_all = ['Dataset', 'Source', 'Frames per sec', 
+                        'Image scale (um/px)', 'Total Time (s)',
                         'Mean difference in fish lengths (mm)']
-    exclude_more_from_all = True
-    if exclude_more_from_all:
-        exclude_from_all.extend(['perp_larger_fish_sees',
-                                 'perp_smaller_fish_sees',
-                                 'contact_larger_fish_head',
-                                 'contact_smaller_fish_head',
-                                 'edge_frames', 
-                                 'bad_bodyTrack_frames'])
+    columns_all = get_all_columns(file_paths[0], sheets_to_use[0], 
+                                  exclude_from_all=exclude_from_all) 
     
-    # Exclude from log-log plot
-    also_exclude_from_loglog = ['Mean difference in fish lengths (mm)',
-                           'Mean head-head dist (mm)',
-                           "AngleXCorr_mean"]
-    exclude_from_loglog = exclude_from_all + also_exclude_from_loglog
+    # Get behaviors or properties to include in the ratio plot and the log-log plot
+    default_keys_Plot = ['perp_noneSee', 'perp_oneSees', 'perp_bothSee',
+                         'contact_any', 'contact_head_body',
+                         'tail_rubbing', 'anyPairBehavior', 'Cbend_any',
+                         'Rbend_any', 'Jbend_any', 'approaching_any',
+                         'fleeing_any', 'isMoving_any', 'isActive_any',
+                         'close_to_edge_any']
+    default_keys_ratioPlot = default_keys_Plot + \
+                             ['Fraction of time in proximity', 
+                              'Mean bout rate (/min)',	'Mean head-head dist (mm)']
+    print('Select behaviors for log-log plot. (May need to enlarge dialog box)')
+    behavior_key_list_loglog = select_items_dialog(columns_all, 
+                                            default_keys = default_keys_Plot)
+    print('Select behaviors for ratio plot. (May need to enlarge dialog box)')
+    behavior_key_list_ratio = select_items_dialog(columns_all, 
+                                            default_keys = default_keys_ratioPlot)
 
-    # Exclude from ratio calculation and plot
-    also_exclude_from_ratio = ['Mean difference in fish lengths (mm)',
-                           'Mean head-head dist (mm)',
-                           "AngleXCorr_mean"]    
-    exclude_from_ratio = exclude_from_all + also_exclude_from_ratio
-    
+    # Color cycle; define here to use consistently.
+    colors = cm.tab20b(np.linspace(0, 1, len(behavior_key_list_ratio)))
+
     # Process each common sheet
-    for sheet_name in common_sheets:
+    for sheet_name in sheets_to_use:
         print(f"\nProcessing sheet: {sheet_name}")
         
         # Read sheets
@@ -1032,9 +1135,8 @@ def main():
         
         column_ratios = calculate_column_ratios(df1, df2, 
                                                 Nbootstrap=1000, 
-                                                exclude_columns = exclude_from_ratio)
+                                                include_columns = behavior_key_list_ratio)
 
-           
         # Write results to Excel
         write_results_to_excel(stats1, stats2, excel_output_file, 
                              sheet_name, stat_tests, column_ratios)
@@ -1044,10 +1146,10 @@ def main():
         plot_output_path = os.path.join(outputPath, plot_output_name)
         
         # Plot comparison of datasets, 1 vs 2, showing means and individual pts
-        plot_comparison((stats1, stats2), (df1, df2), exclude_from_loglog, 
-                       (dataLabels[0], dataLabels[1]),
+        plot_comparison((stats1, stats2), (df1, df2), behavior_key_list_loglog, 
+                       colors = colors, dataLabels = (dataLabels[0], dataLabels[1]), 
                        logPlot=True, showTextLabels=False, 
-                       showLegend=True,
+                       showLegend=True, titleString = sheet_name + ' Comparison', 
                        outputFileName=plot_output_path)
         
         ratio_output_name = f"{baseName}_{sheet_name}_relBehaviorRatios{out_ext}"
@@ -1057,20 +1159,22 @@ def main():
         # behavior value with errorbars.
         # Note that I'm plotting stats of set 2/ set 1,
         # to match "y / x" from the earlier graph
-        plot_behavior_ratio(column_ratios, (dataLabels[0], dataLabels[1]),
+        plot_behavior_ratio(column_ratios, colors = colors,
+                            dataLabels = (dataLabels[0], dataLabels[1]),
                             showLegend=False, titleSheet = sheet_name, 
                             outputFileName=ratio_output_path)
         
         sidebyside_output_name = f"{baseName}_{sheet_name}_BehaviorSideBySide{out_ext}"
         sidebyside_output_path = os.path.join(outputPath, sidebyside_output_name)
         # Plot values side-by-side for each behavior
-        plot_cols_side_by_side((stats1, stats2), (df1, df2), exclude_from_all, 
-                                  offset_x=0.1, 
+        plot_cols_side_by_side((stats1, stats2), (df1, df2), 
+                               include_columns = behavior_key_list_ratio, 
+                                  offset_x=0.1, colors = colors,
                                   dataLabels=(dataLabels[0], dataLabels[1]), 
                                   outputFileName=sidebyside_output_path,
+                                  titleString = sheet_name + ' side-by-side Comparison',
                                   logYscale = True) 
 
 if __name__ == '__main__':
     main()
-    
     
