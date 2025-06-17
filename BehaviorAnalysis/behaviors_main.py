@@ -128,7 +128,7 @@ def main():
         #(i.e. the 2nd, third, and fourth positions), linearly interpolating
         all_position_data = repair_head_positions(all_position_data, CSVcolumns)
     
-        # Repair (recalculate) heading angles
+        # Repair (recalculate) angles
         datasets = repair_heading_angles(all_position_data, datasets, CSVcolumns)
         
         # Calculate fish lengths (necessary for double-length repair)

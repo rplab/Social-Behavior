@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Split from behavior_identification.py on July 22, 2024
-Last modified May 7, 2025 -- Raghu Parthasarathy
+Last modified June 12, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -115,6 +115,12 @@ def get_single_fish_characterizations(all_position_data, datasets, CSVcolumns,
             get_isMoving_frames(datasets[j], 
                                 params["motion_speed_threshold_mm_second"])
 
+        # Get the angular speed of each fish in each frame (frame-to-frame
+        # change in heading angle, abs. val., rad/s); 0 for first frame
+        # Nframes x 2 array
+        datasets[j]["angular_speed_array_rad_s"] = \
+            get_fish_angular_speeds(datasets[j])
+        
         # Frames that are close to the edge of the dish 
         # (weak "edge_proximity_threshold_mm" criterion)
         close_to_edge_frames_each, close_to_edge_frames_any, \
@@ -332,6 +338,7 @@ def get_fish_speeds(position_data, CSVcolumns, image_scale, fps):
     """
     Get the speed of each fish in each frame (frame-to-frame
         displacement of head position)
+    Assign to the later frame; zeros for the first frame.
     Input:
         position_data : basic position information for this dataset, numpy array
         CSVcolumns : CSV column information (dictionary)
@@ -352,6 +359,28 @@ def get_fish_speeds(position_data, CSVcolumns, image_scale, fps):
     
     return speed_array_mm_s
 
+def get_fish_angular_speeds(dataset):
+    """
+    Get the angular speed of each fish in each frame (abs val of frame-to-frame
+        difference in heading angle), in [0, pi]
+    Assign to the later frame; zeros for the first frame.
+    Input:
+        dataset : single dictionary containing the analysis data, including
+                    keys "heading_angle" and "fps"
+    Output
+        angular_speed_array_rad_s  : (mm/s) Nframes x Nfish array
+    """
+    delta_angle = np.diff(dataset["heading_angle"], axis=0)
+    # wrap to [-pi, pi]
+    delta_angle = (delta_angle + np.pi) % (2.0*np.pi) - np.pi
+    angular_speed_rad_fr = np.abs(delta_angle)
+    
+    angular_speed_array_rad_s = angular_speed_rad_fr * dataset["fps"]
+    # to make Nframes x Nfish set as 0 for the first frame
+    angular_speed_array_rad_s = np.append(np.zeros((1, angular_speed_rad_fr.shape[1])), 
+                                 angular_speed_array_rad_s, axis=0)
+    
+    return angular_speed_array_rad_s
 
 def get_isMoving_frames(dataset, motion_speed_threshold_mm_s = 10.0):
     """ 
@@ -656,7 +685,12 @@ def fit_y_eq_Bx_simple(x, y):
     """
     sxx = np.sum(x**2, axis=0)
     sxy = np.sum(x*y, axis=0)
-    return np.where(sxx != 0, sxy / sxx, np.inf)
+    
+    # To avoid a runtime warning for sxx==0, don't do
+    # np.where(sxx != 0, sxy / sxx, np.inf)
+    # np.divide(sxy, sxx, out=np.full_like(sxy, np.inf), where=sxx != 0
+              
+    return np.divide(sxy, sxx, out=np.full_like(sxy, np.inf), where=sxx != 0)
     
     
 def calc_bend_angle(position_data, CSVcolumns, M=None):
@@ -694,27 +728,48 @@ def calc_bend_angle(position_data, CSVcolumns, M=None):
         x1 = x[j, M::-1, :] # shape (N/2, Nfish)
         y1 = -1.0*y[j, M::-1, :] # shape (N/2, Nfish); -1 since increasing down
         slope1 = fit_y_eq_Bx_simple(x1-x1[0,:], y1-y1[0,:])
+        safe_slope1 = np.where(np.isinf(slope1) | np.isnan(slope1), 0, slope1) # 0 if infinite.
+
         # determine four-quadrant angle from sign of avg step (not elegant!)
         signx = np.sign(np.mean(np.diff(x1, axis=0), axis=0))
         signy = np.sign(np.mean(np.diff(y1, axis=0), axis=0))
-        # Calculate the unit vector for the heading, allowing infinite slope
-        vector1 = np.vstack([
-            np.where(np.isinf(slope1), 0, signx),
-            np.where(np.isinf(slope1), 1, signy * np.abs(slope1))
-        ]) / np.sqrt(1 + np.where(np.isinf(slope1), 0, slope1)**2)        
         
+        # Calculate the unit vector for the heading, allowing infinite slope
+        # Numerator components
+        numerator_x = np.where(np.isinf(slope1), 0, signx)
+        numerator_y = np.where(np.isinf(slope1) | np.isnan(slope1), 1, 
+                               signy * np.abs(safe_slope1))
+
+        # Denominator: sqrt(1 + slope^2), safely
+        denominator = np.sqrt(1 + safe_slope1**2)
+
+        # np.divide to avoid invalid value warnings
+        vector1 = np.vstack([
+            np.divide(numerator_x, denominator, out=np.zeros_like(numerator_x), where=denominator != 0),
+            np.divide(numerator_y, denominator, out=np.zeros_like(numerator_y), where=denominator != 0)
+        ])
+                     
         # Calculate best-fit line for second segment
         x2 = x[j, M:, :] # shape (N/2, Nfish)
         y2 = -1.0*y[j, M:, :] # shape (N/2, Nfish); -1 since increasing down
         slope2 = fit_y_eq_Bx_simple(x2-x2[0,:], y2-y2[0,:])
+        safe_slope2 = np.where(np.isinf(slope2) | np.isnan(slope2), 0, slope2) # 0 if infinite.
         # determine four-quadrant angle (not elegant!)
         signx = np.sign(np.mean(np.diff(x2, axis=0), axis=0))
         signy = np.sign(np.mean(np.diff(y2, axis=0), axis=0))
         # Calculate the unit vector for the heading, allowing infinite slope
+        # Numerator components
+        numerator_x = np.where(np.isinf(slope2), 0, signx)
+        numerator_y = np.where(np.isinf(slope2) | np.isnan(slope2), 1, 
+                               signy * np.abs(safe_slope2))
+
+        # Denominator: sqrt(1 + slope^2), safely
+        denominator = np.sqrt(1 + safe_slope2**2)
+        # np.divide to avoid invalid value warnings
         vector2 = np.vstack([
-            np.where(np.isinf(slope2), 0, signx),
-            np.where(np.isinf(slope2), 1, signy * np.abs(slope2))
-        ]) / np.sqrt(1 + np.where(np.isinf(slope2), 0, slope2)**2)        
+            np.divide(numerator_x, denominator, out=np.zeros_like(numerator_x), where=denominator != 0),
+            np.divide(numerator_y, denominator, out=np.zeros_like(numerator_y), where=denominator != 0)
+        ])
 
         # Calculate angle between lines
         # note that arccos is in range [0, pi]
@@ -1249,6 +1304,21 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
                            xlabelStr = 'Speed (mm/s)', 
                            titleStr = 'Probability distribution: Speed',
                            outputFileName = outputFileName)
+
+    # Angular_speed histogram
+    angular_speeds_rad_s_all = combine_all_values_constrained(datasets, 
+                                                     keyName='angular_speed_array_rad_s', 
+                                                     dilate_plus1 = True)
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_angularSpeed' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    plot_probability_distr(angular_speeds_rad_s_all, bin_width = 1.0, 
+                           bin_range = [0, None], 
+                           xlabelStr = 'Angular Speed (rad/s)', 
+                           titleStr = 'Probability distribution: Angular Speed',
+                           outputFileName = outputFileName)
+
 
     # Radial position histogram
     radial_position_mm_all = combine_all_values_constrained(datasets, 
