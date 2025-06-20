@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Fri Dec. 1, 2023
-Last modified on April 13, 2025
+Last modified on June 18, 2025
 
 Description
 -----------
@@ -34,7 +34,7 @@ from scipy import stats
 import tkinter as tk
 from tkinter import filedialog
 
-from toolkit import select_items_dialog, get_behavior_key_list
+from toolkit import select_items_dialog
 
 def get_two_filePaths_and_labels():
     """
@@ -1099,7 +1099,8 @@ def main():
     # Get behaviors or properties to include in the ratio plot and the log-log plot
     default_keys_Plot = ['perp_noneSee', 'perp_oneSees', 'perp_bothSee',
                          'contact_any', 'contact_head_body',
-                         'tail_rubbing', 'anyPairBehavior', 'Cbend_any',
+                         'tail_rubbing', 'maintain_proximity', 
+                         'anyPairBehavior', 'Cbend_any',
                          'Rbend_any', 'Jbend_any', 'approaching_any',
                          'fleeing_any', 'isMoving_any', 'isActive_any',
                          'close_to_edge_any']

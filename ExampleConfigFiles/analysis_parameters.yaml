@@ -24,6 +24,8 @@ params:
   approach_min_frame_duration: [2,2]
   motion_speed_threshold_mm_second: 9
   proximity_threshold_mm: 7
+  max_motion_gap_s: 0.08 
+  min_proximity_duration_s: 0.6  
   # Output files, path
   output_subFolder: Analysis # will append expt name, group name
   allDatasets_ExcelFile: behavior_counts.xlsx 

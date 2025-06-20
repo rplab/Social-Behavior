@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified Dec. 19, 2024 -- Raghu Parthasarathy
+Last modified June 20, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -15,6 +15,7 @@ Module containing all zebrafish pair behavior identification functions:
     - Contact
     - 90-degree orientation
     - Tail rubbing
+    - Maintaining proximity
     - (and more)
 
 """
@@ -27,6 +28,7 @@ from toolkit import wrap_to_pi, combine_all_values_constrained, \
 from behavior_identification_single import average_bout_trajectory_allSets
 from scipy.stats import skew
 import itertools
+from scipy.ndimage import binary_closing, binary_opening
 # from circle_fit_taubin import TaubinSVD
 
 
@@ -229,7 +231,7 @@ def extract_pair_behaviors(pair_behavior_frames, position_data, dataset,
         pair_behavior_frames : dictionary in which each key is a behavior,
                     initialized with values all being empty integer arrays
         position_data : position data for this dataset, presumably all_position_data[j]
-        dataset : dictionary with all dataset info
+        dataset : dictionary with all dataset info, presumably datasets[j]
         params : parameters for behavior criteria
         CSVcolumns : CSV column parameters
     Outputs:
@@ -239,10 +241,11 @@ def extract_pair_behaviors(pair_behavior_frames, position_data, dataset,
                 perp_noneSee, perp_oneSees, 
                 perp_bothSee, contact_any, contact_head_body, 
                 contact_larger_fish_head, contact_smaller_fish_head,
-                contact_inferred, tail_rubbing_frames,
-                approaching_frames, approaching_frames_any, approaching_frames_all,
-                fleeing_frames, fleeing_frames_any, fleeing_frames_all
-
+                contact_inferred, tail_rubbing, maintain_proximity, 
+                approaching_Fish0, approaching_Fish1, approaching_any, 
+                approaching_all,
+                fleeing_Fish0, fleeing_Fish1, fleeing_any, fleeing_all
+            
     """
     
     # Timer
@@ -323,6 +326,13 @@ def extract_pair_behaviors(pair_behavior_frames, position_data, dataset,
     pair_behavior_frames['fleeing_Fish1'] = fleeing_frames[1]
     pair_behavior_frames['fleeing_any'] = fleeing_frames_any
     pair_behavior_frames['fleeing_all'] = fleeing_frames_all
+
+    t1_6 = perf_counter()
+    print(f'   t1_6 start maintaining proximity analysis: {t1_6 - t1_start:.2f} seconds')
+    # Maintaining proximity
+    pair_behavior_frames['maintain_proximity'] = \
+        get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params)
+
     
     t1_end = perf_counter()
     print(f'   t1_end end analysis: {t1_end - t1_start:.2f} seconds')
@@ -723,6 +733,98 @@ def get_tail_rubbing_frames(body_x, body_y, head_separation,
     return tail_rubbing_frames
 
 
+def get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params):
+    """
+    Returns an array of frames for "maintaining proximity" events, in which fish
+    maintain proximity while moving, over some duration
+
+    Args:
+        position_data : basic position information for this dataset, numpy array
+        dataset : dataset dictionary of all behavior information for a given expt.
+            contains "heading_angle"
+        CSVcolumns: information on what the columns of position_data are
+        params : dictionary of all analysis parameters -- will use speed 
+            and proximity thresholds
+        max_gap_s : maximum gap in matching criterion to allow (s). At 25 fps,
+            0.08 s = 2 frames.
+        min_duration_s : min duration that matching criteria must be met for the
+            behavior to be recorded. At 25 fps, 0.6 s = 15 frames  
+
+    Returns:
+        maintain_proximity_frames: a 1D array of frames in which the
+            maintaining proximity conditions are met.
+
+    """
+    
+    # Criteria, evaluated in each frame.
+    speed_criterion = np.any(dataset["speed_array_mm_s"] > 
+                             params["motion_speed_threshold_mm_second"], 
+                             axis=1)
+    # Closing to remove small gaps
+    N_smallgap = np.round(params["max_motion_gap_s"]*dataset["fps"]).astype(int)
+    ste_smallgap = np.ones((N_smallgap+1,), dtype=bool)
+    speed_criterion_closed = binary_closing(speed_criterion, ste_smallgap)
+
+    distance_criterion = dataset["closest_distance_mm"].flatten() < \
+        params["proximity_threshold_mm"]
+    all_criteria_0 = speed_criterion_closed & distance_criterion
+
+    # Opening to enforce min. duration
+    N_duration = np.round(params["min_proximity_duration_s"]*dataset["fps"]).astype(int)
+    ste_duration = np.ones((N_duration+1,), dtype=bool)
+    all_criteria = binary_opening(all_criteria_0, ste_duration)
+
+    startFrame = np.min(dataset["frameArray"])
+    maintain_proximity_frames = np.array(np.where(all_criteria==True))[0,:].flatten() + startFrame
+    # Not sure why the [0,:] is needed, but otherwise returns additional zeros.
+    
+    plot_diagnostic = False
+    if plot_diagnostic:
+        # Figures
+        xlim = (1300, 1800)
+        frames = np.arange(dataset["Nframes"])
+        
+        Nplots = 3
+        fig, axs = plt.subplots(Nplots, 1, figsize=(20, 14), sharex=True)
+        
+        fno = 0
+        # Plot 1: speed
+        axs[fno].plot(frames, dataset["speed_array_mm_s"][:, 0])
+        axs[fno].plot(frames, dataset["speed_array_mm_s"][:, 1])
+        axs[fno].plot(frames, np.ones_like(frames) * params["motion_speed_threshold_mm_second"],
+                      linestyle='dotted', color='gray')
+        axs[fno].set_ylabel('Speed (mm/s)')
+        axs[fno].set_title(f'{dataset["dataset_name"]}: Speed', fontsize = 20)
+        axs[fno].set_xlim(xlim)
+        
+    
+        # Plot 4: Distances
+        fno = fno + 1
+        axs[fno].plot(frames, dataset["head_head_distance_mm"], color='peru', label='Head-Head distance')
+        axs[fno].plot(frames, dataset["closest_distance_mm"].flatten(), color='darkturquoise', label='Closest distance')
+        axs[fno].plot(frames, np.ones_like(frames) * params["proximity_threshold_mm"], linestyle='dotted', color='gray')
+        axs[fno].set_ylabel('distance, mm')
+        axs[fno].set_title(f'{dataset["dataset_name"]}: Distances', fontsize = 20)
+        axs[fno].legend()
+        axs[fno].set_xlim(xlim)
+        axs[fno].set_xlabel('frame', fontsize = 18)  # X-axis label added here
+        
+        # Plot 4: Criteria
+        fno = fno + 1
+        axs[fno].plot(frames, speed_criterion, color='olive', label='Speed')
+        axs[fno].plot(frames, 0.95*distance_criterion, color='tomato', label='Distance')
+        axs[fno].plot(frames, 1.05*all_criteria_0, color='khaki', label='All_0')
+        axs[fno].plot(frames, 1.1*all_criteria, color='magenta', label='All')
+        axs[fno].set_ylabel('Criteria, boolean')
+        axs[fno].set_title(f'{dataset["dataset_name"]}: Criteria', fontsize = 20)
+        axs[fno].legend()
+        axs[fno].set_xlim(xlim)
+        axs[fno].set_xlabel('frame', fontsize = 18)  # X-axis label added here
+    
+        plt.tight_layout()
+        plt.show()
+
+    return maintain_proximity_frames
 
 def calcOrientationXCorr(dataset, window_size = 25, makeDiagnosticPlots = False):
     """
@@ -1146,6 +1248,23 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
                            titleStr = 'Relative Orientation Angle',
                            ylim = (0, 0.6),
                            outputFileName = outputFileName)
+
+    # Sum of relative orientation angles histogram
+    relative_orientation_sum__all = combine_all_values_constrained(datasets, 
+                                                 keyName='relative_orientation_sum', 
+                                                 dilate_plus1 = False)
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_rel_orientation_sum' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    bin_width = np.pi/60
+    plot_probability_distr(relative_orientation_sum__all, bin_width = bin_width,
+                           bin_range=[None, None], yScaleType = 'linear',
+                           polarPlot = False,
+                           titleStr = 'Sum of Relative Orientation Angles',
+                           ylim = (0, 0.6),
+                           outputFileName = outputFileName)
+
 
     # 2D histogram of speed and head-head distance
     if outputFileNameBase is not None:

@@ -1,7 +1,7 @@
 # experiment_paths_and_parameters
 
-TwoWeek2023_test:
-  expt_name: TwoWeek2023_test  # experiment name
+TwoWeek2023:
+  expt_name: TwoWeekLight2023  # experiment name
   fps: 25.0  # frames per second
   arena_radius_mm: 25.0  # arena radius, mm
   imageScalePathName:

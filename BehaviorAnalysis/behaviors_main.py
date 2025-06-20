@@ -7,7 +7,7 @@
 # First version  : Estelle Trieu 9/19/2022
 # Re-written by : Raghuveer Parthasarathy (2023)
 # version ='2.0' Raghuveer Parthasarathy -- begun May 2023; see notes.
-# last modified: Raghuveer Parthasarathy, June 5, 2025
+# last modified: Raghuveer Parthasarathy, June 20, 2025
 # ---------------------------------------------------1------------------------
 """
 
@@ -23,7 +23,7 @@ from toolkit import get_basePath, get_loading_option, load_and_assign_from_pickl
         relink_fish_ids_all_datasets, calc_good_tracking_spans, \
         make_frames_dictionary, get_edgeRejection_frames_dictionary, \
         get_badTracking_frames_dictionary, \
-        write_CSV_Excel_YAML, write_pickle_file
+        write_CSV_Excel_YAML, write_pickle_file, timeShift
 from behavior_identification_single import get_single_fish_characterizations, \
         get_coord_characterizations, get_fish_lengths
 from behavior_identification import extract_pair_behaviors, \
@@ -150,7 +150,6 @@ def main():
                     get_fish_lengths(all_position_data[j], 
                                      datasets[j]["image_scale"], CSVcolumns)
 
-        
 
     elif loading_option == 'load_from_pickle':
         # Load positions, datasets dictionary, etc., from pickle files.  
@@ -174,7 +173,29 @@ def main():
     else:
         raise ValueError("Error: Bad Loading Option.")
         
-    
+    #%% Time-shift one of the fish
+    time_shift_fish_idx = None # set to None to avoid flipping
+    if time_shift_fish_idx is not None:
+        print('\n\n***************************')
+        caution_check = input(f'\nARE YOU SURE you want to time-shift fish {time_shift_fish_idx}? (y/n): ')
+        if caution_check=='y':
+            valid_idx = (np.isin(time_shift_fish_idx, np.arange(0, Nfish))) and \
+                        (type(time_shift_fish_idx)==int)
+            if valid_idx==True:
+                print(f'\n\n** Time-shifting fish {time_shift_fish_idx}**')
+                for j in range(len(datasets)):
+                    all_position_data[j], datasets[j] = \
+                        timeShift(all_position_data[j], datasets[j], 
+                                  CSVcolumns, fishIdx = time_shift_fish_idx, 
+                                  frameShift = 7500)
+                    # re-calculate fish lengths. (Could just shift...)
+                    datasets[j]["fish_length_array_mm"] = \
+                        get_fish_lengths(all_position_data[j], 
+                                         datasets[j]["image_scale"], CSVcolumns)
+            else:
+                print('Invalid index; *NOT* flipping')
+                input('Press enter to indicate acknowlegement: ')
+                
     #%% Time-reverse one of the fish
     time_reverse_fish_idx = None # set to None to avoid flipping
     if time_reverse_fish_idx is not None:
@@ -249,11 +270,11 @@ def main():
                          'perp_smaller_fish_sees', 
                          'contact_any', 'contact_head_body', 
                          'contact_larger_fish_head', 'contact_smaller_fish_head',
-                         'contact_inferred', 'tail_rubbing',
+                         'contact_inferred', 'tail_rubbing', 'maintain_proximity',
                          'approaching_Fish0', 'approaching_Fish1',
                          'approaching_any', 'approaching_all',
                          'fleeing_Fish0', 'fleeing_Fish1',
-                         'fleeing_any', 'fleeing_all']
+                         'fleeing_any', 'fleeing_all', ]
         for j in range(N_datasets):
             
             print('Identifying two-fish behaviors for Dataset: ', 

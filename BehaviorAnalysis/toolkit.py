@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, June 5, 2025
+Last modified by Rghuveer Parthasarathy, June 20, 2025
 
 Description
 -----------
@@ -529,6 +529,7 @@ def load_data(CSVfileName, N_columns):
     all_data = np.zeros((Nframes, data.shape[1], Nfish))
     for j, id in enumerate(unique_ids):
         id_data = data[id_numbers == id]
+        # sort by frame number, though these should be in order.
         sorted_indices = np.argsort(id_data[:, 1])
         all_data[:, :, j] = id_data[sorted_indices]
 
@@ -661,8 +662,7 @@ def combine_events(events):
 
     Args:
         events (array): an array of frame numbers corresponding to events
-                           (e.g. frames of detected circling, 
-                            tail-rubbing, 90-degree events).
+                           (e.g. contact, tail-rubbing, 90-degree events).
 
     Returns:
         combined_events_and_durations (array) : a 2 x N array; Row 1
@@ -1510,7 +1510,8 @@ def write_output_files(params, output_path, datasets):
                 "perp_larger_fish_sees", "perp_smaller_fish_sees", 
                 "contact_any", "contact_head_body", 
                 "contact_larger_fish_head", "contact_smaller_fish_head", 
-                "contact_inferred", "tail_rubbing", "anyPairBehavior"]
+                "contact_inferred", "tail_rubbing", "maintain_proximity", 
+                "anyPairBehavior"]
     for j in range(Nfish):
         key_list.extend([f"Cbend_Fish{j}"])
     key_list.extend(["Cbend_any"])  # formerly had a condition "if Nfish > 1:"
@@ -3286,7 +3287,8 @@ def get_behavior_key_list(datasets):
 
 def select_items_dialog(behavior_key_list, default_keys=['perp_noneSee', 
         'perp_oneSees', 'perp_bothSee', 'contact_any', 'contact_head_body', 
-        'contact_inferred', 'tail_rubbing', 'Cbend_Fish0', 'Cbend_Fish1', 
+        'contact_inferred', 'tail_rubbing', 'maintain_proximity', 
+        'Cbend_Fish0', 'Cbend_Fish1', 
         'Jbend_Fish0', 'Jbend_Fish1', 'Rbend_Fish0', 'Rbend_Fish1', 
         'isActive_any', 'isMoving_any', 'approaching_Fish0', 
         'approaching_Fish1', 'fleeing_Fish0', 'fleeing_Fish1']):
@@ -3435,7 +3437,62 @@ def load_global_expt_config(config_path, config_file):
     
     return expt_config           
 
+def timeShift(position_data, dataset, CSVcolumns, fishIdx = 1, 
+              frameShift = 7500):
+    """
+    Cyclicly shift all position data for one fish (fishIdx) by some number of 
+    frames such that the fish position and heading in frame startFrame is
+    the same, within tolerance, after shifting.
+    For "randomizing" trajectory data, as a control for social interactions.
+    Note that frames and index values are offset by 1
+    Require some minimum number of frames to shift
+    
+    Note that the shifted start / end will have a large discontinuity in 
+    positions. This can be “fixed” by marking the shifted start/end frames 
+    for the "bad tracking" flag, with head positions as zeros.
 
+    Parameters
+    ----------
+    position_data : basic position information for this dataset, numpy array
+    dataset : dataset dictionary of all behavior information for a given expt.
+    CSVcolumns: information on what the columns of position_data are
+    fishIdx : index of fish to shift
+    frameShift : number of frames by which to shift fishIdx's position and 
+        heading data. 
+
+
+    Returns
+    -------
+    position_data : cyclicly shifted position columns for fishIdx
+    dataset : cyclicly shifted heading angle for fishIdx
+
+    """
+    
+    if frameShift > dataset["Nframes"]:
+        raise ValueError(f"frameShift {frameShift} is larger than the number of frames!")
+                
+    # Cyclicly shift position and heading data by shift_idx
+    new_dataset = dataset.copy()
+    new_position_data = position_data.copy()
+    # Note that position data cols 0 and 1 are ID no and frame no., so don't 
+    # shift these (shouldn't matter...)
+    new_dataset["heading_angle"][:,fishIdx] = \
+        np.roll(dataset["heading_angle"][:,fishIdx], frameShift, axis=0)
+    # Note that position data cols 0 and 1 are ID no and frame no., so don't 
+    # shift these (shouldn't matter...)
+    new_position_data[:, 2:, fishIdx] = \
+        np.roll(position_data[:, 2:, fishIdx], frameShift, axis=0)
+    
+    # Mark shifted frame and the frame before it as zeros for 
+    # head and body posititions, to flag bad tracking
+    new_position_data[frameShift-1:frameShift+1,CSVcolumns["head_column_x"],fishIdx] = 0.0
+    new_position_data[frameShift-1:frameShift+1,CSVcolumns["head_column_y"],fishIdx] = 0.0
+    new_position_data[frameShift-1:frameShift+1,CSVcolumns["body_column_x_start"]:CSVcolumns["body_Ncolumns"]+1,fishIdx] = 0.0
+    new_position_data[frameShift-1:frameShift+1,CSVcolumns["body_column_y_start"]:CSVcolumns["body_Ncolumns"]+1,fishIdx] = 0.0
+    
+    return new_position_data, new_dataset
+
+    
 def fit_gaussian_mixture(x, n_gaussian=3, init_means=None, random_state=42):
     """
     Fit a Gaussian Mixture Model to data with outliers and identify the component
