@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Wed Sept. 6, 2023
-Last modified on April 9, 2025
+Last modified on June 24, 2025
 
 Description
 -----------
@@ -58,11 +58,23 @@ def calc_correlations_with_defaults():
                          'Rbend_Fish1', 'Jbend_Fish0', 'Jbend_Fish1', 
                          'perp_noneSee', 'perp_oneSees', 'perp_bothSee', 
                          'contact_any', 'tail_rubbing', 'maintain_proximity',
-                         'approaching_Fish0', 'approaching_Fish1', 'approaching_any', 
+                         'approaching_Fish0', 'approaching_Fish1', 
+                         'approaching_any', 
                          'fleeing_Fish0', 'fleeing_Fish1', 'fleeing_any']
+    
+    # Check that these keys are in datasets[0]
+    filtered_list = [key for key in behavior_key_list if key in datasets[0]]
+    # Print elements that are in behavior_key_list but not in dict_data
+    missing_keys = [key for key in behavior_key_list if key not in datasets[0]]
+    if missing_keys:
+        print("Missing keys from behavior_key_list (not in datasets[0]):", 
+              missing_keys)
+    behavior_key_list = filtered_list
+
     binWidthFrames = 5 # bin size for delays (number of frames)
     halfFrameRange = 50 # max frame delay to consider
     # Calculate frame-delays between each event pair for each dataset.
+    print('\nCalculating frame delays and binning...')
     behav_corr = calcDeltaFramesEvents(datasets, behavior_key_list)
     # Bin the frame delays, and calculate behavior correlations and probabilities for each dataset.
     behav_corr, binCenters = bin_deltaFrames(behav_corr, 
@@ -73,6 +85,7 @@ def calc_correlations_with_defaults():
     behav_corr = calc_pAB(behav_corr, behavior_key_list, binCenters)
     
     # Combine behavior correlations and probabilities for all datasets
+    print('\nCombining correlations for all datasets...')
     behav_corr_allSets = calcBehavCorrAllSets(behav_corr, behavior_key_list, binCenters)
     
     behavior_key_list_subset = ['Cbend_Fish0', 'Cbend_Fish1', 'Rbend_Fish0', 
@@ -81,7 +94,15 @@ def calc_correlations_with_defaults():
                          'contact_any', 'tail_rubbing', 'maintain_proximity', 
                          'approaching_Fish0', 'approaching_Fish1', 
                          'fleeing_Fish0', 'fleeing_Fish1']
-    
+    # Check that these keys are in datasets[0]
+    filtered_list = [key for key in behavior_key_list_subset if key in datasets[0]]
+    # Print elements that are in behavior_key_list but not in dict_data
+    missing_keys = [key for key in behavior_key_list_subset if key not in datasets[0]]
+    if missing_keys:
+        print("Missing keys from behavior_key_list_subset (not in datasets[0]):", 
+              missing_keys)
+    behavior_key_list_subset = filtered_list
+
     corr_asymm = calc_corr_asymm(behav_corr_allSets['DeltaCorr'], 
                                  behavior_key_list_subset, binCenters, 
                                  maxFrameDelay = None, normalization = 'none')
