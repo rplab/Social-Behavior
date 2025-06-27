@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, June 20, 2025
+Last modified by Rghuveer Parthasarathy, June 26, 2025
 
 Description
 -----------
@@ -623,6 +623,7 @@ def remove_frames(frames, frames_to_remove, dilate_frames=np.array([0])):
 def dilate_frames(frames, dilate_frames=np.array([0])):
     """
     "dilate" the array of frame numbers.
+    Note: doesn't check that dilated frame numbers are valid.
     
     Inputs:
         frames (numpy.ndarray): 1D array of frame numbers, for example
@@ -641,7 +642,8 @@ def dilate_frames(frames, dilate_frames=np.array([0])):
     # Dilate the set of frames to remove if dilate_frames is provided
     for j in dilate_frames:
         if j != 0:
-            frames_edit = np.unique(np.concatenate((frames_edit, frames + j)))
+            frames_edit = np.concatenate((frames_edit, frames + j))
+    frames_edit = np.unique(frames_edit)
    
     return frames_edit
 
@@ -2082,7 +2084,7 @@ def find_smallest_good_idx(N, bad_frames):
             return x
         
     
-def relink_fish_ids(all_position_data_exp, dataset, CSVcolumns, 
+def relink_fish_ids(position_data, dataset, CSVcolumns, 
                     verbose = False):
     """
     Relink fish IDs across frames based on minimizing the Euclidean distance 
@@ -2092,7 +2094,7 @@ def relink_fish_ids(all_position_data_exp, dataset, CSVcolumns,
     
     Parameters:
     -----------
-    all_position_data_exp : numpy.ndarray
+    position_data : numpy.ndarray
         Position data for a single dataset with shape (Nframes, Ncolumns, Nfish)
         probably input as all_position_data[j]
     dataset : dict
@@ -2111,7 +2113,7 @@ def relink_fish_ids(all_position_data_exp, dataset, CSVcolumns,
                             corresponding to corrected fish IDs
     """
     # Create a copy of the data to avoid modifying the original
-    position_data = all_position_data_exp.copy()
+    new_position_data = position_data.copy()
     heading_angles = dataset["heading_angle"].copy()
     
     # Extract bad tracking frames
@@ -2151,11 +2153,11 @@ def relink_fish_ids(all_position_data_exp, dataset, CSVcolumns,
             continue
         
         # Get body positions for current and last good frame
-        body_x_current = position_data[frame, body_x_start:body_x_end, :]
-        body_y_current = position_data[frame, body_y_start:body_y_end, :]
+        body_x_current = new_position_data[frame, body_x_start:body_x_end, :]
+        body_y_current = new_position_data[frame, body_y_start:body_y_end, :]
         
-        body_x_previous = position_data[last_good_frame, body_x_start:body_x_end, :]
-        body_y_previous = position_data[last_good_frame, body_y_start:body_y_end, :]
+        body_x_previous = new_position_data[last_good_frame, body_x_start:body_x_end, :]
+        body_y_previous = new_position_data[last_good_frame, body_y_start:body_y_end, :]
         
         # Stack x and y coordinates to get positions
         pos_current = np.stack([body_x_current, body_y_current], axis=-1)    # Shape: (Npos, Nfish, 2)
@@ -2181,17 +2183,17 @@ def relink_fish_ids(all_position_data_exp, dataset, CSVcolumns,
             reassigned_frames = np.append(reassigned_frames, frame)
             
             # Create a new array with reordered fish
-            new_position_data = position_data[frame].copy()
-            new_heading_angles = heading_angles[frame].copy()
+            thisFrame_position_data = new_position_data[frame].copy()
+            thisFrame_heading_angles = heading_angles[frame].copy()
             
             # Reorder fish IDs according to assignment
             for new_id, old_id in enumerate(col_indices):
-                new_position_data[:, new_id] = position_data[frame, :, old_id]
-                new_heading_angles[new_id] = heading_angles[frame, old_id]
+                thisFrame_position_data[:, new_id] = new_position_data[frame, :, old_id]
+                thisFrame_heading_angles[new_id] = heading_angles[frame, old_id]
             
             # Update the position data for this frame
-            position_data[frame] = new_position_data
-            heading_angles[frame] = new_heading_angles
+            position_data[frame] = thisFrame_position_data
+            heading_angles[frame] = thisFrame_heading_angles
             # print(frame, col_indices)
             # x = input(f'switch: {frame}' )
         
@@ -2810,7 +2812,8 @@ def calculate_block_crosscorr(data1, data2, n_lags, window_size):
         block2 = data2[start:end]
         block1_centered = block1 - np.mean(block1)
         block2_centered = block2 - np.mean(block2)
-        block_crosscorr = signal.correlate(block1_centered, block2_centered, mode='full')
+        block_crosscorr = signal.correlate(block1_centered, block2_centered, 
+                                           mode='full', method='direct')
         block_crosscorr = block_crosscorr[len(block_crosscorr)//2-n_lags//2:len(block_crosscorr)//2+n_lags//2+1]
         block_crosscorr /= (np.std(block1) * np.std(block2) * len(block1))
         block_crosscorrs.append(block_crosscorr)
@@ -2870,33 +2873,35 @@ def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s',
     else:
         raise ValueError("corr_type must be 'auto' or 'cross'")
     
-    for fish in range(Nfish):
-        fish_value = value_array[:, fish].copy()
-        
-        good_frames = [speed for i, speed in enumerate(fish_value) if i not in bad_frames_set]
-        mean_value = np.mean(good_frames)
-        std_value = np.std(good_frames)
-        
-        for frame in bad_frames_set:
-            if frame < Nframes:
-                fish_value[frame] = np.random.normal(mean_value, std_value)
-
-        if corr_type == 'auto':
-            if t_window is None:
-                fish_corr = calculate_autocorr(fish_value, n_lags)
-            else:
-                window_size = int(t_window * fps)
-                fish_corr = calculate_block_autocorr(fish_value, n_lags, 
-                                                     window_size)
-            corr[:, fish] = fish_corr
+    if corr_type == 'auto':
+        for fish in range(Nfish):
+            fish_value = value_array[:, fish].copy()
             
-        
+            good_frames = [speed for i, speed in enumerate(fish_value) if i not in bad_frames_set]
+            mean_value = np.mean(good_frames)
+            std_value = np.std(good_frames)
+            
+            for frame in bad_frames_set:
+                if frame < Nframes:
+                    fish_value[frame] = np.random.normal(mean_value, std_value)
+    
+                if t_window is None:
+                    fish_corr = calculate_autocorr(fish_value, n_lags)
+                else:
+                    window_size = int(t_window * fps)
+                    fish_corr = calculate_block_autocorr(fish_value, n_lags, 
+                                                         window_size)
+                corr[:, fish] = fish_corr
+            
     if corr_type == 'cross':
         if t_window is None:
-            corr = calculate_crosscorr(value_array[:, 0], value_array[:, 1], n_lags)
+            corr = calculate_crosscorr(value_array[:, 0], value_array[:, 1], 
+                                       n_lags)
         else:
             window_size = int(t_window * fps)
-            corr = calculate_block_crosscorr(value_array[:, 0], value_array[:, 1], n_lags, window_size)
+            corr = calculate_block_crosscorr(value_array[:, 0], 
+                                             value_array[:, 1], n_lags, 
+                                             window_size)
     
     return corr, t_lag
 
@@ -2950,6 +2955,380 @@ def calculate_value_corr_all(datasets, keyName = 'speed_array_mm_s',
         autocorr_all.append(autocorr_one)
     return autocorr_all, t_lag
 
+
+
+def calculate_value_corr_oneSet_binned(dataset, keyName='speed_array_mm_s',
+                                       binKeyName = 'head_head_distance_mm',
+                                       bin_value_min=0, bin_value_max=50.0, 
+                                       bin_width=5.0, t_max=2.0, 
+                                       t_window=10.0, dilate_plus1=True):
+    """
+    Calculate the cross-correlation (between fish) of a property such
+    as speed (default) binned by another property (default head-to-head distance)
+    for a single dataset.
+    
+    Parameters
+    ----------
+    dataset : single analysis dataset (must include "fps")
+    keyName : the key to calculate cross-correlation for (e.g. "speed_array_mm_s")
+    binKeyName: the key to use for binning (e.g. "head_head_distance_mm");
+        Recommend either "head_head_distance_mm" or "closest_distance_mm"
+    bin_value_min : minimum value for binning (e.g. min distance, mm)
+    bin_value_max : maximum value for binning (e.g. max distance, mm)
+    bin_width : width of bins (e.g. for distance, mm)
+    t_max : max time to consider for cross-correlation, seconds
+    t_window : size of sliding window in seconds
+    dilate_plus1 : If True, dilate the bad frames +1
+    
+    Returns
+    -------
+    binned_crosscorr : 2D numpy array of shape (n_bins, n_time_lags)
+                      Each row is the average cross-correlation for that bin
+    bin_centers : array of bin centers (e.g. distance values)
+    t_lag : time lag array, seconds
+    bin_counts : number of windows contributing to each distance bin
+    """
+    
+    # Get data
+    value_array = dataset[keyName]
+    bin_value_array = dataset[binKeyName]
+    Nframes, Nfish = value_array.shape
+    fps = dataset["fps"]
+    
+    if Nfish != 2:
+        raise ValueError("Cross-correlation binning is only supported for Nfish==2")
+    
+    # Handle bad tracking frames
+    badTrackFrames = dataset["bad_bodyTrack_frames"]["raw_frames"]
+    if dilate_plus1:
+        dilate_badTrackFrames = dilate_frames(badTrackFrames, 
+                                              dilate_frames=np.array([1]))
+        bad_frames_set = set(dilate_badTrackFrames)
+    else:
+        bad_frames_set = set(badTrackFrames)
+    
+    # Set up time parameters
+    window_size = int(t_window * fps)
+    t_lag = np.arange(-t_max, t_max + 1.0/fps, 1.0/fps)
+    n_lags = len(t_lag)
+    
+    # Set up distance bins
+    bins = np.arange(bin_value_min, bin_value_max + bin_width, bin_width)
+    bin_centers = bins[:-1] + bin_width / 2
+    n_bins = len(bin_centers)
+    
+    # Initialize output arrays
+    binned_crosscorr = np.zeros((n_bins, n_lags))
+    bin_counts = np.zeros(n_bins, dtype=int)
+    bin_sums = np.zeros((n_bins, n_lags))
+    
+    # Process data in non-overlapping windows
+    num_windows = Nframes // window_size
+    
+    for window_idx in range(num_windows):
+        start = window_idx * window_size
+        end = (window_idx + 1) * window_size
+        
+        # Check if this window has too many bad frames (skip if >50% are bad)
+        window_bad_frames = sum(1 for frame in range(start, end) if frame in bad_frames_set)
+        if window_bad_frames / window_size > 0.5:
+            print('\ncalculate_value_corr_oneSet_binned:')
+            print('  Too many bad frames.')
+            continue
+            
+        # Get window data
+        window_data1 = value_array[start:end, 0].copy()
+        window_data2 = value_array[start:end, 1].copy()
+        window_binValue = bin_value_array[start:end].copy()
+        
+        # Replace bad frames with random values based on good frame statistics
+        good_indices1 = [i for i in range(len(window_data1)) if (start + i) not in bad_frames_set]
+        good_indices2 = [i for i in range(len(window_data2)) if (start + i) not in bad_frames_set]
+        good_indices_dist = [i for i in range(len(window_binValue)) if (start + i) not in bad_frames_set]
+        
+        if len(good_indices1) < window_size // 4:  # Skip if too few good frames
+            print('calculate_value_corr_oneSet_binned:')
+            print('  Too few good frames.')
+            continue
+            
+        mean_val1 = np.mean(window_data1[good_indices1])
+        std_val1 = np.std(window_data1[good_indices1])
+        mean_val2 = np.mean(window_data2[good_indices2])
+        std_val2 = np.std(window_data2[good_indices2])
+        mean_dist = np.mean(window_binValue[good_indices_dist])
+        
+        # Replace bad frames
+        for i in range(len(window_data1)):
+            if (start + i) in bad_frames_set:
+                window_data1[i] = np.random.normal(mean_val1, std_val1)
+                window_data2[i] = np.random.normal(mean_val2, std_val2)
+                window_binValue[i] = mean_dist  # Use mean distance for bad frames
+        
+        # Calculate cross-correlation for this window
+        window_crosscorr = calculate_crosscorr(window_data1, window_data2, n_lags)
+        
+        # Calculate mean distance for this window
+        mean_window_binValue = np.mean(window_binValue)
+        
+        # Find which distance bin this window belongs to
+        bin_idx = np.digitize(mean_window_binValue, bins) - 1
+        
+        # Make sure bin index is valid
+        if 0 <= bin_idx < n_bins:
+            bin_sums[bin_idx] += window_crosscorr
+            bin_counts[bin_idx] += 1
+                
+    # Calculate averages for each bin
+    for bin_idx in range(n_bins):
+        if bin_counts[bin_idx] > 0:
+            binned_crosscorr[bin_idx] = bin_sums[bin_idx] / bin_counts[bin_idx]
+        else:
+            binned_crosscorr[bin_idx] = np.nan  # No data for this bin
+    
+    return binned_crosscorr, bin_centers, t_lag, bin_counts
+
+
+def calculate_value_corr_all_binned(datasets, keyName='speed_array_mm_s',
+                                    binKeyName = 'head_head_distance_mm',
+                                    bin_value_min=0, bin_value_max=50.0, 
+                                    bin_width=5.0, t_max=2.0, 
+                                    t_window=10.0, dilate_plus1=True, fpstol=1e-6):
+    """
+    Calculate distance-binned cross-correlations for all datasets.
+    
+    Parameters
+    ----------
+    datasets : list of dictionaries containing all analysis
+    keyName : the key to calculate cross-correlation for
+    binKeyName: the key to use for binning (e.g. "head_head_distance_mm");
+        Recommend either "head_head_distance_mm" or "closest_distance_mm"
+    bin_value_min : minimum value for binning (e.g. min distance, mm)
+    bin_value_max : maximum value for binning (e.g. max distance, mm)
+    bin_width : width of bins (e.g. for distance, mm)
+    t_max : max time to consider for cross-correlation, seconds
+    t_window : size of sliding window in seconds
+    dilate_plus1 : If True, dilate the bad frames +1
+    fpstol : relative tolerance for checking that all fps are the same
+    
+    Returns
+    -------
+    binned_crosscorr_all : list of 2D numpy arrays, one per dataset
+    bin_centers : array of bin centers (e.g. distance values)
+    t_lag : time lag array, seconds
+    bin_counts_all : list of bin count arrays, one per dataset
+    """
+    
+    Ndatasets = len(datasets)
+    print(f'\nCalculating binned cross-correlations of {keyName} for {Ndatasets} datasets')
+    print(f'Bin Value range: {bin_value_min}-{bin_value_max} mm, bin width: {bin_width} mm')
+    
+    # Check that all datasets have the same fps
+    get_fps(datasets, fpstol=fpstol)  # will give error if not valid
+    
+    binned_crosscorr_all = []
+    bin_counts_all = []
+    
+    for j in range(Ndatasets):
+        print(f'Processing dataset {j+1}/{Ndatasets}...', end=' ')
+        
+        binned_crosscorr, bin_centers, t_lag, bin_counts = \
+            calculate_value_corr_oneSet_binned(datasets[j], 
+                                               keyName=keyName,
+                                               binKeyName = binKeyName,
+                                               bin_value_min=bin_value_min,
+                                               bin_value_max=bin_value_max,
+                                               bin_width=bin_width,
+                                               t_max=t_max,
+                                               t_window=t_window,
+                                               dilate_plus1=dilate_plus1)
+        
+        binned_crosscorr_all.append(binned_crosscorr)
+        bin_counts_all.append(bin_counts)
+        
+        # Report how many bins had data
+        valid_bins = np.sum(bin_counts > 0)
+        print(f'{valid_bins}/{len(bin_centers)} bins with data')
+    
+    return binned_crosscorr_all, bin_centers, t_lag, bin_counts_all
+
+
+def plot_waterfall_binned_crosscorr(binned_crosscorr_all, bin_centers, t_lag,
+                                     bin_counts_all=None, xlabelStr='Time lag (s)', 
+                                     titleStr='Distance-Binned Cross-correlation',
+                                     offset_scale=0.5,  
+                                     colormap='RdBu_r', unit_string = 'mm', 
+                                     outputFileName=None,
+                                     vmin=None, vmax=None, 
+                                     plot_heatmap = False, 
+                                     heatmap_ylabelStr='Distance (mm)'):
+    """
+    Create a waterfall plot of binned cross-correlations averaged 
+    across all datasets.
+    
+    Parameters
+    ----------
+    binned_crosscorr_all : list of 2D numpy arrays from calculate_value_corr_all_binned
+    bin_centers : array of bin centers (e.g. distance values)
+    t_lag : time lag array
+    bin_counts_all : list of bin count arrays (optional, for weighting)
+    xlabelStr : x-axis label
+    titleStr : plot title
+    outputFileName : if not None, save figure with this filename
+    colormap : colormap for the waterfall plot
+    unit_string : string to append to labels on waterfall plot, indicating units
+        for the binning values. Use '' for none
+    offset_scale : vertical offset between traces as fraction of 
+        max cross-correlation range
+    vmin, vmax : color scale limits (if None, use data range)
+    plot_heatmap : if True, also make a heatmap plot.
+    heatmap_ylabelStr : y-axis label for heatmap
+    """
+    
+    # Calculate average across all datasets
+    n_datasets = len(binned_crosscorr_all)
+    n_bins, n_time_lags = binned_crosscorr_all[0].shape
+    
+    # Initialize arrays for weighted average
+    total_crosscorr = np.zeros((n_bins, n_time_lags))
+    total_weights = np.zeros(n_bins)
+    
+    # Calculate weighted average if bin counts provided, otherwise simple average
+    for i, binned_crosscorr in enumerate(binned_crosscorr_all):
+        if bin_counts_all is not None and bin_counts_all[i] is not None:
+            weights = bin_counts_all[i]
+        else:
+            weights = np.ones(n_bins)
+            
+        for bin_idx in range(n_bins):
+            if not np.isnan(binned_crosscorr[bin_idx, 0]) and weights[bin_idx] > 0:
+                total_crosscorr[bin_idx] += binned_crosscorr[bin_idx] * weights[bin_idx]
+                total_weights[bin_idx] += weights[bin_idx]
+    
+    # Calculate final averages
+    avg_crosscorr = np.zeros((n_bins, n_time_lags))
+    for bin_idx in range(n_bins):
+        if total_weights[bin_idx] > 0:
+            avg_crosscorr[bin_idx] = total_crosscorr[bin_idx] / total_weights[bin_idx]
+        else:
+            avg_crosscorr[bin_idx] = np.nan
+    
+    # Debug: Print information about the data
+    print(f"Bin centers: {bin_centers[:5]}...{bin_centers[-5:]}")
+    print(f"Array shape: {avg_crosscorr.shape}")
+    print(f"First few rows have data: {[not np.all(np.isnan(avg_crosscorr[i])) for i in range(min(5, avg_crosscorr.shape[0]))]}")
+    print(f"Last few rows have data: {[not np.all(np.isnan(avg_crosscorr[i])) for i in range(max(0, avg_crosscorr.shape[0]-5), avg_crosscorr.shape[0])]}")
+
+    # Waterfall plot with constant offset and distance labels
+    fig, ax = plt.subplots(figsize=(7, 12))
+    
+    valid_bins = ~np.all(np.isnan(avg_crosscorr), axis=1)
+    valid_bin_indices = np.where(valid_bins)[0]
+    n_valid_bins = len(valid_bin_indices)
+    
+    
+    if n_valid_bins > 0:
+        # Calculate constant offset between traces based on correlation data range
+        data_range = np.nanmax(avg_crosscorr) - np.nanmin(avg_crosscorr)
+        offset = offset_scale * data_range
+        
+        colors = plt.cm.viridis(np.linspace(0, 1, n_valid_bins))
+        
+        traces_plotted = 0
+        for i, bin_idx in enumerate(valid_bin_indices):
+            # Use constant offset
+            y_values = avg_crosscorr[bin_idx] + i * offset
+            ax.plot(t_lag, y_values, color=colors[i], linewidth=1.5,
+                    label=f'{bin_centers[bin_idx]:.1f} ' + unit_string)
+            
+            # Add text label showing distance bin center
+            # Place text at the right edge of the plot
+            text_x = t_lag[-1] * 0.95  # 95% along the x-axis
+            text_y = np.nanmean(y_values)  # Use mean y-value of the trace
+            ax.text(text_x, text_y, f'{bin_centers[bin_idx]:.1f}' + unit_string, 
+                    fontsize=10, verticalalignment='center', 
+                    bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.8))
+            
+            traces_plotted += 1
+        
+        ax.set_xlabel(xlabelStr, fontsize=14)
+        ax.set_ylabel('Cross-correlation + offset', fontsize=14)
+        ax.set_title(f'{titleStr}', fontsize=16)
+        ax.grid(True, alpha=0.3)
+        
+        # Add legend for a subset of traces to avoid clutter
+        if traces_plotted <= 10:
+            ax.legend(fontsize=10, loc='upper left')  # Move legend to avoid text labels
+        else:
+            # Show only every nth trace in legend
+            step = max(1, traces_plotted // 8)
+            handles, labels = ax.get_legend_handles_labels()
+            ax.legend(handles[::step], labels[::step], fontsize=10, loc='upper left')
+    
+    plt.tight_layout()
+    
+    if outputFileName is not None:
+        plt.savefig(outputFileName, bbox_inches='tight')
+    
+    plt.show()
+
+    # Print summary statistics
+    valid_bins = ~np.all(np.isnan(avg_crosscorr), axis=1)  # Bins that have at least some valid data
+    print('\nSummary:')
+    print(f'Number of datasets: {n_datasets}')
+    print(f'Bins with data: {np.sum(valid_bins)}/{len(bin_centers)}')
+    print(f'Traces plotted in waterfall: {traces_plotted}')
+
+
+    if plot_heatmap:
+        # Left panel: 2D color plot
+        fig, ax2 = plt.subplots(figsize=(8, 8))
+        
+        if vmin is None or vmax is None:
+            valid_data = avg_crosscorr[~np.isnan(avg_crosscorr)]
+            if len(valid_data) > 0:
+                data_range = np.percentile(valid_data, [5, 95])
+                vmin = vmin or data_range[0]
+                vmax = vmax or data_range[1]
+            else:
+                vmin, vmax = -1, 1
+    
+        if len(valid_data) > 0:
+            print(f'Cross-correlation range: {np.min(valid_data):.3f} to {np.max(valid_data):.3f}')
+        
+        # Create a copy of the data where NaN values are set to a neutral value for display
+        display_data = avg_crosscorr.copy()
+        display_data[np.isnan(display_data)] = 0  # Set NaN to 0 for visualization
+        
+        # Calculate bin edges for proper extent
+        bin_width = bin_centers[1] - bin_centers[0] if len(bin_centers) > 1 else 5
+        bin_edges_min = bin_centers[0] - bin_width/2
+        bin_edges_max = bin_centers[-1] + bin_width/2
+        
+        print(f"Extent: [{t_lag[0]}, {t_lag[-1]}, {bin_edges_min}, {bin_edges_max}]")
+        
+        im = ax2.imshow(display_data, aspect='auto', origin='lower', 
+                        extent=[t_lag[0], t_lag[-1], bin_edges_min, bin_edges_max],
+                        cmap=colormap, vmin=vmin, vmax=vmax)
+        
+        ax2.set_xlabel(xlabelStr, fontsize=14)
+        ax2.set_ylabel(heatmap_ylabelStr, fontsize=14)
+        ax2.set_title(f'{titleStr}', fontsize=16)
+        ax2.grid(True, alpha=0.3)
+        
+        # Add colorbar
+        cbar = plt.colorbar(im, ax=ax2)
+        cbar.set_label('Cross-correlation', fontsize=12)
+    
+        plt.tight_layout()
+        
+        if outputFileName is not None:
+            plt.savefig('heatmap_' + outputFileName, bbox_inches='tight')
+        
+        plt.show()
+    
+    
+
+
 def get_fps(datasets, fpstol = 1e-6):
     """
     Get the fps (frames per second) from all the datasets. These should
@@ -2962,6 +3341,8 @@ def get_fps(datasets, fpstol = 1e-6):
     Returns:
     average of all the (identical) fps values.    
     """
+    if len(datasets) == 0:
+        return None
     Ndatasets = len(datasets)
     # Check that all fps are the same, so that all time lag arrays will be the same
     fps_all = np.zeros((Ndatasets,))
