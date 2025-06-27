@@ -1594,7 +1594,7 @@ def write_output_files(params, output_path, datasets):
                        "Mean bout rate (/min)", "Mean bout duration (s)",
                        "Mean inter-bout interval (s)",
                        "Mean difference in fish lengths (mm)", 
-                       "Mean head-head dist (mm)", "Mean closest distance (mm)"
+                       "Mean head-head dist (mm)", "Mean closest distance (mm)",
                        "AngleXCorr_mean"]
 
     # Remove any keys that are not in the first dataset, for example
