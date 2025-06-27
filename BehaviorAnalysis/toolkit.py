@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, June 26, 2025
+Last modified by Rghuveer Parthasarathy, June 27, 2025
 
 Description
 -----------
@@ -1585,7 +1585,7 @@ def write_output_files(params, output_path, datasets):
                     "speed_mm_s_mean", "speed_whenMoving_mm_s_mean",
                     "bout_rate_bpm", "bout_duration_s", "bout_ibi_s",
                     "fish_length_Delta_mm_mean", 
-                    "head_head_distance_mm_mean", 
+                    "head_head_distance_mm_mean", "closest_distance_mm_mean",
                     "AngleXCorr_mean"]
     initial_strings = ["Dataset", "Frames per sec", 
                        "Image scale (um/px)",
@@ -1594,7 +1594,7 @@ def write_output_files(params, output_path, datasets):
                        "Mean bout rate (/min)", "Mean bout duration (s)",
                        "Mean inter-bout interval (s)",
                        "Mean difference in fish lengths (mm)", 
-                       "Mean head-head dist (mm)", 
+                       "Mean head-head dist (mm)", "Mean closest distance (mm)"
                        "AngleXCorr_mean"]
 
     # Remove any keys that are not in the first dataset, for example
