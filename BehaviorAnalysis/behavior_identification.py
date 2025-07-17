@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified June 20, 2025 -- Raghu Parthasarathy
+Last modified July 16, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -256,7 +256,6 @@ def extract_pair_behaviors(pair_behavior_frames, position_data, dataset,
     # Last dimension = fish (so array shapes are Nframes x {1 or 2}, Nfish==2)
     head_pos_data = position_data[:,CSVcolumns["head_column_x"]:CSVcolumns["head_column_y"]+1, :]
         # head_pos_data is Nframes x 2 (x and y positions) x 2 (Nfish) array of head positions
-    angle_data = dataset["heading_angle"]
     # body_x and _y are the body positions, each of size Nframes x 10 x Nfish
     body_x = position_data[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
     body_y = position_data[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
@@ -264,8 +263,7 @@ def extract_pair_behaviors(pair_behavior_frames, position_data, dataset,
     t1_2 = perf_counter()
     print(f'   t1_2 start 90degree analysis: {t1_2 - t1_start:.2f} seconds')
     # 90-degrees 
-    orientation_dict = get_90_deg_frames(head_pos_data, angle_data, 
-                                         dataset["closest_distance_mm"].flatten(),
+    orientation_dict = get_90_deg_frames(head_pos_data, dataset,
                                          params["perp_windowsize"], 
                                          params["cos_theta_90_thresh"], 
                                          params["perp_maxDistance_mm"],
@@ -302,7 +300,7 @@ def extract_pair_behaviors(pair_behavior_frames, position_data, dataset,
 
     pair_behavior_frames['tail_rubbing'] = get_tail_rubbing_frames(body_x, body_y, 
                                           dataset["head_head_distance_mm"], 
-                                          angle_data, 
+                                          dataset["heading_angle"], 
                                           params["tail_rub_ws"], 
                                           tailrub_maxTailDist_px, 
                                           params["cos_theta_antipar"], 
@@ -565,8 +563,7 @@ def get_inferred_contact_frames(position_data, dataset, CSVcolumns, frameWindow,
 
 
 
-def get_90_deg_frames(fish_head_pos, fish_angle_data, 
-                      closest_distance_mm, window_size, 
+def get_90_deg_frames(fish_head_pos, dataset, window_size, 
                       cos_theta_90_thresh, perp_maxDistance_mm, cosSeeingAngle, 
                       fish_length_array):
     """
@@ -577,8 +574,11 @@ def get_90_deg_frames(fish_head_pos, fish_angle_data,
     Args:
         fish_head_pos (array): a 3D array of (x, y) head positions for both fish.
                           Nframes x 2 [x, y] x 2 fish 
-        fish_angle_data (array): a 2D array of angles; Nframes x 2 fish
-        closest_distance_mm : array of closest distance, mm, between fish (Nframes, 1)
+        dataset: single dataset (probably datasets[j])). Must contain
+            ["heading_angle"], a 2D array of heading angles; Nframes x 2 fish
+            ["closest_distance_mm"], array of closest distance, mm, between fish (Nframes, )
+            ["relative_orientation"], array of relative orientations, i.e.
+                heading angle relative to head-to-head vector, previously calculated
         window_size (int)      : window size for which condition is averaged over.
         cos_theta_90_thresh (float): the cosine(angle) threshold for 90-degree orientation.
         perp_maxDistance_mm (float): inter-fish distance threshold, mm
@@ -601,13 +601,13 @@ def get_90_deg_frames(fish_head_pos, fish_angle_data,
                     "larger_fish_sees": [], 
                     "smaller_fish_sees": []}
 
+    fish_angle_data = dataset["heading_angle"]
+    closest_distance_mm = dataset["closest_distance_mm"].flatten()
+                                     
     # cos_theta for all frames
     cos_theta = np.cos(fish_angle_data[:,0] - fish_angle_data[:,1])
     cos_theta_criterion = (np.abs(cos_theta) < cos_theta_90_thresh)
-                
-    # head-to-head distance vector for all frames
-    dh_vec = fish_head_pos[:,:,1] - fish_head_pos[:,:,0]  # also used later, for the connecting vector
-    
+                    
     # closeness criterion
     separation_criterion = (closest_distance_mm < perp_maxDistance_mm)
     
@@ -634,9 +634,9 @@ def get_90_deg_frames(fish_head_pos, fish_angle_data,
     for idx in ninety_degree_idx:
         # (dx, dy) from fish 1 to 2, normalized to unit length
         # Angle of the connecting vector from fish 1 to 2
-        dh_angle_12 = np.arctan2(dh_vec[idx,1], dh_vec[idx,0])
-        fish1sees = np.cos(fish_angle_data[idx,0] - dh_angle_12) >= cosSeeingAngle
-        fish2sees = np.cos(fish_angle_data[idx,1] - dh_angle_12) <= -1.0*cosSeeingAngle
+        fish1sees = np.cos(dataset["relative_orientation"][idx,0]) >= cosSeeingAngle
+        fish2sees = np.cos(dataset["relative_orientation"][idx,1]) >= cosSeeingAngle
+
         if fish1sees or fish2sees:
             if fish1sees and fish2sees:
                 orientations["bothSee"].append(idx+1)
