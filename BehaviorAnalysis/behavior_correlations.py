@@ -3,18 +3,16 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Wed Sept. 6, 2023
-Last modified on June 24, 2025
+Last modified on July 19, 2025
 
 Description
 -----------
 
 Contains function(s) for calculating the correlation between different 
 behavior events
+Also contains functions for plotting quantitative properties in intervals
+around behavior events
 
-Inputs:
-    
-Outputs:
-    
 
 """
 
@@ -26,6 +24,7 @@ import csv
 from scipy.stats import linregress
 import scipy.stats as st
 import pickle
+from itertools import cycle
 from toolkit import load_and_assign_from_pickle, get_fps
 
 def calc_correlations_with_defaults():
@@ -639,14 +638,20 @@ def plot_behaviorCorrelation(behav_corr_dict, binCenters,
     
     # cmap_name = 'viridis' 
     cmap = plt.cm.rainbow(np.linspace(0, 1, len(behavior_key_list))) 
+    # cmap = plt.cm.tab10(np.linspace(0, 1, len(behavior_key_list))) 
     # cmap = plt.colormaps[cmap_name]
     
+    # line styles
+    lines = ["-","--","-.",":"]
+    linecycler = cycle(lines)
+
     # All behavior pairs
     
     plt.figure(figsize=(8, 6))
     for j, bB in enumerate(behavior_key_list):
         corrAB = behav_corr_dict[behaviorA][bB]['C']
-        plt.plot(binCenters/fps, corrAB, color=cmap[j,:], label=bB, linewidth=2.0)
+        plt.plot(binCenters/fps, corrAB, color=cmap[j,:], label=bB, 
+                 linewidth=2.0, linestyle = next(linecycler))
         if plotShadedUnc:
             corrABunc = behav_corr_dict[behaviorA][bB]['C_unc']
             plt.fill_between(binCenters/fps, corrAB - corrABunc, 
@@ -656,7 +661,7 @@ def plot_behaviorCorrelation(behav_corr_dict, binCenters,
     plt.title(f'{behaviorA} then each behavior; {titleString}', fontsize=20)
     plt.xticks(fontsize=14)
     plt.yticks(fontsize=14)
-    plt.legend()
+    plt.legend(fontsize=14)
 
     # For export, Mar. 1, 2024
     """
@@ -941,3 +946,384 @@ def length_difference_correlation(CSVfilename = '', behavior_to_plot=''):
         print("The specified behavior is not found in the filtered DataFrame.")
 
     return duration_data
+
+
+
+def array_stats(x, stats_axis = 0):
+    """
+    Array stats, ignore NaN (note that this isn't accounted for in s.e.m.,
+                             but should be a tiny effect)
+    If the array has only one row (along stats_axis), std and sem are NaNs
+    
+    Inputs
+    --------
+    x : Numpy array x
+    
+    Returns
+    --------
+    stats : dictionary with keys
+        "mean" : mean of x along axis 0
+        "std" : standard deviation
+        "sem" : standard error of the mean
+        
+    """
+    
+    mean_val = np.nanmean(x, axis=stats_axis)
+    if x.shape[stats_axis]==1:
+        # Fill manually with NaNs to avoid a warning!
+        std_val = np.full_like(mean_val, np.nan)
+        sem_val = np.full_like(mean_val, np.nan)
+    else:
+        std_val = np.nanstd(x, axis=stats_axis, ddof=1)  
+        sem_val = std_val / np.sqrt(x.shape[stats_axis])
+
+    stats = {
+        "mean": mean_val,
+        "std": std_val,
+        "sem": sem_val
+    }
+    return stats
+
+    
+def pool_quant_property_from_behavior_1dataset(dataset, 
+                                               behavior = 'maintain_proximity',
+                                               qproperty = 'relative_orientation',
+                                               duration_s = (-0.2, 0.6),
+                                               fishID = (0,1)):
+    """
+    Tabulate all values of a quantitative property following the initiation
+    of a particular behavior event, for some time duration.
+    Also calculate statistics (mean, std, sem)
+    Acts on a single dataset.
+    See July 2025 notes
+    
+    Inputs
+    ----------
+    dataset : single dataset dictionary; probably datasets[j]
+              must include "fps", "Nframes" 
+    behavior : behavior from the start of which to evaluate quantitative properties
+    q_property : quantitative property to examine
+    duration_s : duration to consider, seconds. Can be:
+                 - tuple (start_offset, end_offset) where start_offset is typically negative
+                   to include time before behavior start, end_offset is positive for time after
+                 - scalar: treated as (0, duration_s)
+    fishID = fishID to consider for each output axis==2 coordinates, 
+             or instructions for this. Ignored if the quantity
+             isn't individual specific (e.g. head-head distance)
+             If fish-specific, should be a tuple. Each element
+             can be 0 or 1, keeping usual id assignment,
+             or a string 'phi_low' or 'phi_high' for low and
+             high relative orientation, probably indicating 
+             approaching or fleeing fish.
+
+    Returns
+    -------
+    all_qprop_stats :  dictionary containing mean, std dev, s.e.m. of all_qprop, 
+                        shape of each key ("mean", etc."): 
+                                           (duration_frames, # fish vals)
+    all_qprop : numpy array containing all quantitative property values for
+                        each detected behavior event. 
+                        Shape: (# of events, duration_frames, # fish vals)
+    t_array : array of time values corresponding to the duration, seconds
+    
+    To do: 
+        Constraints, e.g. radial position
+        
+    """
+
+    # print('   Dataset ', dataset["dataset_name"])
+    
+    # Check that index 0 corresponds to frame 1. (I should write
+    #    more generally...)
+    if dataset["frameArray"][0] != 1:
+        raise ValueError('Error! First frame of frameArray should be 1')
+        
+    # Handle duration_s parameter 
+    if isinstance(duration_s, tuple):
+        start_offset_s, end_offset_s = duration_s
+    else:
+        # Treat scalar as (0, duration_s)
+        start_offset_s, end_offset_s = 0, duration_s
+    
+    # Convert time offsets to frame offsets
+    start_offset_frames = np.round(start_offset_s * dataset["fps"]).astype(int)
+    end_offset_frames = np.round(end_offset_s * dataset["fps"]).astype(int)
+    
+    # Total duration in frames
+    duration_frames = end_offset_frames - start_offset_frames
+
+    # All initial frames of the behavior
+    b_start_frames = dataset[behavior]["combine_frames"][0]
+
+
+    # Keep only frames that are within valid bounds considering both start and end offsets
+    # Start frame + start_offset must be >= 0 (since frameArray starts at frame 1, index 0)
+    # Start frame + end_offset must be <= Nframes
+    valid_mask = ((b_start_frames + start_offset_frames >= 1) & 
+                  (b_start_frames + end_offset_frames <= dataset["Nframes"]))
+    b_start_frames = b_start_frames[valid_mask]
+    
+    # Should be integers, but I think might sometimes be saved as float (?)
+    b_start_frames = b_start_frames.astype(int)
+    
+    N_events = len(b_start_frames)
+    
+    if N_events==0:
+        # No (valid) occurrences of this behavior
+        return None, None, None
+    
+    # Assess how many values per frame the quantitative property has (one 
+    # per fish, or just one). Initialize array
+    # squeeze to reduce dimensionality of shape==1 axis, for single-value properties
+    if len(dataset[qproperty].squeeze().shape) > 1:
+        Nval = dataset[qproperty].squeeze().shape[-1]
+        all_qprop = np.zeros((N_events, duration_frames+1, Nval))
+    else:
+        Nval = 1
+        all_qprop = np.zeros((N_events, duration_frames+1))
+
+    for j in range(N_events):
+        # Calculate actual start and end indices for this event
+        actual_start_idx = b_start_frames[j] - 1 + start_offset_frames  # -1 for 0-based indexing
+        actual_end_idx = b_start_frames[j] - 1 + end_offset_frames + 1  # +1 for inclusive end
+      
+        if Nval > 1:
+            if fishID == (0,1):
+                idx_array = np.array([0, 1]) # use fish IDs
+            elif fishID == ('phi_low','phi_high') :
+                rel_orient = dataset['relative_orientation'][b_start_frames[j]-1,:]
+                idx_array = np.argsort(rel_orient)
+            else:
+                raise ValueError('fishID value not recognized')
+            for k in range(Nval):
+                all_qprop[j, :, k] = dataset[qproperty][actual_start_idx : 
+                                                        actual_end_idx, 
+                                                        idx_array[k]]
+        else:
+            all_qprop[j, :] = dataset[qproperty][actual_start_idx : actual_end_idx].squeeze()
+    
+    # Average across all events
+    all_qprop_stats = array_stats(all_qprop, stats_axis = 0)
+    
+    # time array
+    t_array = np.arange(start_offset_frames, end_offset_frames+1)/dataset["fps"]
+
+    return all_qprop_stats, all_qprop, t_array
+
+
+    
+def pool_quant_property_from_behavior_all_datasets(datasets, 
+                                               behavior = 'maintain_proximity',
+                                               qproperty = 'relative_orientation',
+                                               duration_s = (-0.2, 0.6),
+                                               fishID = (0,1)):
+    """
+    Tabulate all values of a quantitative property following the initiation
+    of a particular behavior event, for some time duration.
+    Also calculate statistics (mean, std, sem)
+    Acts on all datasets by calling 
+    pool_quant_property_from_behavior_1dataset for each dataset
+    Average & stats across datasets; two versions, each dataset mean
+    gets equal weight, and each event (pooled from all datasets) gets
+    equal weight.
+    
+    Inputs
+    ----------
+    datasets : list of all dataset dictionaries
+              must include "fps", "Nframes" 
+    behavior : behavior from the start of which to evaluate quantitative properties
+    q_property : quantitative property to examine
+    duration_s : duration to consider, seconds. Can be:
+                 - tuple (start_offset, end_offset) where start_offset is typically negative
+                   to include time before behavior start, end_offset is positive for time after
+                 - scalar: treated as (0, duration_s)
+    fishID = fishID to consider for each output axis==2 coordinates, 
+             or instructions for this. Ignored if the quantity
+             isn't individual specific (e.g. head-head distance)
+             If fish-specific, should be a tuple. Each element
+             can be 0 or 1, keeping usual id assignment,
+             or a string 'phi_low' or 'phi_high' for low and
+             high relative orientation, probably indicating 
+             approaching or fleeing fish.
+
+    Returns
+    -------
+    all_qprop_stats_eachEvent :  
+        mean, std, s.e.m. of all_qprop, i.e. all events concatenated; 
+        shape (duration_frames, # fish vals)
+    all_qprop_stats_eachSet :  dictionary containing
+        mean, std, s.e.m. of all_qprop_means, i.e. stats of each dataset's mean val.; 
+    all_qprop_means :  mean of each dataset's all_qprop, 
+                shape (duration_frames, # fish vals)
+    all_qprop : numpy array containing all quantitative property values for
+                each detected behavior event, concatenated from all datasets
+                Shape: (# of events, duration_frames, # fish vals)
+    t_array : array of time values corresponding to the duration, seconds
+    
+    """
+
+    # Assess how many values per frame the quantitative property has (one 
+    # per fish, or just one). Initialize array. Use datasets[0] to get the
+    # number of values (e.g. 1 per fish)
+    # Don't use len(datasets) as the first-dimension shape, since some datasets
+    # may not have the behavior
+
+    all_qprop_list = [] # Don't know the shape, so will use a list
+    all_qprop_means_list = [] # Don't know the shape, so will use a list
+    
+    for j in range(len(datasets)):
+        if datasets[j]["fps"] != datasets[0]["fps"]:
+            raise ValueError("Error: fps not consistent between datasets")
+        qprop_stats1, all_qprop1, t_array = \
+            pool_quant_property_from_behavior_1dataset(
+                                datasets[j],
+                                behavior = behavior,
+                                qproperty = qproperty,
+                                duration_s = duration_s,
+                                fishID = fishID)
+        if qprop_stats1 is not None:
+            all_qprop_list.append(all_qprop1)
+            all_qprop_means_list.append(np.expand_dims(qprop_stats1["mean"], 
+                                                       axis=0))
+    
+    
+    all_qprop = np.concatenate(all_qprop_list, axis=0)
+    all_qprop_means = np.concatenate(all_qprop_means_list, axis=0)
+    
+    # Average across all events
+    print(f'Total number of behavior events: {all_qprop.shape[0]}')
+    all_qprop_stats_eachEvent = array_stats(all_qprop, stats_axis = 0)
+    # Average across all the mean values of each dataset
+    print(f'Total number of datasets: {all_qprop_means.shape[0]}')
+    all_qprop_stats_eachSet = array_stats(all_qprop_means, stats_axis = 0)
+    
+    
+    return all_qprop_stats_eachEvent, all_qprop_stats_eachSet, \
+            all_qprop_means, all_qprop, t_array
+
+
+
+def plot_quant_property_array(all_qprop_stats, all_qprop, idx = None, 
+                              t_array = None, titleString = None, 
+                              yLabelString = 'Property', 
+                              xLabelString = 'Time (fr. or s?)',
+                              ylim = None):
+    # Plot each row as a gray line, and mean / std as colored with band
+    if t_array.any() == None:
+        t_array = np.arange(all_qprop_stats.shape[1])
+        
+    if (idx!=None) and (len(all_qprop_stats["mean"].squeeze().shape)) == 1:
+        print('\nIndex given, but quant. property has only one value. Ignoring...')
+        idx = None
+        
+    plt.figure(figsize = (10,10))
+    if idx == None:
+        for j in range(all_qprop.shape[0]):
+            plt.plot(t_array, all_qprop[j,:], color='gray', alpha=0.5)
+        plt.plot(t_array, all_qprop_stats["mean"], color='orange', label='Mean')
+        plt.fill_between(t_array, 
+                         all_qprop_stats["mean"] - all_qprop_stats["std"], 
+                         all_qprop_stats["mean"] + all_qprop_stats["std"], 
+                         color='goldenrod', alpha=0.25, label='Std Dev')
+        plt.fill_between(t_array, 
+                         all_qprop_stats["mean"] - all_qprop_stats["sem"], 
+                         all_qprop_stats["mean"] + all_qprop_stats["sem"], 
+                         color='goldenrod', alpha=0.5, label='S.E.M.')
+    else:
+        for j in range(all_qprop.shape[0]):
+            plt.plot(t_array, all_qprop[j,:,idx], color='gray', alpha=0.5)
+        plt.plot(t_array, all_qprop_stats["mean"][:,idx], color='orange', label='Mean')
+        plt.fill_between(t_array, 
+                         all_qprop_stats["mean"][:,idx] - all_qprop_stats["std"][:,idx], 
+                         all_qprop_stats["mean"][:,idx] + all_qprop_stats["std"][:,idx], 
+                         color='goldenrod', alpha=0.25, label='Std Dev')
+        plt.fill_between(t_array, 
+                         all_qprop_stats["mean"][:,idx] - all_qprop_stats["sem"][:,idx], 
+                         all_qprop_stats["mean"][:,idx] + all_qprop_stats["sem"][:,idx], 
+                         color='goldenrod', alpha=0.5, label='S.E.M.')
+    if ylim is not None:
+        plt.ylim(ylim)
+    # If the time-range spans zero, add a dotted line at zero
+    if (np.min(t_array) < 0.0) and (np.max(t_array) > 0.0):
+        ymin, ymax = plt.ylim()
+        plt.vlines(x=0, ymin=ymin, ymax=ymax, colors='dodgerblue', 
+                   linestyles='dashed', linewidth = 3.0, alpha = 0.5)
+    plt.xlabel(xLabelString, fontsize = 16)
+    plt.ylabel(yLabelString, fontsize = 16)
+    if titleString is not None:
+        plt.title(titleString, fontsize = 18)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
+    
+
+def plot_qprop_pair_scatter(all_qprop, t_array, alpha=0.4, figsize=(8, 6),
+                               xlabel='Fish ID 0', ylabel='Fish ID 1', 
+                               title='Quant. Property, 2 fish Over Time',
+                               cmap='magma', marker_size=20, show_colorbar=True):
+    """
+    Plot the quantitative property of one fish vs. the other, using the
+    concatenated all_qprop array.
+    
+    for each j in range(all_qprop.shape[0]), and each f in 
+    range(all_qprop.shape[0]), plots as a point 
+    (all_qprop[j,f,0], all_qprop[j,f,1)), 
+    Color by time value. 
+    
+    Code mostly from Claude Sonnet 4
+                                                                                                                                                                                                                                                        
+    Inputs:
+        
+    all_qprop : numpy array containing all quantitative property values for
+                each detected behavior event, concatenated from all datasets
+                Shape: (# of events, duration_frames, # fish vals)
+    t_array : array of time values corresponding to the duration, seconds
+    ...
+    cmap : str or colormap, default 'magma'
+        Colormap to use for time coloring
+    marker_size : float, default 20
+        Size of scatter points
+    show_colorbar : bool, default True
+        Whether to show colorbar
+    """
+    
+    if all_qprop.ndim != 3 or all_qprop.shape[2] != 2:
+        raise ValueError("all_qprop must have shape (Ne, Nt, 2)")
+    
+    if len(t_array) != all_qprop.shape[1]:
+        raise ValueError("t_array length must match all_qprop time dimension")
+    
+    Ne, Nt, _ = all_qprop.shape
+    
+    # Create figure and axis
+    fig, ax = plt.subplots(figsize=figsize)
+    
+    # Flatten the data for efficient plotting
+    x_data = all_qprop[:, :, 0].flatten()  # Fish 0 values
+    y_data = all_qprop[:, :, 1].flatten()  # Fish 1 values
+    
+    # Create time values for each point (repeat t_array for each event)
+    time_data = np.tile(t_array, Ne)
+    
+    # Create scatter plot with time-based coloring
+    scatter = ax.scatter(x_data, y_data, c=time_data, cmap=cmap, 
+                        alpha=alpha, s=marker_size)
+    
+    # Create colorbar if requested
+    if show_colorbar:
+        # Use explicit normalization for better colorbar appearance
+        norm = plt.Normalize(vmin=t_array.min(), vmax=t_array.max())
+        scatter.set_norm(norm)
+        cbar = plt.colorbar(scatter, ax=ax)
+        cbar.set_label('Time (s)', rotation=270, labelpad=15)
+    
+    # Set labels and title
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    
+    # Add grid for better readability
+    ax.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    
+    return fig, ax
