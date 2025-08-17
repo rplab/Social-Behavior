@@ -2,7 +2,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Fri May 23 18:53:58 2025
-Last modified Fri May 23 18:53:58 2025 -- Raghuveer Parthasarathy
+Last modified August 17, 2025 -- Raghuveer Parthasarathy
 
 Description
 -----------
@@ -11,6 +11,7 @@ Code to visualize fish body positions, headings, and other information
 stored in datasets[], etc.
 The code is almost completely from Claude 4 Sonnet 
 (May 23- 24, 2025; see “Code notes May 2025.docx”)
+Caution: "frame" in most of the code is actually index number, i.e. frame-1
 
 Example usage:
     
@@ -204,7 +205,7 @@ class FishVisualizer:
                     self.dh_arrows.append(dh_arrow)
         
         # Update title and adjust view
-        self.ax.set_title(f'Frame {frame} / {self.Nframes - 1}')
+        self.ax.set_title(f'Frame Index {frame} / {self.Nframes1}')
         
         # Handle autoscaling vs fixed limits
         if self.autoscale:
