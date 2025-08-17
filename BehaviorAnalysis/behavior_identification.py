@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified July 16, 2025 -- Raghu Parthasarathy
+Last modified August 14, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -251,11 +251,8 @@ def extract_pair_behaviors(pair_behavior_frames, position_data, dataset,
     # Timer
     t1_start = perf_counter()
 
-    # Arrays of head, body positions abd angles, which are used by multiple 
-    # functions.
-    # Last dimension = fish (so array shapes are Nframes x {1 or 2}, Nfish==2)
-    head_pos_data = position_data[:,CSVcolumns["head_column_x"]:CSVcolumns["head_column_y"]+1, :]
-        # head_pos_data is Nframes x 2 (x and y positions) x 2 (Nfish) array of head positions
+    # Arrays of head, body positions, used by multiple functions.
+    # Last dimension = fish (so array shapes are (Nframes, {1 or 2}, Nfish==2)
     # body_x and _y are the body positions, each of size Nframes x 10 x Nfish
     body_x = position_data[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
     body_y = position_data[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
@@ -263,7 +260,7 @@ def extract_pair_behaviors(pair_behavior_frames, position_data, dataset,
     t1_2 = perf_counter()
     print(f'   t1_2 start 90degree analysis: {t1_2 - t1_start:.2f} seconds')
     # 90-degrees 
-    orientation_dict = get_90_deg_frames(head_pos_data, dataset,
+    orientation_dict = get_90_deg_frames(position_data, dataset, CSVcolumns,
                                          params["perp_windowsize"], 
                                          params["cos_theta_90_thresh"], 
                                          params["perp_maxDistance_mm"],
@@ -563,22 +560,25 @@ def get_inferred_contact_frames(position_data, dataset, CSVcolumns, frameWindow,
 
 
 
-def get_90_deg_frames(fish_head_pos, dataset, window_size, 
+def get_90_deg_frames(position_data, dataset, CSVcolumns, window_size, 
                       cos_theta_90_thresh, perp_maxDistance_mm, cosSeeingAngle, 
                       fish_length_array):
     """
     Returns an array of frames for 90-degree orientation events.
     Each frame represents the starting  frame for 90-degree
-       orientation events that span some window (parameter window_size).
+       orientation events that span {window_size} frames.
 
     Args:
+        position_data : position data for this dataset, presumably all_position_data[j]
+        dataset: dataset dictionary of all behavior information for a given expt.
+                probably datasets[j])
+                Includes "heading_angle" from repair_heading_angles(), a 2D array of heading angles; Nframes x 2 fish
+                Include "closest_distance_mm", array of closest distance, mm, between fish (Nframes, )
+        CSVcolumns : information on what the columns of position_data are
+
         fish_head_pos (array): a 3D array of (x, y) head positions for both fish.
                           Nframes x 2 [x, y] x 2 fish 
-        dataset: single dataset (probably datasets[j])). Must contain
-            ["heading_angle"], a 2D array of heading angles; Nframes x 2 fish
-            ["closest_distance_mm"], array of closest distance, mm, between fish (Nframes, )
-            ["relative_orientation"], array of relative orientations, i.e.
-                heading angle relative to head-to-head vector, previously calculated
+
         window_size (int)      : window size for which condition is averaged over.
         cos_theta_90_thresh (float): the cosine(angle) threshold for 90-degree orientation.
         perp_maxDistance_mm (float): inter-fish distance threshold, mm
@@ -626,19 +626,35 @@ def get_90_deg_frames(fish_head_pos, dataset, window_size,
     ninety_degree_idx = np.array(np.where(all_criteria_window==True))[0,:].flatten()
     # Not sure why the [0,:] is needed, but otherwise returns additional zeros.
     
-    # For each 90 degree event, determine the orientation type -- whether
-    # 0, 1, or both fish are in the forward half-plane of the other
+    # Calculate angle between the heading angle of a fish and the vector
+    # to each body position of every other fish, in each frame.
+    # The functions get_relative_orientation_to_body_positions() and
+    # and calc_head_body_vectors() are written generally for arbitrary numbers
+    # of fish. Here, instead of making a large array for arbitrary numbers of
+    # fish, I'll just calculate for fish idx = 0 and = 1 (i.e. Nfish = 2)
+    # Shape: (Nframes, Nbodycolumns, Nfish-1)
+    f0_angles_to_body = get_relative_orientation_to_body_positions(head_idx = 0, 
+                            position_data = position_data, dataset = dataset, 
+                            CSVcolumns = CSVcolumns)
+    f1_angles_to_body = get_relative_orientation_to_body_positions(head_idx = 1, 
+                            position_data = position_data, dataset = dataset, 
+                            CSVcolumns = CSVcolumns)
+                                                                      
+    # For each 90 degree event, determine from the orientation type 
+    # whether 0, 1, or both fish are in the "field of view" of the other.
     # Could have done this for all frames and just kept those that met 
-    # the above criteria; not sure which is faster, but this makes testing
+    # the above criteria; that's probably faster, but this makes testing
     # easier.
     for idx in ninety_degree_idx:
-        # (dx, dy) from fish 1 to 2, normalized to unit length
-        # Angle of the connecting vector from fish 1 to 2
-        fish1sees = np.cos(dataset["relative_orientation"][idx,0]) >= cosSeeingAngle
-        fish2sees = np.cos(dataset["relative_orientation"][idx,1]) >= cosSeeingAngle
+        # Assess the angle between fish k's heading angle and each body position
+        # of the other fish.
+        fish0sees = np.any(np.cos(f0_angles_to_body[idx, :, 0]) 
+                           >= cosSeeingAngle)
+        fish1sees = np.any(np.cos(f1_angles_to_body[idx, :, 0]) 
+                           >= cosSeeingAngle)
 
-        if fish1sees or fish2sees:
-            if fish1sees and fish2sees:
+        if fish0sees or fish1sees:
+            if fish0sees and fish1sees:
                 orientations["bothSee"].append(idx+1)
             else:
                 orientations["oneSees"].append(idx+1)
@@ -1088,13 +1104,14 @@ def calc_head_head_vector(position_data, CSVcolumns):
         CSVcolumns : information on what the columns of position_data are
     Output : 
         dh_vec_px : vector from fish 0 to fish 1, px, in each frame.
-        
-        numpy array Nframes x 1 of Head[1] - Head[0]
+                    numpy array, shape (Nframes, 2) of Head[1] - Head[0]
     """
     
     # all head positions
-    head_pos_data = position_data[:,CSVcolumns["head_column_x"]:CSVcolumns["head_column_y"]+1, :]
-        # head_pos_data is Nframes x 2 (x and y positions) x 2 (Nfish) array of head positions
+    head_pos_data = position_data[:, [CSVcolumns["head_column_x"],
+                                      CSVcolumns["head_column_y"]], :]
+        # head_pos_data is Nframes x 2 (x and y positions) x 2 (Nfish) 
+        # array of head positions
     
     if head_pos_data.shape[2]!=2:
         return None
@@ -1103,7 +1120,58 @@ def calc_head_head_vector(position_data, CSVcolumns):
         dh_vec_px = head_pos_data[:,:,1] - head_pos_data[:,:,0]  
         return dh_vec_px
 
+
+def calc_head_body_vectors(head_idx, position_data, CSVcolumns):
+    """ 
+    Calculate the vector from the head of fish head_idx to each body
+    position of each other fish, in each frame.
     
+    Inputs:
+        head_idx : index of the fish whose head to consider. Must be in
+                    range(Nfish). (Nfish determined as position_data.shape[2)
+        position_data : position data for this dataset, presumably 
+                    all_position_data[j]
+        CSVcolumns : information on what the columns of position_data are
+    Output : 
+        head_body_vec_px : vector from fish head_idx to each body position
+                           of each other fish "k", in each frame.
+                           Body[k] - Head[head_idx]
+                           Units: px
+                           numpy array
+                           shape (Nframes, N body columns, 2 = {x, y}, Nfish-1)
+    """
+    
+    Nfish = position_data.shape[2]
+    if head_idx not in range(Nfish):
+        raise ValueError("calc_head_body_vectors: invalid index")
+    
+    # head position. Shape (Nframes, 2 = {x, y})
+    head_pos = np.zeros((position_data.shape[0], 2), dtype=float)
+    head_pos[:,0] = position_data[:, CSVcolumns["head_column_x"], head_idx]
+    head_pos[:,1] = position_data[:, CSVcolumns["head_column_y"], head_idx]
+
+    # all body positions of other fish.
+    # Shape (Nframes, N body columns, 2 = {x, y}, Nfish-1)
+    mask = np.ones((Nfish,), dtype=bool)
+    mask[head_idx] = False
+    body_pos = np.zeros((position_data.shape[0], CSVcolumns["body_Ncolumns"], 
+                         2, Nfish-1), dtype=float)
+    body_pos[:,:,0,:] = position_data[:, CSVcolumns["body_column_x_start"] : 
+                                         (CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), 
+                                         mask]
+    body_pos[:,:,1,:] = position_data[:, CSVcolumns["body_column_y_start"] : 
+                                         (CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), 
+                                         mask]
+    
+    head_repeat = np.repeat(head_pos[:, np.newaxis, :], 
+                            CSVcolumns["body_Ncolumns"], axis=1)
+    head_repeat = np.repeat(head_repeat[:, :, :, np.newaxis], 
+                            Nfish-1, axis=3)
+    
+    head_body_vec_px = body_pos - head_repeat
+    return head_body_vec_px
+
+
 def get_relative_orientation(position_data, dataset, CSVcolumns):
     """ 
     Calculate the relative orientation of each fish with respect to the
@@ -1138,6 +1206,49 @@ def get_relative_orientation(position_data, dataset, CSVcolumns):
     relative_orientation = np.stack((phi0, phi1), axis=1)  
     
     return relative_orientation
+
+
+def get_relative_orientation_to_body_positions(head_idx, position_data, 
+                                               dataset, CSVcolumns):
+    """
+    Calculates the angle between a single fish’s heading angle and 
+    each body position of each other fish, in each frame. 
+    Inputs:
+        head_idx : index of the fish whose head to consider. Must be in
+                    range(Nfish). (Nfish determined as position_data.shape[2)
+        position_data : position data for this dataset, presumably all_position_data[j]
+        dataset: dataset dictionary of all behavior information for a given expt.
+                Includes "heading_angle" from repair_heading_angles() 
+        CSVcolumns : information on what the columns of position_data are
+    Output : 
+        relative_orientation_to_body : numpy array, 
+            shape (Nframes, Nbodycolumns, Nfish-1), of 
+            relative orientation, radians, for fish head_idx to each
+            body position of each other fish
+    """
+    Nfish = position_data.shape[2]
+
+    # All heading angles for this fish
+    angle_data = dataset["heading_angle"][:, head_idx]
+
+    # All the head-body vectors to other fish
+    # shape (Nframes, N body columns, 2 = {x, y}, Nfish-1)
+    head_body_vec = calc_head_body_vectors(head_idx, position_data, CSVcolumns)
+    
+    # unit vector in heading angle direction of fish head_idx
+    v = np.stack((np.cos(angle_data[:]), 
+                  np.sin(angle_data[:])), axis=1)
+    v_repeat = np.repeat(v[:, np.newaxis, :], 
+                            CSVcolumns["body_Ncolumns"], axis=1)
+    v_repeat = np.repeat(v_repeat[:, :, :, np.newaxis], 
+                            Nfish-1, axis=3)
+    
+    dot_product = np.sum(v_repeat * head_body_vec, axis=2)
+    magnitude_product = np.linalg.norm(v_repeat, axis=2) * \
+                        np.linalg.norm(head_body_vec, axis=2)
+    relative_orientation_to_body = np.arccos(dot_product / magnitude_product)
+        
+    return relative_orientation_to_body
 
 
 def get_relative_heading_angle(dataset, CSVcolumns):

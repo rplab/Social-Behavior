@@ -182,12 +182,13 @@ def main():
             valid_idx = (np.isin(time_shift_fish_idx, np.arange(0, Nfish))) and \
                         (type(time_shift_fish_idx)==int)
             if valid_idx==True:
-                print(f'\n\n** Time-shifting fish {time_shift_fish_idx}**')
+                print(f'\n\n** Time-shifting fish {time_shift_fish_idx} by half the duration**')
                 for j in range(len(datasets)):
+                    frameshift = np.floor(datasets[j]["Nframes"]/2.0).astype(int)
                     all_position_data[j], datasets[j] = \
                         timeShift(all_position_data[j], datasets[j], 
                                   CSVcolumns, fishIdx = time_shift_fish_idx, 
-                                  frameShift = 7500)
+                                  frameShift = frameshift)
                     # re-calculate fish lengths. (Could just shift...)
                     datasets[j]["fish_length_array_mm"] = \
                         get_fish_lengths(all_position_data[j], 
