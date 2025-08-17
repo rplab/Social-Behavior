@@ -205,7 +205,7 @@ class FishVisualizer:
                     self.dh_arrows.append(dh_arrow)
         
         # Update title and adjust view
-        self.ax.set_title(f'Frame Index {frame} / {self.Nframes1}')
+        self.ax.set_title(f'Frame Index {frame} (0-{self.Nframes - 1})')
         
         # Handle autoscaling vs fixed limits
         if self.autoscale:
