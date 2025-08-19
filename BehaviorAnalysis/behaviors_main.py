@@ -130,7 +130,7 @@ def main():
     
         # Repair (recalculate) angles
         datasets = repair_heading_angles(all_position_data, datasets, CSVcolumns)
-        
+
         # Calculate fish lengths (necessary for double-length repair)
         for j in range(len(datasets)):
             # Get the length of each fish in each frame (sum of all segments)

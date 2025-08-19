@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, June 27, 2025
+Last modified by Rghuveer Parthasarathy, August 28, 2025
 
 Description
 -----------
@@ -2112,17 +2112,18 @@ def relink_fish_ids(position_data, dataset, CSVcolumns,
         - heading_angles : Nframes x Nfish, updated heading angle data 
                             corresponding to corrected fish IDs
     """
+    
+    # Check first frame number, for indexing
+    if min(dataset['frameArray']) != 1:
+        raise ValueError('relink_fish_ids requires first frame no. to be 1')
+        
     # Create a copy of the data to avoid modifying the original
     new_position_data = position_data.copy()
     heading_angles = dataset["heading_angle"].copy()
     
     # Extract bad tracking frames
-    bad_frames = dataset["bad_bodyTrack_frames"]["raw_frames"]
-    
-    # Convert to zero-indexed for array access
-    bad_frames_zero_idx = np.array([f-1 for f in bad_frames])
-    
-    
+    bad_frames = np.array(dataset["bad_bodyTrack_frames"]["raw_frames"])
+        
     # Get column indices for body positions
     body_x_start = CSVcolumns["body_column_x_start"]
     body_y_start = CSVcolumns["body_column_y_start"]
@@ -2134,30 +2135,32 @@ def relink_fish_ids(position_data, dataset, CSVcolumns,
     # Get the number of frames and fish
     n_frames, _, n_fish = position_data.shape
     
-    # Find the first good frame index (hopefully index 0, but not necessarily)
-    last_good_frame = find_smallest_good_idx(dataset["Nframes"], 
+    # Find the first good frame (hopefully 1, but not necessarily)
+    first_good_frame = find_smallest_good_idx(dataset["Nframes"], 
                                              dataset["bad_bodyTrack_frames"]["raw_frames"])
     # This variable will also be used as the last known good frame index 
     # Check if first frame has good tracking
-    if last_good_frame > 0:
+    if first_good_frame > 1:
         print('Dataset: ', dataset['dataset_name'], ' starts with bad frames.')
-        print('   Start relinking at frame: ', last_good_frame)
+        print('   Start relinking at frame: ', first_good_frame)
     
     # frames whose new assignment differs from frame 0
     reassigned_frames = np.array([])
     
-    # Process each frame starting from the second one
-    for frame in range(1, n_frames):
+    # Process each frame starting from the one after the first good frame
+    last_good_frame = first_good_frame
+    for frame in range(first_good_frame + 1, n_frames + 1):
         # Skip bad frames
-        if frame in bad_frames_zero_idx:
+        if frame in bad_frames:
             continue
         
         # Get body positions for current and last good frame
-        body_x_current = new_position_data[frame, body_x_start:body_x_end, :]
-        body_y_current = new_position_data[frame, body_y_start:body_y_end, :]
+        # Note -1 for indexing
+        body_x_current = new_position_data[frame-1, body_x_start:body_x_end, :]
+        body_y_current = new_position_data[frame-1, body_y_start:body_y_end, :]
         
-        body_x_previous = new_position_data[last_good_frame, body_x_start:body_x_end, :]
-        body_y_previous = new_position_data[last_good_frame, body_y_start:body_y_end, :]
+        body_x_previous = new_position_data[last_good_frame-1, body_x_start:body_x_end, :]
+        body_y_previous = new_position_data[last_good_frame-1, body_y_start:body_y_end, :]
         
         # Stack x and y coordinates to get positions
         pos_current = np.stack([body_x_current, body_y_current], axis=-1)    # Shape: (Npos, Nfish, 2)
@@ -2172,7 +2175,9 @@ def relink_fish_ids(position_data, dataset, CSVcolumns,
                 # Calculate Euclidean distance between all body points of fish i in current frame
                 # and fish j in previous frame
                 point_distances = np.linalg.norm(pos_current[:, i, :] - pos_previous[:, j, :], axis=1)
-                distances_matrix[i, j] = np.sum(point_distances)
+                # L2 norm
+                distances_matrix[i, j] = np.sqrt(np.sum(point_distances**2)) 
+                    # sqrt is unnecessary, but I'd like this to be comparable to distance
         
         # Find optimal assignment that minimizes total distance
         row_indices, col_indices = linear_sum_assignment(distances_matrix)
@@ -2183,19 +2188,17 @@ def relink_fish_ids(position_data, dataset, CSVcolumns,
             reassigned_frames = np.append(reassigned_frames, frame)
             
             # Create a new array with reordered fish
-            thisFrame_position_data = new_position_data[frame].copy()
-            thisFrame_heading_angles = heading_angles[frame].copy()
+            thisFrame_position_data = np.zeros_like(new_position_data[frame-1,:,:])
+            thisFrame_heading_angles = np.zeros_like(heading_angles[frame-1,:])
             
             # Reorder fish IDs according to assignment
             for new_id, old_id in enumerate(col_indices):
-                thisFrame_position_data[:, new_id] = new_position_data[frame, :, old_id]
-                thisFrame_heading_angles[new_id] = heading_angles[frame, old_id]
+                thisFrame_position_data[:, new_id] = new_position_data[frame-1, :, old_id]
+                thisFrame_heading_angles[new_id] = heading_angles[frame-1, old_id]
             
             # Update the position data for this frame
-            position_data[frame] = thisFrame_position_data
-            heading_angles[frame] = thisFrame_heading_angles
-            # print(frame, col_indices)
-            # x = input(f'switch: {frame}' )
+            new_position_data[frame-1] = thisFrame_position_data
+            heading_angles[frame-1] = thisFrame_heading_angles
         
         # Update last good frame
         last_good_frame = frame
@@ -2205,14 +2208,15 @@ def relink_fish_ids(position_data, dataset, CSVcolumns,
     # print(reassigned_block_endFrames)
     num_reassigned_blocks = len(reassigned_block_endFrames)
     if verbose:
-        print(f'Dataset {dataset["dataset_name"]}, re-linking.')
-        print(f'   re-assigned {num_reassigned_blocks} blocks of {dataset["Nframes"]} frames.')
-    
-    return position_data, heading_angles
+        print(f'Re-linked dataset {dataset["dataset_name"]}; {dataset["Nframes"]} frames.')
+        print(f'   re-assigned {num_reassigned_blocks} blocks.')
+        print(reassigned_block_endFrames)
+    return new_position_data, heading_angles
 
 
 
-def relink_fish_ids_all_datasets(all_position_data, datasets, CSVcolumns):
+def relink_fish_ids_all_datasets(all_position_data, datasets, CSVcolumns,
+                                 verbose = False):
     """
     Apply the fish ID relinking to all datasets.
     
@@ -2224,6 +2228,7 @@ def relink_fish_ids_all_datasets(all_position_data, datasets, CSVcolumns):
         List of dataset information for each experiment
     CSVcolumns : dict
         Dictionary specifying the column indices for body positions
+    verbose : if true, show the number of re-assigned frames
         
     Returns:
     --------
@@ -2333,7 +2338,6 @@ def repair_head_positions(all_position_data, CSVcolumns, tol=0.001):
         # Repair
         dataset_repaired["heading_angle"] = heading_angle
         '''
-        
         all_position_data_repaired.append(position_data_repaired)
     
     return all_position_data_repaired
