@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified August 14, 2025 -- Raghu Parthasarathy
+Last modified August 23, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -760,11 +760,12 @@ def get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params):
             contains "heading_angle"
         CSVcolumns: information on what the columns of position_data are
         params : dictionary of all analysis parameters -- will use speed 
-            and proximity thresholds
-        max_gap_s : maximum gap in matching criterion to allow (s). At 25 fps,
-            0.08 s = 2 frames.
-        min_duration_s : min duration that matching criteria must be met for the
-            behavior to be recorded. At 25 fps, 0.6 s = 15 frames  
+            and proximity thresholds. Includes:
+            max_motion_gap_s : maximum gap in matching criterion to allow (s). 
+                At 25 fps, 0.5 s = 12.5 frames.
+            min_proximity_duration_s : min duration that matching criteria 
+                    must be met for the behavior to be recorded (s).
+                    Leave as zero (or < 1 frame) for no minimum.
 
     Returns:
         maintain_proximity_frames: a 1D array of frames in which the
@@ -776,6 +777,7 @@ def get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params):
     speed_criterion = np.any(dataset["speed_array_mm_s"] > 
                              params["motion_speed_threshold_mm_second"], 
                              axis=1)
+
     # Closing to remove small gaps
     N_smallgap = np.round(params["max_motion_gap_s"]*dataset["fps"]).astype(int)
     ste_smallgap = np.ones((N_smallgap+1,), dtype=bool)
@@ -786,9 +788,11 @@ def get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params):
     all_criteria_0 = speed_criterion_closed & distance_criterion
 
     # Opening to enforce min. duration
-    N_duration = np.round(params["min_proximity_duration_s"]*dataset["fps"]).astype(int)
-    ste_duration = np.ones((N_duration+1,), dtype=bool)
-    all_criteria = binary_opening(all_criteria_0, ste_duration)
+    if params["min_proximity_duration_s"]*dataset["fps"] >= 1.0:
+        # minimum of at least one frame
+        N_duration = np.round(params["min_proximity_duration_s"]*dataset["fps"]).astype(int)
+        ste_duration = np.ones((N_duration+1,), dtype=bool)
+        all_criteria = binary_opening(all_criteria_0, ste_duration)
 
     startFrame = np.min(dataset["frameArray"])
     maintain_proximity_frames = np.array(np.where(all_criteria==True))[0,:].flatten() + startFrame
