@@ -833,7 +833,6 @@ def get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params):
         fno = fno + 1
         axs[fno].plot(frames, speed_criterion, color='olive', label='Speed')
         axs[fno].plot(frames, 0.95*distance_criterion, color='tomato', label='Distance')
-        axs[fno].plot(frames, 1.05*all_criteria_0, color='khaki', label='All_0')
         axs[fno].plot(frames, 1.1*all_criteria, color='magenta', label='All')
         axs[fno].set_ylabel('Criteria, boolean')
         axs[fno].set_title(f'{dataset["dataset_name"]}: Criteria', fontsize = 20)
