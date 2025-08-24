@@ -785,14 +785,14 @@ def get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params):
 
     distance_criterion = dataset["closest_distance_mm"].flatten() < \
         params["proximity_threshold_mm"]
-    all_criteria_0 = speed_criterion_closed & distance_criterion
+    all_criteria = speed_criterion_closed & distance_criterion
 
     # Opening to enforce min. duration
     if params["min_proximity_duration_s"]*dataset["fps"] >= 1.0:
         # minimum of at least one frame
         N_duration = np.round(params["min_proximity_duration_s"]*dataset["fps"]).astype(int)
         ste_duration = np.ones((N_duration+1,), dtype=bool)
-        all_criteria = binary_opening(all_criteria_0, ste_duration)
+        all_criteria = binary_opening(all_criteria, ste_duration)
 
     startFrame = np.min(dataset["frameArray"])
     maintain_proximity_frames = np.array(np.where(all_criteria==True))[0,:].flatten() + startFrame
