@@ -13,6 +13,286 @@ Misc. deleted code
 """
 
 
+
+
+def timeShift(position_data, dataset, CSVcolumns, fishIdx = 1, startFrame = 1, 
+              minShiftFrames = 3000, minDistance_mm = 8.0):
+    """
+    Cyclicly shift all position data for one fish (fishIdx) by some number of 
+    frames such that the fish position and heading in frame startFrame is
+    the same, within tolerance, after shifting.
+    For "randomizing" trajectory data, as a control for social interactions.
+    Note that frames and index values are offset by 1
+    Require some minimum number of frames to shift
+    
+    Note that the shifted start / end will have a large discontinuity in 
+    positions. This can be “fixed” by marking the shifted start/end frames 
+    for the "bad tracking" flag, with head positions as zeros.
+
+    Parameters
+    ----------
+    position_data : basic position information for this dataset, numpy array
+    dataset : dataset dictionary of all behavior information for a given expt.
+    CSVcolumns: information on what the columns of position_data are
+    fishIdx : index of fish to shift
+    startFrame : starting frame to consider
+    minShiftFrames : shift by at least this many frames
+    minDistance_mm: minimum difference in position between non-shifted fish in
+        initial, shifted frames, to avoid overly similar configurations
+
+
+    Returns
+    -------
+    position_data :
+    dataset : 
+
+    """
+    
+    allFishIndexes = np.arange(position_data.shape[2]) # probably 0, 1
+    unshiftedFishIdx = np.delete(allFishIndexes, fishIdx)
+    
+    # Find frames in which fish fishIdx is within tolerance of its position and
+    # heading in frame startFrame
+    x0 = position_data[startFrame-1,CSVcolumns["head_column_x"],fishIdx]
+    y0 = position_data[startFrame-1,CSVcolumns["head_column_y"],fishIdx]
+    x = position_data[:,CSVcolumns["head_column_x"],fishIdx]
+    y = position_data[:,CSVcolumns["head_column_y"],fishIdx]
+    d_mm = np.sqrt((x-x0)**2 + (y-y0)**2)*dataset["image_scale"]/1000.0
+    
+    otherx0 = position_data[startFrame-1,CSVcolumns["head_column_x"],unshiftedFishIdx]
+    othery0 = position_data[startFrame-1,CSVcolumns["head_column_y"],unshiftedFishIdx]
+    otherx = position_data[:,CSVcolumns["head_column_x"],unshiftedFishIdx]
+    othery = position_data[:,CSVcolumns["head_column_y"],unshiftedFishIdx]
+    min_d_other_mm = np.min(np.sqrt((otherx - otherx0)**2 + 
+                                    (othery - othery0)**2), axis=1)*dataset["image_scale"]/1000.0
+
+    frameShift = dataset["frameArray"] - startFrame
+    validCondition = (frameShift > minShiftFrames) & (min_d_other_mm > minDistance_mm)
+    validIdx = np.where(validCondition)[0]
+    valid_d_mm = d_mm[validCondition]
+    min_valid_d_idx = np.argmin(valid_d_mm)
+    min_valid_d_mm = valid_d_mm[min_valid_d_idx]
+    shift_idx = validIdx[min_valid_d_idx]
+
+    print('\nTime shifting: min distance (beyond min. frame shift):' + 
+          f'{dataset["dataset_name"]}: {min_valid_d_mm:.2f} mm, at index {shift_idx}')
+    
+    # Cyclicly shift position and heading data by shift_idx
+    new_dataset = dataset.copy()
+    new_position_data = position_data.copy()
+    # Note that position data cols 0 and 1 are ID no and frame no., so don't 
+    # shift these (shouldn't matter...)
+    new_dataset["heading_angle"][:,fishIdx] = \
+        np.roll(dataset["heading_angle"][:,fishIdx], shift_idx, axis=0)
+    # Note that position data cols 0 and 1 are ID no and frame no., so don't 
+    # shift these (shouldn't matter...)
+    new_position_data[:, 2:, fishIdx] = \
+        np.roll(position_data[:, 2:, fishIdx], shift_idx, axis=0)
+    
+    # Mark start frame, end frame as zeros for head and body posititions, 
+    # to flag bad tracking
+    new_position_data[shift_idx:shift_idx+2,CSVcolumns["head_column_x"],fishIdx] = 0.0
+    new_position_data[shift_idx:shift_idx+2,CSVcolumns["head_column_y"],fishIdx] = 0.0
+    new_position_data[shift_idx:shift_idx+2,CSVcolumns["body_column_x_start"]:CSVcolumns["body_Ncolumns"]+1,fishIdx] = 0.0
+    new_position_data[shift_idx:shift_idx+2,CSVcolumns["body_column_y_start"]:CSVcolumns["body_Ncolumns"]+1,fishIdx] = 0.0
+    
+    return new_position_data, new_dataset
+
+def relink_using_gmm_length(dataset, position_data, min_frames = 25, 
+                            verbose = False):
+    """
+    Revise fish ID linkage based on length consistency across spans of 
+    frames, using the 3-component gmm length model
+    
+    Parameters:
+    -----------
+    dataset : dict
+        Dictionary containing:
+        - 'fish_length_array_mm': array of shape (Nframes, Nfish)
+        - 'bad_bodyTrack_frames': dict with 'raw_frames' containing frame numbers with bad tracking
+          (Note: frame numbers start from 1, not 0)
+    position_data : numpy.ndarray
+        Array of shape (Nframes, Ncolumns, Nfish) containing position data
+        (probably all_position_data[j])
+    min_frames : minimum number of contiguous good-tracking frames to fit a
+        Gaussian mixture model to. If below this, simply use the median.
+    verbose : if True, print various things
+        
+    Returns:
+    --------
+    numpy.ndarray : Revised position data with updated fish ID linkage
+    """
+    fish_lengths = dataset["fish_length_array_mm"]
+    bad_frames = dataset["bad_bodyTrack_frames"]["raw_frames"]
+    
+    n_frames, n_fish = fish_lengths.shape
+    
+    # Create a boolean array indicating good frames (True) and bad frames (False)
+    # Accounting for the offset between frame numbers and array indices
+    good_frames = np.ones(n_frames, dtype=bool)
+    for frame in bad_frames:
+        if 1 <= frame <= n_frames:  # Ensure the frame number is valid
+            good_frames[frame-1] = False  # Adjust for the offset
+    
+    # Find contiguous spans of good frames
+    spans = []
+    span_start = None
+    
+    for i in range(n_frames):
+        if good_frames[i] and span_start is None:
+            span_start = i
+        elif not good_frames[i] and span_start is not None:
+            spans.append((span_start, i-1))
+            span_start = None
+    
+    # Handle the case where the last span extends to the end
+    if span_start is not None:
+        spans.append((span_start, n_frames-1))
+    
+    # If no good spans found, return the original data
+    if not spans:
+        print("No good tracking spans found. Returning original data.")
+        return position_data
+    
+    # Find the largest span (the master span)
+    master_span = max(spans, key=lambda x: x[1] - x[0] + 1)
+    master_start, master_end = master_span
+    
+    if verbose:
+        print(f"Master span identified: frames {master_start+1}-{master_end+1}")
+    
+    # Extract fish lengths in the master span
+    master_lengths = fish_lengths[master_start:master_end+1, :]
+    
+    # Fit GMM to each fish's length in the master span to get reliable estimates
+    master_fish_lengths = np.zeros(n_fish)
+    for j in range(n_fish):
+        fish_j_lengths = master_lengths[:, j]
+        # Remove NaNs and zeros if any
+        valid_lengths = fish_j_lengths[~np.isnan(fish_j_lengths) & (fish_j_lengths > 0)]
+        if len(valid_lengths) > 0:
+            master_fish_lengths[j] = fit_gaussian_mixture(valid_lengths)[0]
+        else:
+            master_fish_lengths[j] = np.nan
+    
+    if verbose:
+        print("Fish lengths (mm) in largest good frame span:", master_fish_lengths)
+    
+    # Create a copy of the position data to modify
+    new_position_data = position_data.copy()
+    
+    # Store permutations for each span for final adjustment
+    span_permutations = {}
+    
+    # Process each span except the master span
+    for span_start, span_end in spans:
+        if (span_start, span_end) == master_span:
+            # For the master span, we assume the identity permutation
+            span_permutations[span_start] = np.arange(n_fish)
+            continue  # Skip further processing for the master span
+        
+        span_length = span_end - span_start + 1
+        if verbose:
+            print(f"Processing span: frames {span_start+1}-{span_end+1} (length: {span_length})")
+        
+        # Extract fish lengths in this span
+        span_lengths = fish_lengths[span_start:span_end+1, :]
+        
+        # Fit GMM to each fish's length in this span
+        span_fish_lengths = np.zeros(n_fish)
+        for j in range(n_fish):
+            fish_j_lengths = span_lengths[:, j]
+            valid_lengths = fish_j_lengths[~np.isnan(fish_j_lengths) & (fish_j_lengths > 0)]
+            if len(valid_lengths) >= min_frames:
+                # Initialize with master fish lengths for better convergence
+                # Make sure to handle potential NaN values in master_fish_lengths
+                if np.isnan(master_fish_lengths[j]):
+                    median_val = np.median(valid_lengths)
+                    init_means = [median_val, 0.75*median_val, 3*median_val]
+                else:
+                    init_means = [master_fish_lengths[j], 
+                                  0.75*master_fish_lengths[j], 
+                                  3*master_fish_lengths[j]]
+                span_fish_lengths[j] = fit_gaussian_mixture(
+                    valid_lengths, 
+                    init_means=init_means
+                )[0]
+            else:
+                if len(valid_lengths) > 0:
+                    span_fish_lengths[j] = np.median(valid_lengths)
+                else:
+                    span_fish_lengths[j] = np.nan
+        
+        # Create a distance matrix between span fish lengths and master fish lengths
+        distance_matrix = np.zeros((n_fish, n_fish))
+        for i in range(n_fish):
+            for j in range(n_fish):
+                if np.isnan(span_fish_lengths[i]) or np.isnan(master_fish_lengths[j]):
+                    distance_matrix[i, j] = np.inf
+                else:
+                    distance_matrix[i, j] = abs(span_fish_lengths[i] - master_fish_lengths[j])
+        
+        # Find the optimal assignment using the Hungarian algorithm
+        row_ind, col_ind = linear_sum_assignment(distance_matrix)
+        
+        # Store the permutation for this span
+        span_permutations[span_start] = np.array(col_ind)
+        
+        # Apply the permutation to the position data for this span
+        for frame_idx in range(span_start, span_end + 1):
+            # Permute the fish IDs for this frame
+            # Use careful indexing to avoid broadcasting issues
+            for j, new_j in enumerate(col_ind):
+                new_position_data[frame_idx, :, j] = position_data[frame_idx, :, new_j]
+        
+        if verbose:
+            print(f"  Optimal permutation found: {list(col_ind)}")
+    
+    # Now, find the earliest span (first span) and make its permutation the standard
+    first_span_start = min(span_permutations.keys())
+    first_span_perm = span_permutations[first_span_start]
+    
+    if verbose:
+        print(f"Using first span (starting at frame {first_span_start+1}) permutation as reference: {list(first_span_perm)}")
+    
+    # Create a master permutation that transforms from the master's conception to the first span's original IDs
+    # We need to find a permutation p such that p[master_perm] = first_span_perm
+    # In other words, we're looking for p = first_span_perm[inverse(master_perm)]
+    # Since master_perm is identity (np.arange(n_fish)), p = first_span_perm
+    master_to_first_perm = first_span_perm
+    
+    # Create a final version of position data with the adjusted permutation
+    final_position_data = np.zeros_like(new_position_data)
+    
+    # Apply the master-to-first permutation to all spans
+    for span_start, span_end in spans:
+        span_perm = span_permutations[span_start]
+        
+        # For each fish ID j in the span, map it through both permutations
+        # First through span_perm to get the master's conception of the fish ID
+        # Then through master_to_first_perm to get the first span's original conception
+        combined_perm = np.zeros(n_fish, dtype=int)
+        for j in range(n_fish):
+            # This is a bit tricky:
+            # j (in the span) -> span_perm[j] (in the master) -> master_to_first_perm[span_perm[j]] (in the first span)
+            # But span_perm maps span's index to master's fish ID, so we need to find which span fish maps to each master fish
+            # So we need to invert span_perm
+            
+            # For simplicity, construct the mapping for each position
+            for orig_j, master_j in enumerate(span_perm):
+                first_span_j = master_to_first_perm[master_j]
+                combined_perm[orig_j] = first_span_j
+        
+        # Apply the combined permutation to the span
+        for frame_idx in range(span_start, span_end + 1):
+            for j, new_j in enumerate(combined_perm):
+                final_position_data[frame_idx, :, new_j] = new_position_data[frame_idx, :, j]
+                
+        if verbose:
+            print(f"  Combined permutation for span {span_start+1}-{span_end+1}: {list(combined_perm)}")
+    
+    return final_position_data
+
 def write_pickle_file(list_for_pickle, dataPath, outputFolderName, 
                       pickleFileName):
     """
@@ -123,6 +403,47 @@ def load_from_pickle(pickleFileName = None, basePath = None):
         "circle_windowsize" : 25,
         "circle_fit_threshold" : 0.25,
         "circle_distance_threshold": 240,
+
+#%%
+
+
+def plotAllPositions(position_data, dataset, CSVcolumns, arena_radius_mm, 
+                     arena_edge_mm = None):
+    """
+    Plot head x and y positions for each fish, in all frames
+    also dish center and edge
+    
+    Inputs:
+        position_data : position data for this dataset, presumably all_position_data[j]
+        dataset : dictionary with all info for the current dataset
+        CSVcolumns : CSV column information (dictionary)
+        arena_radius_mm
+        arena_edge_mm : threshold distance from arena_radius to illustrate; default None
+    
+    Outputs: none
+    
+    """
+    Npts = 360
+    cos_phi = np.cos(2*np.pi*np.arange(Npts)/Npts).reshape((Npts, 1))
+    sin_phi = np.sin(2*np.pi*np.arange(Npts)/Npts).reshape((Npts, 1))
+    R_px = arena_radius_mm*1000/dataset["image_scale"]
+    arena_ring = dataset["arena_center"] + R_px*np.hstack((cos_phi, sin_phi))
+    #arena_ring_x = dataset["arena_center"][0] + arena_radius_mm*1000/dataset["image_scale"]*cos_phi
+    #arena_ring_y = dataset["arena_center"][1] + arena_radius_mm*1000/dataset["image_scale"]*sin_phi
+    plt.figure()
+    plt.scatter(position_data[:,CSVcolumns["head_column_x"],0].flatten(), 
+                position_data[:,CSVcolumns["head_column_y"],0].flatten(), color='m', marker='x')
+    plt.scatter(position_data[:,CSVcolumns["head_column_x"],1].flatten(), 
+                position_data[:,CSVcolumns["head_column_y"],1].flatten(), color='darkturquoise', marker='x')
+    plt.scatter(dataset["arena_center"][0], dataset["arena_center"][1], 
+                color='red', s=100, marker='o')
+    plt.plot(arena_ring[:,0], arena_ring[:,1], c='orangered', linewidth=3.0)
+    if arena_edge_mm is not None:
+        R_closeEdge_px = (arena_radius_mm-arena_edge_mm)*1000/dataset["image_scale"]
+        edge_ring = dataset["arena_center"] + R_closeEdge_px*np.hstack((cos_phi, sin_phi))
+        plt.plot(edge_ring[:,0], edge_ring[:,1], c='lightcoral', linewidth=3.0)
+    plt.title(dataset["dataset_name"] )
+    plt.axis('equal')
 
 #%%
 

@@ -7,23 +7,24 @@
 # First version  : Estelle Trieu 9/19/2022
 # Re-written by : Raghuveer Parthasarathy (2023)
 # version ='2.0' Raghuveer Parthasarathy -- begun May 2023; see notes.
-# last modified: Raghuveer Parthasarathy, June 20, 2025
+# last modified: Raghuveer Parthasarathy, August 26, 2025
 # ---------------------------------------------------1------------------------
 """
 
 import os
 import numpy as np
 import yaml
-from toolkit import get_basePath, get_loading_option, load_and_assign_from_pickle, \
-        load_expt_config, load_analysis_parameters, \
-        get_output_pickleFileNames, \
-        check_analysis_parameters, set_outputFile_params, get_Nfish, \
-        get_CSV_filenames, load_all_position_data, repair_heading_angles, \
+from toolkit import get_Nfish, repair_heading_angles, \
         repair_head_positions, repair_double_length_fish, \
         relink_fish_ids_all_datasets, calc_good_tracking_spans, \
         make_frames_dictionary, get_edgeRejection_frames_dictionary, \
-        get_badTracking_frames_dictionary, \
-        write_CSV_Excel_YAML, write_pickle_file, timeShift
+        get_badTracking_frames_dictionary, timeShift
+from IO_toolkit import get_basePath, get_loading_option, load_and_assign_from_pickle, \
+        load_expt_config, load_analysis_parameters, \
+        get_output_pickleFileNames, \
+        check_analysis_parameters, set_outputFile_params, \
+        get_CSV_filenames, load_all_position_data, \
+        write_CSV_Excel_YAML, write_pickle_file
 from behavior_identification_single import get_single_fish_characterizations, \
         get_coord_characterizations, get_fish_lengths
 from behavior_identification import extract_pair_behaviors, \
@@ -114,14 +115,11 @@ def main():
                                                    subGroupName)
             
         #%% Load all position data; repair
-        # For display    
-        showAllPositions = False
         # load all position data and determine general parameters 
         # such as fps and scale
         all_position_data, datasets = \
             load_all_position_data(allCSVfileNames, expt_config, 
-                                          CSVcolumns, dataPath, params, 
-                                          showAllPositions)
+                                          CSVcolumns, dataPath, params)
         Nfish = get_Nfish(datasets)
         
         # Repair (recalculate) head positions, based on indexes 1-3 
