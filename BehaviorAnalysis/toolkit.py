@@ -948,13 +948,13 @@ def repair_double_length_fish(all_position_data, datasets, CSVcolumns,
 def combine_all_values_constrained(datasets, keyName='speed_array_mm_s', 
                                    keyIdx = None,
                                    constraintKey=None, constraintRange=None,
-                                   constraintIdx = 0, dilate_plus1=True):
+                                   constraintIdx = 0, dilate_minus1=True):
     """
     Loop through each dataset, get values of some numerical property
     in datasets[j][keyName], and collect all these in a list of 
     numpy arrays, one array per dataset. 
 	Ignore, in each dataset, "bad tracking" frames. 
-       If "dilate_plus1" is True, dilate the bad frames +1; 
+       If "dilate_minus1" is True, dilate the bad frames -1; 
        do this for speed values, since bad tracking affects adjacent frames!
     if datasets[j][keyName] is multi-dimensional, return the
         multidimensional array for each dataset
@@ -1006,7 +1006,7 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
                     (e.g. max of datasets[12]["speed_array_mm_s"] along axis==1
                      if constraintIdx is "max")
                     If None, won't apply constraint
-    dilate_plus1 : If True, dilate the bad frames +1; see above.
+    dilate_minus1 : If True, dilate the bad frames -1; see above.
     
     Returns
     -------
@@ -1027,7 +1027,7 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
             frames = datasets[j]["frameArray"]
             idx_offset = min(frames) # should be 1, but ensure
             badTrackFrames = datasets[j]["bad_bodyTrack_frames"]["raw_frames"]
-            if dilate_plus1:
+            if dilate_minus1:
                 dilate_badTrackFrames = np.concatenate((badTrackFrames, badTrackFrames - 1))
                 bad_frames = np.unique(dilate_badTrackFrames)
             else:
@@ -1046,7 +1046,7 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
         frames = datasets[j]["frameArray"]
         idx_offset = min(frames) # should be 1, but ensure
         badTrackFrames = datasets[j]["bad_bodyTrack_frames"]["raw_frames"]
-        if dilate_plus1:
+        if dilate_minus1:
             dilate_badTrackFrames = np.concatenate((badTrackFrames, badTrackFrames - 1))
             bad_frames = np.unique(dilate_badTrackFrames)
         else:
@@ -1290,7 +1290,7 @@ def calculate_block_crosscorr(data1, data2, n_lags, window_size):
     return np.mean(block_crosscorrs, axis=0)
 
 def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s', 
-                                corr_type='auto', dilate_plus1=True, 
+                                corr_type='auto', dilate_minus1=True, 
                                 t_max=10, t_window=None):
     """
     For a *single* dataset, calculate the auto or cross-correlation of the numerical
@@ -1303,7 +1303,7 @@ def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s',
     NOTE: replaces values for *both* fish if a frame is a bad-tracking frame, 
        even if one of the fish is properly tracked. (Simpler to implement, and
        also both fish's values may be unreliable)
-    If "dilate_plus1" is True, dilate the bad frames +1.
+    If "dilate_minus1" is True, dilate the bad frames -1.
     Output is a numpy array with dim 1 corresponding to each fish, for auto-
     correlation, and a 1D numpy array for cross-correlation.
     
@@ -1312,7 +1312,7 @@ def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s',
     dataset : single analysis dataset
     keyName : the key to combine (e.g. "speed_array_mm_s")
     corr_type : 'auto' for autocorrelation, 'cross' for cross-correlation (only for Nfish==2)
-    dilate_plus1 : If True, dilate the bad frames +1
+    dilate_minus1 : If True, dilate the bad frames -1
     t_max : max time to consider for autocorrelation, seconds.
     t_window : size of sliding window in seconds. 
         If None, don't use a sliding window.
@@ -1329,7 +1329,7 @@ def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s',
     Nframes, Nfish = value_array.shape
     fps = dataset["fps"]
     badTrackFrames = dataset["bad_bodyTrack_frames"]["raw_frames"]
-    if dilate_plus1:
+    if dilate_minus1:
         dilate_badTrackFrames = dilate_frames(badTrackFrames, 
                                               dilate_frames=np.array([-1]))
         bad_frames_set = set(dilate_badTrackFrames)
@@ -1387,7 +1387,7 @@ def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s',
 
 
 def calculate_value_corr_all(datasets, keyName = 'speed_array_mm_s',
-                             corr_type='auto', dilate_plus1 = True, 
+                             corr_type='auto', dilate_minus1 = True, 
                              t_max = 10, t_window = None, fpstol = 1e-6):
     """
     Loop through each dataset, call calculate_value_corr_oneSet() to
@@ -1405,7 +1405,7 @@ def calculate_value_corr_all(datasets, keyName = 'speed_array_mm_s',
     datasets : list of dictionaries containing all analysis. 
 	keyName : the key to combine (e.g. "speed_array_mm_s")
     corr_type : 'auto' for autocorrelation, 'cross' for cross-correlation (only for Nfish==2)
-	dilate_plus1 :  If "dilate_plus1" is True, dilate the bad frames +1; see above. 
+	dilate_minus1 :  If "dilate_minus1" is True, dilate the bad frames -1; see above. 
     t_max : max time to consider for autocorrelation, seconds. 
                 (Calculates for all time lags, but just ouputs to t_max.) 
                 Uses "fps" key to convert time to frames.
@@ -1431,7 +1431,7 @@ def calculate_value_corr_all(datasets, keyName = 'speed_array_mm_s',
         (autocorr_one, t_lag) = calculate_value_corr_oneSet(datasets[j], 
                                             keyName = keyName, 
                                             corr_type=corr_type,
-                                            dilate_plus1 = dilate_plus1, 
+                                            dilate_minus1 = dilate_minus1, 
                                             t_max = t_max, t_window = t_window)
         autocorr_all.append(autocorr_one)
     print('\n')
@@ -1443,7 +1443,7 @@ def calculate_value_corr_oneSet_binned(dataset, keyName='speed_array_mm_s',
                                        binKeyName = 'head_head_distance_mm',
                                        bin_value_min=0, bin_value_max=50.0, 
                                        bin_width=5.0, t_max=2.0, 
-                                       t_window=10.0, dilate_plus1=True):
+                                       t_window=10.0, dilate_minus1=True):
     """
     Calculate the cross-correlation (between fish) of a property such
     as speed (default) binned by another property (default head-to-head distance)
@@ -1460,7 +1460,7 @@ def calculate_value_corr_oneSet_binned(dataset, keyName='speed_array_mm_s',
     bin_width : width of bins (e.g. for distance, mm)
     t_max : max time to consider for cross-correlation, seconds
     t_window : size of sliding window in seconds
-    dilate_plus1 : If True, dilate the bad frames +1
+    dilate_minus1 : If True, dilate the bad frames -1
     
     Returns
     -------
@@ -1482,7 +1482,7 @@ def calculate_value_corr_oneSet_binned(dataset, keyName='speed_array_mm_s',
     
     # Handle bad tracking frames
     badTrackFrames = dataset["bad_bodyTrack_frames"]["raw_frames"]
-    if dilate_plus1:
+    if dilate_minus1:
         dilate_badTrackFrames = dilate_frames(badTrackFrames, 
                                               dilate_frames=np.array([-1]))
         bad_frames_set = set(dilate_badTrackFrames)
@@ -1574,7 +1574,7 @@ def calculate_value_corr_all_binned(datasets, keyName='speed_array_mm_s',
                                     binKeyName = 'head_head_distance_mm',
                                     bin_value_min=0, bin_value_max=50.0, 
                                     bin_width=5.0, t_max=2.0, 
-                                    t_window=10.0, dilate_plus1=True, fpstol=1e-6):
+                                    t_window=10.0, dilate_minus1=True, fpstol=1e-6):
     """
     Calculate distance-binned cross-correlations for all datasets.
     
@@ -1589,7 +1589,7 @@ def calculate_value_corr_all_binned(datasets, keyName='speed_array_mm_s',
     bin_width : width of bins (e.g. for distance, mm)
     t_max : max time to consider for cross-correlation, seconds
     t_window : size of sliding window in seconds
-    dilate_plus1 : If True, dilate the bad frames +1
+    dilate_minus1 : If True, dilate the bad frames -1
     fpstol : relative tolerance for checking that all fps are the same
     
     Returns
@@ -1622,7 +1622,7 @@ def calculate_value_corr_all_binned(datasets, keyName='speed_array_mm_s',
                                                bin_width=bin_width,
                                                t_max=t_max,
                                                t_window=t_window,
-                                               dilate_plus1=dilate_plus1)
+                                               dilate_minus1=dilate_minus1)
         
         binned_crosscorr_all.append(binned_crosscorr)
         bin_counts_all.append(bin_counts)
@@ -1920,7 +1920,7 @@ def plot_function_allSets(y_list, x_array = None,
 def make_2D_histogram(datasets, keyNames = ('speed_array_mm_s', 'head_head_distance_mm'), 
                       keyIdx = (None, None), 
                       constraintKey=None, constraintRange=None, constraintIdx = 0,
-                      dilate_plus1=True, bin_ranges=None, Nbins=(20,20),
+                      dilate_minus1=True, bin_ranges=None, Nbins=(20,20),
                       titleStr = None, colorRange = None, outputFileName = None):
     """
     Create a 2D histogram plot of the values from two keys in the 
@@ -1951,7 +1951,7 @@ def make_2D_histogram(datasets, keyNames = ('speed_array_mm_s', 'head_head_dista
                     "min", "max", or "mean",
                     If None, won't apply constraint    
                     see combine_all_values_constrained()
-    dilate_plus1 (bool): If True, dilate the bad frames +1; see above.
+    dilate_minus1 (bool): If True, dilate the bad frames -1; see above.
     bin_ranges (tuple): Optional tuple of two lists, specifying the (min, max) range for the bins of value1 and value2.
     Nbins (tuple): Optional tuple of two integers, number of bins for value1 and value2
     titleStr : title string; if None use Key names
@@ -1969,12 +1969,12 @@ def make_2D_histogram(datasets, keyNames = ('speed_array_mm_s', 'head_head_dista
                                              constraintKey=constraintKey, 
                                              constraintRange=constraintRange, 
                                              constraintIdx=constraintIdx,
-                                             dilate_plus1=dilate_plus1)
+                                             dilate_minus1=dilate_minus1)
     values2 = combine_all_values_constrained(datasets, keyNames[1], keyIdx=keyIdx[1],
                                              constraintKey=constraintKey, 
                                              constraintRange=constraintRange, 
                                              constraintIdx=constraintIdx,
-                                             dilate_plus1 = dilate_plus1)
+                                             dilate_minus1 = dilate_minus1)
     
     # Flatten the values and handle different dimensions
     values1_all = []

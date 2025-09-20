@@ -1213,7 +1213,7 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
     # Speed histogram
     speeds_mm_s_all = combine_all_values_constrained(datasets, 
                                                      keyName='speed_array_mm_s', 
-                                                     dilate_plus1 = True)
+                                                     dilate_minus1 = True)
     if outputFileNameBase is not None:
         outputFileName = outputFileNameBase + '_speed' + '.' + outputFileNameExt
     else:
@@ -1227,7 +1227,7 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
     # Angular_speed histogram
     angular_speeds_rad_s_all = combine_all_values_constrained(datasets, 
                                                      keyName='angular_speed_array_rad_s', 
-                                                     dilate_plus1 = True)
+                                                     dilate_minus1 = True)
     if outputFileNameBase is not None:
         outputFileName = outputFileNameBase + '_angularSpeed' + '.' + outputFileNameExt
     else:
@@ -1242,7 +1242,7 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
     # Radial position histogram
     radial_position_mm_all = combine_all_values_constrained(datasets, 
                                                      keyName='radial_position_mm', 
-                                                     dilate_plus1 = False)
+                                                     dilate_minus1 = False)
     if outputFileNameBase is not None:
         outputFileName = outputFileNameBase + '_radialpos' + '.' + outputFileNameExt
     else:
@@ -1256,7 +1256,7 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
     # Heading angle histogram
     heading_angle_all = combine_all_values_constrained(datasets, 
                                                  keyName='heading_angle', 
-                                                 dilate_plus1 = False)
+                                                 dilate_minus1 = False)
     if outputFileNameBase is not None:
         outputFileName = outputFileNameBase + '_heading_angle' + '.' + outputFileNameExt
     else:
@@ -1272,7 +1272,7 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
     # Radial alignment angle
     radial_alignment_all = combine_all_values_constrained(datasets, 
                                                      keyName='radial_alignment_rad', 
-                                                     dilate_plus1 = False)
+                                                     dilate_minus1 = False)
     if outputFileNameBase is not None:
         outputFileName = outputFileNameBase + '_radialAlignment_angle' + '.' + outputFileNameExt
     else:
@@ -1302,7 +1302,7 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
         outputFileName = None
     speed_ac_all, t_lag = \
         calculate_value_corr_all(datasets, keyName = 'speed_array_mm_s',
-                                 corr_type='auto', dilate_plus1 = True, 
+                                 corr_type='auto', dilate_minus1 = True, 
                                  t_max = 3.0, t_window = 10.0, fpstol = 1e-6)
     plot_function_allSets(speed_ac_all, t_lag, xlabelStr='time (s)', 
                           ylabelStr='Speed autocorrelation', 

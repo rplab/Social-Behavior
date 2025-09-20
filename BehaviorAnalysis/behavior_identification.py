@@ -1325,7 +1325,7 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
     # head-head distance histogram
     head_head_mm_all = combine_all_values_constrained(datasets, 
                                                      keyName='head_head_distance_mm', 
-                                                     dilate_plus1 = False)
+                                                     dilate_minus1 = False)
     if outputFileNameBase is not None:
         outputFileName = outputFileNameBase + '_distance_head_head' + '.' + outputFileNameExt
     else:
@@ -1340,7 +1340,7 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
     # closest distance histogram
     closest_distance_mm_all = combine_all_values_constrained(datasets, 
                                                      keyName='closest_distance_mm', 
-                                                     dilate_plus1 = False)
+                                                     dilate_minus1 = False)
     if outputFileNameBase is not None:
         outputFileName = outputFileNameBase + '_distance_closest' + '.' + outputFileNameExt
     else:
@@ -1355,7 +1355,7 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
     # Relative heading angle histogram
     relative_heading_angle_all = combine_all_values_constrained(datasets, 
                                                  keyName='relative_heading_angle', 
-                                                 dilate_plus1 = False)
+                                                 dilate_minus1 = False)
     if outputFileNameBase is not None:
         outputFileName = outputFileNameBase + '_rel_heading_angle' + '.' + outputFileNameExt
     else:
@@ -1371,7 +1371,7 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
     # Relative orientation angle histogram
     relative_orientation_angle_all = combine_all_values_constrained(datasets, 
                                                  keyName='relative_orientation', 
-                                                 dilate_plus1 = False)
+                                                 dilate_minus1 = False)
     if outputFileNameBase is not None:
         outputFileName = outputFileNameBase + '_rel_orientation' + '.' + outputFileNameExt
     else:
@@ -1387,7 +1387,7 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
     # Sum of relative orientation angles histogram
     relative_orientation_sum_all = combine_all_values_constrained(datasets, 
                                                  keyName='relative_orientation_sum', 
-                                                 dilate_plus1 = False)
+                                                 dilate_minus1 = False)
     if outputFileNameBase is not None:
         outputFileName = outputFileNameBase + '_rel_orientation_sum' + '.' + outputFileNameExt
     else:
@@ -1410,7 +1410,7 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
     make_2D_histogram(datasets, keyNames = ('speed_array_mm_s', 
                                             'head_head_distance_mm'), 
                           keyIdx = (None, None), 
-                          dilate_plus1=True, bin_ranges=((0.0, 100.0), (0.0, 50.0)), 
+                          dilate_minus1=True, bin_ranges=((0.0, 100.0), (0.0, 50.0)), 
                           Nbins=(20,20),
                           titleStr = 'speed and h-h distance', 
                           colorRange = (0, 0.05),
@@ -1425,7 +1425,7 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
     make_2D_histogram(datasets, keyNames = ('head_head_distance_mm', 
                                             'relative_heading_angle'), 
                           keyIdx = (None, None), 
-                          dilate_plus1=True, bin_ranges=((0.0, 50.0), (0.0, 3.142)), 
+                          dilate_minus1=True, bin_ranges=((0.0, 50.0), (0.0, 3.142)), 
                           Nbins=(20,20),
                           titleStr = 'heading angle and hh distance', outputFileName = outputFileName)
 
@@ -1437,7 +1437,7 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
     make_2D_histogram(datasets, keyNames = ('head_head_distance_mm', 
                                             'relative_orientation'), 
                           keyIdx = (None, None), 
-                          dilate_plus1=True, bin_ranges=((0.0, 50.0), (0.0, 3.142)), 
+                          dilate_minus1=True, bin_ranges=((0.0, 50.0), (0.0, 3.142)), 
                           Nbins=(20,20),
                           titleStr = 'orientation angle and hh distance', outputFileName = outputFileName)
 
@@ -1487,7 +1487,7 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
         outputFileName = None
     speed_cc_all, t_lag = \
         calculate_value_corr_all(datasets, keyName = 'speed_array_mm_s',
-                                 corr_type='cross', dilate_plus1 = True, 
+                                 corr_type='cross', dilate_minus1 = True, 
                                  t_max = 3.0, t_window = 10.0, fpstol = 1e-6)
     plot_function_allSets(speed_cc_all, t_lag, xlabelStr='time (s)', 
                           ylabelStr='Speed Cross-correlation', 
