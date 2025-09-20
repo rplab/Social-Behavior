@@ -535,7 +535,7 @@ def plot_behavior_ratio(column_ratios, colors,
     """    
 
     dataLabel_1, dataLabel_2 = dataLabels
-    plt.figure()
+    plt.figure(figsize=(12,9))
     
     # Create scatter plots with error bars for each column
     for j, col in enumerate(column_ratios.keys()):

@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Wed Sept. 6, 2023
-Last modified on July 19, 2025
+Last modified on Sept. 11, 2025
 
 Description
 -----------
@@ -25,7 +25,8 @@ from scipy.stats import linregress
 import scipy.stats as st
 import pickle
 from itertools import cycle
-from toolkit import load_and_assign_from_pickle, get_fps
+from IO_toolkit import load_and_assign_from_pickle
+from toolkit import get_fps
 
 def calc_correlations_with_defaults():
     """
@@ -74,7 +75,8 @@ def calc_correlations_with_defaults():
     halfFrameRange = 50 # max frame delay to consider
     # Calculate frame-delays between each event pair for each dataset.
     print('\nCalculating frame delays and binning...')
-    behav_corr = calcDeltaFramesEvents(datasets, behavior_key_list)
+    behav_corr = calcDeltaFramesEvents(datasets, behavior_key_list, 
+                                       max_delta_frame = 250)
     # Bin the frame delays, and calculate behavior correlations and probabilities for each dataset.
     behav_corr, binCenters = bin_deltaFrames(behav_corr, 
                                              behavior_key_list, 
@@ -110,11 +112,159 @@ def calc_correlations_with_defaults():
         corr_asymm, fps, behavior_key_list_subset
 
 
-    
-def calcDeltaFramesEvents(datasets, behavior_key_list):
+def get_values_subset(data_array, keyIdx):
     """
-    Calculate the delay between behavior “events” – i.e. 
-    the intervals that one behavior precedes / follows another. 
+    Helper function to extract subset of data based on keyIdx parameter.
+    Used by constraint checking functions.
+    
+    Parameters
+    ----------
+    data_array : numpy array
+    keyIdx : integer, string, or None
+        If None: return full array
+        If integer: return column keyIdx
+        If string ('min', 'max', 'mean'): apply operation along axis=1
+        
+    Returns
+    -------
+    subset : numpy array
+    """
+    if keyIdx is None:
+        return data_array
+    elif isinstance(keyIdx, int):
+        if data_array.ndim > 1:
+            return data_array[:, keyIdx:keyIdx+1]  # Keep 2D shape
+        else:
+            return data_array
+    elif isinstance(keyIdx, str):
+        if keyIdx.lower() == 'min':
+            return np.min(data_array, axis=1, keepdims=True)
+        elif keyIdx.lower() == 'max':
+            return np.max(data_array, axis=1, keepdims=True)
+        elif keyIdx.lower() == 'mean':
+            return np.mean(data_array, axis=1, keepdims=True)
+        else:
+            raise ValueError(f"Invalid keyIdx string: {keyIdx}")
+    else:
+        raise ValueError(f"keyIdx must be None, int, or string, got {type(keyIdx)}")
+
+
+def apply_behavior_constraints(dataset, behavior_A, 
+                               min_duration_behavior = None, min_duration_fr=0, 
+                               behavior_C=None, C_delta_f=(0, 1), 
+                               constraintKey=None, constraintRange=None, 
+                               constraintIdx=0):
+    """
+    Apply all constraints to behavior A events and return filtered event frames.
+    
+    Parameters
+    ----------
+    dataset : dict, single dataset
+    behavior_A : str, behavior name to constrain
+    min_duration_behavior : str, behavior key for which to apply the minimum 
+        duration; None for none and 'all' for all "Behavior A"s
+    min_duration_fr : int, minimum duration constraint
+    behavior_C : str or None, constraining behavior name
+    C_delta_f : tuple, frame range for behavior C constraint
+    constraintKey : str or None, key for quantitative constraint
+    constraintRange : tuple or None, (min, max) for quantitative constraint
+    constraintIdx : int or str, index/operation for constraint
+    
+    Returns
+    -------
+    filtered_frames : numpy array of behavior A start frames that meet all constraints
+    """
+    # Start with all behavior A events
+    bA_start_frames = dataset[behavior_A]["combine_frames"][0].copy()
+    bA_durations = dataset[behavior_A]["combine_frames"][1].copy()
+    
+    # Apply minimum duration constraint
+    if (min_duration_behavior is not None) and (min_duration_fr > 0):
+        if (min_duration_behavior == behavior_A) or (min_duration_behavior.lower() == 'all'):
+            duration_mask = bA_durations >= min_duration_fr
+            bA_start_frames = bA_start_frames[duration_mask]
+            bA_durations = bA_durations[duration_mask]
+            print(f'     {behavior_A}, After min duration constraint: {len(bA_start_frames)} events remain')
+    
+    # Apply behavior C constraint
+    if behavior_C is not None and behavior_C in dataset:
+        bC_start_frames = dataset[behavior_C]["combine_frames"][0]
+        
+        # For each behavior A event, check if any behavior C event occurs within range
+        valid_A_mask = np.zeros(len(bA_start_frames), dtype=bool)
+        for i, frameA in enumerate(bA_start_frames):
+            # Calculate frame differences (C - A)
+            frame_diffs = bC_start_frames - frameA
+            # Check if any C event is within the specified range
+            in_range = (frame_diffs >= C_delta_f[0]) & (frame_diffs <= C_delta_f[1])
+            valid_A_mask[i] = np.any(in_range)
+        
+        bA_start_frames = bA_start_frames[valid_A_mask]
+        print(f'     {behavior_A}, After behavior C constraint: {len(bA_start_frames)} events remain')
+    
+    # Apply quantitative constraint
+    if constraintKey is not None and constraintRange is not None and constraintKey in dataset:
+        # Check if we still have events to constrain
+        if len(bA_start_frames) == 0:
+            print(f'   {behavior_A}, After quantitative constraint: 0 events remain (no events to constrain)')
+        else:
+            try:
+                # Get constraint values at behavior A start frames
+                constraint_data = dataset[constraintKey]
+                
+                # Apply keyIdx operation to get the relevant constraint values
+                constraint_values = get_values_subset(constraint_data, constraintIdx)
+                
+                if len(constraint_values) == 0:
+                    print(f'   Warning: Constraint data {constraintKey} is empty')
+                    bA_start_frames = np.array([])
+                else:
+                    # For each behavior A event, check constraint at start frame
+                    valid_constraint_mask = np.zeros(len(bA_start_frames), dtype=bool)
+                    for i, frameA in enumerate(bA_start_frames):
+                        frame_idx = int(frameA) - 1  # Convert to 0-based indexing
+                        if 0 <= frame_idx < len(constraint_values):
+                            try:
+                                # Handle different array shapes and types
+                                if constraint_values.ndim > 1 and constraint_values.shape[1] > 0:
+                                    val_array = constraint_values[frame_idx]
+                                    if hasattr(val_array, 'size') and val_array.size > 0:
+                                        val = val_array.flatten()[0]
+                                    else:
+                                        val = np.nan
+                                else:
+                                    val = constraint_values[frame_idx]
+                                    if hasattr(val, '__len__') and len(val) > 0:
+                                        val = val[0]
+                                
+                                # Check if value is valid (not NaN) and within range
+                                if not np.isnan(val):
+                                    valid_constraint_mask[i] = (constraintRange[0] <= val <= constraintRange[1])
+                                
+                            except (IndexError, TypeError, AttributeError) as e:
+                                print(f'   Warning: Could not access constraint value at frame {frameA}: {e}')
+                                valid_constraint_mask[i] = False
+                        else:
+                            # Frame index out of bounds
+                            valid_constraint_mask[i] = False
+                    
+                    bA_start_frames = bA_start_frames[valid_constraint_mask]
+                
+                print(f'     {behavior_A}, After quantitative constraint: {len(bA_start_frames)} events remain')
+            except Exception as e:
+                print(f'   Warning: Error applying quantitative constraint: {e}')
+                print('   Continuing without quantitative constraint for this dataset')
+    
+    return bA_start_frames
+
+
+def calcDeltaFramesEvents(datasets, behavior_key_list, max_delta_frame = None,
+                          min_duration_behavior = None, min_duration_fr=0, 
+                         behavior_C=None, C_delta_f=(0, 1), constraintKey=None, 
+                         constraintRange=None, constraintIdx=0):
+    """
+    Calculate the delay between behavior "events" with optional constraints.
+
     For each event, note the relative time (delay in the number of frames) 
     of all other events, past and future, of the same and
     of different types. Save this list of frame delays (deltaFrames).
@@ -126,37 +276,43 @@ def calcDeltaFramesEvents(datasets, behavior_key_list):
     B is 10, 11, 12, then +7 (3 to 10) and -6 (16 to 10) are recorded.
     Note that positive numbers for corr_BA mean that B occurs after A. 
     
-    Faster w/ ChatGPT revisions! Avoid repeated access to a nested dictionary,
-    and avoid looping through frames
+    Allows constraints:
+    1. Minimum duration constraint for behavior A events
+    2. Behavior C co-occurrence constraint 
+    3. Quantitative property constraint at behavior A start frames
+    
     
     Inputs
     ----------
     datasets : dictionary; All datasets to analyze
     behavior_key_list : list of all behavior to consider
+    max_delta_frame : maximum Delta Frame value to save; ignore Df > this. 
+                        Default None, but recommended to avoid memory errors!
+    min_duration_behavior : str, behavior key for which to apply the minimum 
+        duration; None for none and 'all' for all "Behavior A"s
+    min_duration_fr : integer, minimum duration in frames for behavior A events
+    behavior_C : string or None, constraining behavior name
+    C_delta_f : tuple, frame range for behavior C constraint (start_offset, end_offset)
+    constraintKey : string or None, key for quantitative constraint
+    constraintRange : tuple or None, (min, max) values for quantitative constraint
+    constraintIdx : integer or string, index/operation for multi-dimensional constraint
 
     Returns
     -------
     behav_corr : list of dictionaries; behav_corr[j] is for dataset j
-                 First key: dataset name
-                 First key: "Nframes"; value: datasets[j]["Nframes"]
-                 First key: behavior A (string)
-                 Second key: "allDeltaFrames" for behavior A
-                 Second key:  behavior B (string) under behavior A
-                 Second key: "pA" : under behavior A, 
-                             marginal probability for behavior A (i.e. 
-                             simple probability indep of other behaviors).
-                             Normalized by total number of frames, so 
-                             probability per frame.
-                             "pA_unc" uncertainty of pA, assuming Poisson distr.
-                 Third key: under behavior B; "deltaFrames", the frame delays  
-                             between A, B for all events.
-                             
-        
-    To use: behav_corr = calcDeltaFramesEvents(datasets, behavior_key_list)
+        behav_corr_j[behavior_A]['pA'] is the probability of 
+        behav_corr_j[behavior_A][behavior_B]["deltaFrames"]
+              
     """
-
     
-    print('Calculating delays between behavior “events” ...')
+    print('Calculating delays between behavior "events" with constraints...')
+    if (min_duration_behavior is not None) and (min_duration_fr > 0):
+        print(f'  Minimum duration constraint for {min_duration_behavior}: {min_duration_fr} frames')
+    if behavior_C is not None:
+        print(f'  Behavior C constraint: {behavior_C} within {C_delta_f} frames')
+    if constraintKey is not None and constraintRange is not None:
+        print(f'  Quantitative constraint: {constraintKey} in range {constraintRange}')
+    
     # Number of datasets
     N_datasets = len(datasets)
     
@@ -176,33 +332,48 @@ def calcDeltaFramesEvents(datasets, behavior_key_list):
 
         # Calculate frame delays and append to each deltaFrames list
         for behavior_A in behavior_key_list:
-            bA_frames = datasets[j][behavior_A]["combine_frames"][0]
-            # Marginal probability
-            N_A = len(bA_frames)
+            # Apply all constraints to get filtered behavior A events
+            bA_frames_filtered = apply_behavior_constraints(
+                datasets[j], behavior_A, 
+                min_duration_behavior = min_duration_behavior, 
+                min_duration_fr=min_duration_fr,
+                behavior_C=behavior_C, 
+                C_delta_f=C_delta_f,
+                constraintKey=constraintKey,
+                constraintRange=constraintRange,
+                constraintIdx=constraintIdx
+            )
+            
+            # Marginal probability based on filtered events
+            N_A = len(bA_frames_filtered)
             behav_corr_j[behavior_A]['pA'] = N_A / datasets[j]["Nframes"]
             behav_corr_j[behavior_A]['pA_unc'] = np.sqrt(N_A) / datasets[j]["Nframes"]
                         
             for behavior_B in behavior_key_list:
                 # For each dataset, note each event and calculate the delay between
                 # this and other events of both the same and different behaviors
-                # Note: positive deltaFrames means behavior A is *after* behavior B
+                # Note: positive deltaFrames means behavior B is *after* behavior A
                 bB_frames = datasets[j][behavior_B]["combine_frames"][0]
-                deltaFrames_temp = bB_frames[:, None] - bA_frames # all at once!
+                
+                if len(bA_frames_filtered) > 0 and len(bB_frames) > 0:
+                    deltaFrames_temp = bB_frames[:, None] - bA_frames_filtered # all at once!
+                    
+                    if max_delta_frame is not None:
+                        deltaFrames_temp = deltaFrames_temp[deltaFrames_temp <= 
+                                                            max_delta_frame]
+                    if behavior_A == behavior_B:
+                        deltaFrames_temp = deltaFrames_temp[deltaFrames_temp != 0]
 
-                if behavior_A == behavior_B:
-                    deltaFrames_temp = deltaFrames_temp[deltaFrames_temp != 0]
-
-                behav_corr_j[behavior_A][behavior_B]["deltaFrames"] = \
-                    np.append(behav_corr_j[behavior_A][behavior_B]["deltaFrames"], 
-                              deltaFrames_temp.flatten())
-                # All the frame delays (for all Behaviors B)
-                behav_corr_j[behavior_A]["allDeltaFrames"] = \
-                    np.append(behav_corr_j[behavior_A]["allDeltaFrames"], 
-                              deltaFrames_temp.flatten())
+                    behav_corr_j[behavior_A][behavior_B]["deltaFrames"] = \
+                        np.append(behav_corr_j[behavior_A][behavior_B]["deltaFrames"], 
+                                  deltaFrames_temp.flatten())
+                    # All the frame delays (for all Behaviors B)
+                    behav_corr_j[behavior_A]["allDeltaFrames"] = \
+                        np.append(behav_corr_j[behavior_A]["allDeltaFrames"], 
+                                  deltaFrames_temp.flatten())
     # Note that behav_corr[j] is the same as behav_corr_j
     
     return behav_corr
-
 
 def bin_deltaFrames(behav_corr, behavior_key_list, binWidthFrames = 25, 
                           halfFrameRange = 15000, deleteDeltaFrames = True):
@@ -250,7 +421,7 @@ def bin_deltaFrames(behav_corr, behavior_key_list, binWidthFrames = 25,
     binCenters1 = -1.0*np.flipud(binCenters2)[:-1]
     binCenters = np.concatenate((binCenters1, binCenters2))
     binEdges = np.concatenate((binCenters - binWidthFrames/2.0, 
-                               np.array([np.max(binCenters)+binWidthFrames/2.0 - 1])))
+                               np.array([np.max(binCenters)+binWidthFrames/2.0])))
     
     # Number of datasets
     N_datasets = len(behav_corr)
@@ -509,7 +680,7 @@ def calc_significant_correlations(behav_dict, behavior_key_list,
                 print(LCB)
                 print(binCenters)
                 print(behav_corr_significant[bA][bB])
-                x = input('junk input to terminate ')
+                _ = input('junk input to terminate ')
     return behav_corr_significant, validDelays
     
 
@@ -591,7 +762,9 @@ def calc_corr_asymm(behav_corr_allSets, behavior_key_list, binCenters,
 def plot_behaviorCorrelation(behav_corr_dict, binCenters, 
                              behavior_key_list, behaviorA, behaviorB='',
                              titleString = '', 
-                             fps = 1.0, plotShadedUnc = False):
+                             fps = 1.0, plotShadedUnc = False,
+                             xlim = None, ylim = None,
+                             outputFileName = None):
     """
     Plot Behavior B likelihood following/preceding Behavior A
     Can plot a single A-B pair, or all B for a given A
@@ -615,6 +788,9 @@ def plot_behaviorCorrelation(behav_corr_dict, binCenters,
     fps : frames per second (probably 25, but default to 1)
     plotShadedUnc : Boolean, if true plot shaded error bands from correlation
                     uncertainties; default False
+    xlim : tuple of x axis limits, None for auto (defaults)
+    ylim : tuple of y axis limits, None for auto (defaults)
+    outputFileName : if not None, save figure with this filename
     """
 
     # Just one AB pair    
@@ -647,7 +823,7 @@ def plot_behaviorCorrelation(behav_corr_dict, binCenters,
 
     # All behavior pairs
     
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(12, 9))
     for j, bB in enumerate(behavior_key_list):
         corrAB = behav_corr_dict[behaviorA][bB]['C']
         plt.plot(binCenters/fps, corrAB, color=cmap[j,:], label=bB, 
@@ -658,11 +834,20 @@ def plot_behaviorCorrelation(behav_corr_dict, binCenters,
                              corrAB + corrABunc, color=cmap[j,:], alpha=0.3)
     plt.xlabel(r'$\Delta$t (s)', fontsize=20)
     plt.ylabel('Probability', fontsize=20)
-    plt.title(f'{behaviorA} then each behavior; {titleString}', fontsize=20)
+    plt.title(f'{behaviorA} then each behavior; {titleString}', fontsize=22)
     plt.xticks(fontsize=14)
     plt.yticks(fontsize=14)
     plt.legend(fontsize=14)
 
+    if xlim is not None:
+        plt.xlim(xlim)
+        
+    if ylim is not None:
+        plt.ylim(ylim)
+
+    if outputFileName is not None:
+        plt.savefig(outputFileName, bbox_inches='tight')    
+    
     # For export, Mar. 1, 2024
     """
     plt.plot(np.array([0.0, 0.0]), np.array([0.0, 0.06]), linestyle=':', 
@@ -673,7 +858,8 @@ def plot_behaviorCorrelation(behav_corr_dict, binCenters,
     """
 
 
-def plot_corr_asymm(corr_asymm, crange = None, titleString = ''):
+def plot_corr_asymm(corr_asymm, crange = None, titleString = '', 
+                    outputFileName = None):
     """
     plot a 2D heatmap of correlation temporal asymmetry for each behavior pair
 
@@ -682,7 +868,9 @@ def plot_corr_asymm(corr_asymm, crange = None, titleString = ''):
     corr_asymm : dictionary, for each type of correlation, of correlation
                     asymmetry for each behavior pair
     crange : tuple of max, min correlation to which to scale the colormap
-
+    titleString : title string for the plot
+    outputFileName : if not None, save figure with this filename
+    
     Returns
     -------
     None.
@@ -704,7 +892,7 @@ def plot_corr_asymm(corr_asymm, crange = None, titleString = ''):
         vmax = crange[1]
         
     # Plot the heatmap using matplotlib
-    plt.figure(figsize=(8, 6))
+    plt.figure(figsize=(12, 9))
     plt.imshow(matrix, cmap='coolwarm', interpolation='nearest', vmin=vmin, 
                vmax=vmax)
     plt.colorbar()
@@ -714,12 +902,16 @@ def plot_corr_asymm(corr_asymm, crange = None, titleString = ''):
     plt.yticks(ticks=np.arange(len(behaviorkeys)), labels=behaviorkeys)
     
     # Add title and axis labels
-    plt.title(f'{titleString} time asymmetry', fontsize=18)
-    plt.xlabel('Behavior', fontsize=16)
-    plt.ylabel('Behavior', fontsize=16)
+    plt.title(f'{titleString} time asymmetry', fontsize=22)
+    plt.xlabel('Behavior', fontsize=18)
+    plt.ylabel('Behavior', fontsize=18)
 
     # Show the plot
     plt.show()
+    
+    if outputFileName is not None:
+        plt.savefig(outputFileName, bbox_inches='tight')    
+    
 
 
 
@@ -951,8 +1143,8 @@ def length_difference_correlation(CSVfilename = '', behavior_to_plot=''):
 
 def array_stats(x, stats_axis = 0):
     """
-    Array stats, ignore NaN (note that this isn't accounted for in s.e.m.,
-                             but should be a tiny effect)
+    Array stats, ignore NaN (note that this isn't accounted for in the "N" for
+                             s.e.m., but that should be a tiny effect)
     If the array has only one row (along stats_axis), std and sem are NaNs
     
     Inputs
@@ -989,12 +1181,19 @@ def pool_quant_property_from_behavior_1dataset(dataset,
                                                behavior = 'maintain_proximity',
                                                qproperty = 'relative_orientation',
                                                duration_s = (-0.2, 0.6),
-                                               fishID = (0,1)):
+                                               fishID = (0,1),
+                                               min_duration_fr = 0,
+                                               behavior_C = None,
+                                               C_delta_f = (0, 1), 
+                                               constraintKey = None,
+                                               constraintRange = None,
+                                               constraintIdx = 0):
     """
-    Tabulate all values of a quantitative property following the initiation
-    of a particular behavior event, for some time duration.
+    Tabulate all values of a quantitative property in the vicinity of the start
+    of a particular behavior event, for some time duration before and after.
     Also calculate statistics (mean, std, sem)
     Acts on a single dataset.
+    Supports constraints, similar to calcDeltaFramesEvents()
     See July 2025 notes
     
     Inputs
@@ -1015,6 +1214,17 @@ def pool_quant_property_from_behavior_1dataset(dataset,
              or a string 'phi_low' or 'phi_high' for low and
              high relative orientation, probably indicating 
              approaching or fleeing fish.
+    min_duration_fr : int, minimum duration constraint in frames for behavior events
+                     (default 0 = no constraint)
+    behavior_C : str or None, co-occurrence constraint behavior name
+                Only consider behavior events if behavior_C occurs 
+                within C_delta_f frames
+    C_delta_f : tuple, frame range for behavior C constraint (start_offset, end_offset)
+               Default (0, 1) means behavior_C must occur within 0 to 1 frames after behavior
+    constraintKey : str or None, key for quantitative constraint at behavior start frames
+    constraintRange : tuple or None, (min, max) values for quantitative constraint
+    constraintIdx : int or str, index/operation for multi-dimensional constraint
+                   (0 for first column, 'min'/'max'/'mean' for operations)
 
     Returns
     -------
@@ -1026,8 +1236,6 @@ def pool_quant_property_from_behavior_1dataset(dataset,
                         Shape: (# of events, duration_frames, # fish vals)
     t_array : array of time values corresponding to the duration, seconds
     
-    To do: 
-        Constraints, e.g. radial position
         
     """
 
@@ -1052,25 +1260,106 @@ def pool_quant_property_from_behavior_1dataset(dataset,
     # Total duration in frames
     duration_frames = end_offset_frames - start_offset_frames
 
-    # All initial frames of the behavior
-    b_start_frames = dataset[behavior]["combine_frames"][0]
+    # All initial frames and durations of the behavior
+    b_start_frames = dataset[behavior]["combine_frames"][0].copy()
+    b_durations = dataset[behavior]["combine_frames"][1].copy()
 
+    # Apply minimum duration constraint
+    if min_duration_fr > 0:
+        print(f'     {behavior}, initially {len(b_start_frames)} events. ', end='')
+        duration_mask = b_durations >= min_duration_fr
+        b_start_frames = b_start_frames[duration_mask]
+        b_durations = b_durations[duration_mask]
+        print(f'After min duration constraint: {len(b_start_frames)} events')
+    
+    # Apply behavior C co-occurrence constraint
+    if behavior_C is not None and behavior_C in dataset:
+        bC_start_frames = dataset[behavior_C]["combine_frames"][0]
+        
+        # For each behavior event, check if any behavior C event occurs within range
+        valid_mask = np.zeros(len(b_start_frames), dtype=bool)
+        for i, frameA in enumerate(b_start_frames):
+            # Calculate frame differences (C - A)
+            frame_diffs = bC_start_frames - frameA
+            # Check if any C event is within the specified range
+            in_range = (frame_diffs >= C_delta_f[0]) & (frame_diffs <= C_delta_f[1])
+            valid_mask[i] = np.any(in_range)
+        
+        b_start_frames = b_start_frames[valid_mask]
+        print(f'     {behavior}, After behavior C constraint: {len(b_start_frames)} events remain')
+        
+    # Apply quantitative constraint
+    if constraintKey is not None and constraintRange is not None and constraintKey in dataset:
+        if len(b_start_frames) == 0:
+            print(f'     {behavior} 0 events remain (no events to constrain)')
+        else:
+            try:
+                # Get constraint values at behavior start frames
+                constraint_data = dataset[constraintKey]
+                
+                # Apply keyIdx operation to get the relevant constraint values
+                constraint_values = get_values_subset(constraint_data, constraintIdx)
+                
+                if len(constraint_values) == 0:
+                    print(f'   Warning: Constraint data {constraintKey} is empty')
+                    b_start_frames = np.array([])
+                else:
+                    print(f'     {behavior}, initially {len(b_start_frames)} events. ', end='')
+                    # For each behavior event, check constraint at start frame
+                    valid_constraint_mask = np.zeros(len(b_start_frames), dtype=bool)
+                    for i, frameA in enumerate(b_start_frames):
+                        frame_idx = int(frameA) - 1  # Convert to 0-based indexing
+                        if 0 <= frame_idx < len(constraint_values):
+                            try:
+                                # Handle different array shapes and types
+                                if constraint_values.ndim > 1 and constraint_values.shape[1] > 0:
+                                    val_array = constraint_values[frame_idx]
+                                    if hasattr(val_array, 'size') and val_array.size > 0:
+                                        val = val_array.flatten()[0]
+                                    else:
+                                        val = np.nan
+                                else:
+                                    val = constraint_values[frame_idx]
+                                    if hasattr(val, '__len__') and len(val) > 0:
+                                        val = val[0]
+                                
+                                # Check if value is valid (not NaN) and within range
+                                if not np.isnan(val):
+                                    valid_constraint_mask[i] = (constraintRange[0] <= val <= constraintRange[1])
+                                
+                            except (IndexError, TypeError, AttributeError) as e:
+                                print(f'   Warning: Could not access constraint value at frame {frameA}: {e}')
+                                valid_constraint_mask[i] = False
+                        else:
+                            # Frame index out of bounds
+                            valid_constraint_mask[i] = False
+                    
+                    b_start_frames = b_start_frames[valid_constraint_mask]
+                
+                print(f'After quantitative constraint: {len(b_start_frames)} events')
+            except Exception as e:
+                print(f'   Warning: Error applying quantitative constraint: {e}')
+                print('   Continuing without quantitative constraint for this dataset')
 
+    
     # Keep only frames that are within valid bounds considering both start and end offsets
     # Start frame + start_offset must be >= 0 (since frameArray starts at frame 1, index 0)
     # Start frame + end_offset must be <= Nframes
-    valid_mask = ((b_start_frames + start_offset_frames >= 1) & 
-                  (b_start_frames + end_offset_frames <= dataset["Nframes"]))
-    b_start_frames = b_start_frames[valid_mask]
+    valid_bounds_mask = ((b_start_frames + start_offset_frames >= 1) & 
+                        (b_start_frames + end_offset_frames <= dataset["Nframes"]))
+    b_start_frames = b_start_frames[valid_bounds_mask]
     
     # Should be integers, but I think might sometimes be saved as float (?)
     b_start_frames = b_start_frames.astype(int)
     
     N_events = len(b_start_frames)
     
-    if N_events==0:
+    if N_events == 0:
         # No (valid) occurrences of this behavior
+        print(f'     {behavior}, No valid events after applying constraints')
         return None, None, None
+    
+    print(f'     {behavior}, Final number of events: {N_events}')
     
     # Assess how many values per frame the quantitative property has (one 
     # per fish, or just one). Initialize array
@@ -1082,10 +1371,19 @@ def pool_quant_property_from_behavior_1dataset(dataset,
         Nval = 1
         all_qprop = np.zeros((N_events, duration_frames+1))
 
+    # Get bad tracking frames for NaN replacement
+    bad_frames = None
+    if 'bad_bodyTrack_frames' in dataset and 'raw_frames' in dataset['bad_bodyTrack_frames']:
+        bad_frames = dataset['bad_bodyTrack_frames']['raw_frames']
+        
     for j in range(N_events):
         # Calculate actual start and end indices for this event
         actual_start_idx = b_start_frames[j] - 1 + start_offset_frames  # -1 for 0-based indexing
         actual_end_idx = b_start_frames[j] - 1 + end_offset_frames + 1  # +1 for inclusive end
+        
+        # Get the actual frame numbers for this time window
+        frame_numbers = np.arange(b_start_frames[j] + start_offset_frames, 
+                                 b_start_frames[j] + end_offset_frames + 1)
       
         if Nval > 1:
             if fishID == (0,1):
@@ -1099,8 +1397,19 @@ def pool_quant_property_from_behavior_1dataset(dataset,
                 all_qprop[j, :, k] = dataset[qproperty][actual_start_idx : 
                                                         actual_end_idx, 
                                                         idx_array[k]]
+                # Replace values with NaN for bad tracking frames
+                if bad_frames is not None:
+                    bad_mask = np.isin(frame_numbers, bad_frames)
+                    all_qprop[j, bad_mask, k] = np.nan
+
         else:
             all_qprop[j, :] = dataset[qproperty][actual_start_idx : actual_end_idx].squeeze()
+            # Replace values with NaN for bad tracking frames
+            if bad_frames is not None:
+                bad_mask = np.isin(frame_numbers, bad_frames)
+                all_qprop[j, bad_mask] = np.nan
+                
+    # print(all_qprop[:,:,0])
     
     # Average across all events
     all_qprop_stats = array_stats(all_qprop, stats_axis = 0)
@@ -1108,6 +1417,7 @@ def pool_quant_property_from_behavior_1dataset(dataset,
     # time array
     t_array = np.arange(start_offset_frames, end_offset_frames+1)/dataset["fps"]
 
+    
     return all_qprop_stats, all_qprop, t_array
 
 
@@ -1116,7 +1426,13 @@ def pool_quant_property_from_behavior_all_datasets(datasets,
                                                behavior = 'maintain_proximity',
                                                qproperty = 'relative_orientation',
                                                duration_s = (-0.2, 0.6),
-                                               fishID = (0,1)):
+                                               fishID = (0,1),
+                                               min_duration_fr = 0,
+                                               behavior_C = None,
+                                               C_delta_f = (0, 1),
+                                               constraintKey = None,
+                                               constraintRange = None,
+                                               constraintIdx = 0):
     """
     Tabulate all values of a quantitative property following the initiation
     of a particular behavior event, for some time duration.
@@ -1145,7 +1461,17 @@ def pool_quant_property_from_behavior_all_datasets(datasets,
              or a string 'phi_low' or 'phi_high' for low and
              high relative orientation, probably indicating 
              approaching or fleeing fish.
-
+    min_duration_fr : int, minimum duration constraint in frames for behavior events
+                     (default 0 = no constraint)
+    behavior_C : str or None, co-occurrence constraint behavior name
+                Only consider behavior events if behavior_C occurs within C_delta_f frames
+    C_delta_f : tuple, frame range for behavior C constraint (start_offset, end_offset)
+               Default (0, 1) means behavior_C must occur within 0 to 1 frames after behavior
+    constraintKey : str or None, key for quantitative constraint at behavior start frames
+    constraintRange : tuple or None, (min, max) values for quantitative constraint
+    constraintIdx : int or str, index/operation for multi-dimensional constraint
+                   (0 for first column, 'min'/'max'/'mean' for operations)
+                   
     Returns
     -------
     all_qprop_stats_eachEvent :  
@@ -1162,6 +1488,14 @@ def pool_quant_property_from_behavior_all_datasets(datasets,
     
     """
 
+    # Print constraint information if constraints are being applied
+    if min_duration_fr > 0:
+        print(f'  Applying minimum duration constraint: {min_duration_fr} frames')
+    if behavior_C is not None:
+        print(f'  Applying behavior C constraint: {behavior_C} within {C_delta_f} frames')
+    if constraintKey is not None and constraintRange is not None:
+        print(f'  Applying quantitative constraint: {constraintKey} in range {constraintRange}')
+
     # Assess how many values per frame the quantitative property has (one 
     # per fish, or just one). Initialize array. Use datasets[0] to get the
     # number of values (e.g. 1 per fish)
@@ -1171,25 +1505,35 @@ def pool_quant_property_from_behavior_all_datasets(datasets,
     all_qprop_list = [] # Don't know the shape, so will use a list
     all_qprop_means_list = [] # Don't know the shape, so will use a list
     
+    print(f'Pooling quantitative properties around {behavior} from {len(datasets)} datasets.')
     for j in range(len(datasets)):
         if datasets[j]["fps"] != datasets[0]["fps"]:
             raise ValueError("Error: fps not consistent between datasets")
+        # print('   Dataset ', j, '; ', datasets[j]["dataset_name"])
         qprop_stats1, all_qprop1, t_array = \
             pool_quant_property_from_behavior_1dataset(
                                 datasets[j],
                                 behavior = behavior,
                                 qproperty = qproperty,
                                 duration_s = duration_s,
-                                fishID = fishID)
+                                fishID = fishID,
+                                min_duration_fr = min_duration_fr,
+                                behavior_C = behavior_C,
+                                C_delta_f = C_delta_f,
+                                constraintKey = constraintKey,
+                                constraintRange = constraintRange,
+                                constraintIdx = constraintIdx)
         if qprop_stats1 is not None:
             all_qprop_list.append(all_qprop1)
             all_qprop_means_list.append(np.expand_dims(qprop_stats1["mean"], 
-                                                       axis=0))
-    
+                                                       axis=0))    
+    if len(all_qprop_list) == 0:
+        print('Warning: No datasets had valid events after applying constraints')
+        return None, None, None, None, None
     
     all_qprop = np.concatenate(all_qprop_list, axis=0)
     all_qprop_means = np.concatenate(all_qprop_means_list, axis=0)
-    
+        
     # Average across all events
     print(f'Total number of behavior events: {all_qprop.shape[0]}')
     all_qprop_stats_eachEvent = array_stats(all_qprop, stats_axis = 0)
@@ -1202,12 +1546,24 @@ def pool_quant_property_from_behavior_all_datasets(datasets,
             all_qprop_means, all_qprop, t_array
 
 
-
 def plot_quant_property_array(all_qprop_stats, all_qprop, idx = None, 
                               t_array = None, titleString = None, 
                               yLabelString = 'Property', 
                               xLabelString = 'Time (fr. or s?)',
-                              ylim = None):
+                              ylim = None, 
+                              outputFileName = None):
+    """
+    Plot the pooled quantitative property data calculated by
+    pool_quant_property_from_behavior_all_datasets()
+    See that file for details.
+    
+    idx : quant property array index to plot. 
+          if None, plot each quantitative property array
+    
+    outputFileName : if not None, save figure with this filename
+    """
+
+
     # Plot each row as a gray line, and mean / std as colored with band
     if t_array.any() == None:
         t_array = np.arange(all_qprop_stats.shape[1])
@@ -1254,6 +1610,9 @@ def plot_quant_property_array(all_qprop_stats, all_qprop, idx = None,
         plt.title(titleString, fontsize = 18)
     plt.xticks(fontsize=14)
     plt.yticks(fontsize=14)
+    
+    if outputFileName is not None:
+        plt.savefig(outputFileName, bbox_inches='tight')
     
 
 def plot_qprop_pair_scatter(all_qprop, t_array, alpha=0.4, figsize=(8, 6),

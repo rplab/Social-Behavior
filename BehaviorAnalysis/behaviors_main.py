@@ -28,7 +28,7 @@ from IO_toolkit import get_basePath, get_loading_option, load_and_assign_from_pi
 from behavior_identification_single import get_single_fish_characterizations, \
         get_coord_characterizations, get_fish_lengths
 from behavior_identification import extract_pair_behaviors, \
-    get_basic_two_fish_characterizations
+    get_basic_two_fish_characterizations, make_rel_orient_rank_key
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +172,7 @@ def main():
         raise ValueError("Error: Bad Loading Option.")
         
     #%% Time-shift one of the fish
-    time_shift_fish_idx = None # set to None to avoid flipping
+    time_shift_fish_idx = 0 # set to None to avoid shifting
     if time_shift_fish_idx is not None:
         print('\n\n***************************')
         caution_check = input(f'\nARE YOU SURE you want to time-shift fish {time_shift_fish_idx}? (y/n): ')
@@ -309,7 +309,36 @@ def main():
                                                tuple_of_frames_to_reject,
                                                behavior_name = b_key,
                                                Nframes=datasets[j]['Nframes'])
+
+            # Behaviors organized by relative orientation rank, not fish ID
+            # Note that this doesn't introduce new frames
+            # As written, need to put after datasets[j] behavior dictionary 
+            # creation, so redundant dictionary-making code
+            rel_orient_keys = ['approaching_Fish', 'fleeing_Fish', 
+                               'isActive_Fish', 'isBending_Fish', 'isMoving_Fish',
+                               'Cbend_Fish', 'Jbend_Fish', 'Rbend_Fish']
+            tuple_of_frames_to_reject = (datasets[j]["edge_frames"]["raw_frames"],
+                                         datasets[j]["bad_bodyTrack_frames"]["raw_frames"])
+            for r_key in rel_orient_keys:
+                make_rel_orient_rank_key(datasets[j], r_key)
+                # Note that this makes the "raw frames" key. I'm going to destroy
+                # this to make the "proper" dictionary!
+                for jj in range(Nfish):
+                    rel_orient_key_final = f'{r_key}_lowRelOrient{jj}'
+                    # Make frames dictionary
+                    datasets[j][rel_orient_key_final] = make_frames_dictionary(
+                                                   datasets[j][rel_orient_key_final]['raw_frames'],
+                                                   tuple_of_frames_to_reject,
+                                                   behavior_name = rel_orient_key_final,
+                                                   Nframes=datasets[j]['Nframes'])
             
+            
+    #%% Analysis: multi-fish characterizations, ranked by relative orientation
+    # This may be better to include inside the previous loop, where we consider
+    # each dataset separately and apply make_frames_dictionary() to a simple
+    # list of frames, 
+    
+
             
     #%% Outputs
 

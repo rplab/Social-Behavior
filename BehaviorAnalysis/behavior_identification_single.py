@@ -442,7 +442,7 @@ def get_mean_speed(speed_array_mm_s, isMoving_frames_each, badTrackFrames):
     
     badTrackFrames = np.array(badTrackFrames).astype(int)
     dilate_badTrackFrames = np.concatenate((badTrackFrames,
-                                           badTrackFrames + 1))
+                                           badTrackFrames - 1))
     bad_frames_set = set(dilate_badTrackFrames) # faster lookup -- caution use "list" for "isin"
     
     # Calculate mean speed excluding bad tracking frames
@@ -865,7 +865,7 @@ def get_bend_behavior_frames(dataset, params):
         transitions = np.diff(above_min_int)
         
         # Find start and end of contiguous blocks
-        # Find block starts (transitions from 0 to 1)
+        # Find block starts (transitions from 0 to 1); index values
         block_starts = np.where(transitions == 1)[0] + 1
         # Find block ends (transitions from 1 to 0)
         block_ends = np.where(transitions == -1)[0]
@@ -893,93 +893,12 @@ def get_bend_behavior_frames(dataset, params):
                 # J-bend
                 isJbend[start:end+1] = True
  
-        
         # Store frames for each bend type
         Jbend_frames[fish] = dataset['frameArray'][isJbend]
         Rbend_frames[fish] = dataset['frameArray'][isRbend]
         Cbend_frames[fish] = dataset['frameArray'][isCbend]
     
     return Jbend_frames, Rbend_frames, Cbend_frames
-
-
-
-def get_Cbend_frames(dataset, Cbend_threshold = 100.0):
-    """ 
-    Find frames in which one or more fish have a C-bend: bend angle above
-        the threshold.
-    Inputs:
-        dataset: dataset dictionary of all behavior information for a given expt.
-                 Must include 'bend_angle' (radians) and 'frameArray'
-        Cbend_threshold : min bend angle, *degrees*
-    Output : 
-        Cbend_frames : dictionary with keys for each fish number (typically
-                       0, 1) each of which contains a numpy array of frames with 
-                       identified C-bend frames for each fish
-    """
-    
-    Cbend_threshold_radians = Cbend_threshold*(np.pi/180.0)
-    isCbend = dataset['bend_angle'] > Cbend_threshold_radians
-
-    # Dictionary containing Jbend_frames frames for each fish
-    Nfish = dataset['bend_angle'].shape[1]
-    Cbend_frames = {}
-    for fish in range(Nfish):
-        Cbend_frames[fish] = dataset['frameArray'][isCbend[:, fish]]
-
-    return Cbend_frames
-
-
-def get_Rbend_frames(dataset, Rbend_thresholds = (50, 100)):
-    """ 
-    Find frames in which one or more fish have a "routine term": 
-        bend angle between the thresholds.
-    Inputs:
-        dataset: dataset dictionary of all behavior information for a given expt.
-                 Must include 'bend_angle' (radians) and 'frameArray'
-        Rbend_thresholds : min and max bend angles, *degrees*
-    Output : 
-        Rbend_frames : dictionary with keys for each fish number (typically
-                       0, 1) each of which contains a numpy array of frames with 
-                       identified R-bend frames for each fish
-    """
-    
-    Rbend_thresholds_radians = np.array(Rbend_thresholds)*(np.pi/180.0)
-    isRbend = np.logical_and(dataset['bend_angle'] > Rbend_thresholds_radians[0],
-                             dataset['bend_angle'] <= Rbend_thresholds_radians[1])
-
-    # Dictionary containing Jbend_frames frames for each fish
-    Nfish = dataset['bend_angle'].shape[1]
-    Rbend_frames = {}
-    for fish in range(Nfish):
-        Rbend_frames[fish] = dataset['frameArray'][isRbend[:, fish]]
-
-    return Rbend_frames
-
-def get_Jbend_frames(dataset, Jbend_thresholds = (10, 50)):
-    """ 
-    Find frames in which one or more fish have a J-bend: bend angle between
-        the thresholds.
-    Inputs:
-        dataset: dataset dictionary of all behavior information for a given expt.
-                 Must include 'bend_angle' (radians) and 'frameArray'
-        Jbend_thresholds : min and max bend angles, *degrees*
-    Output : 
-        Jbend_frames : dictionary with keys for each fish number (typically
-                       0, 1) each of which contains a numpy array of frames with 
-                       identified J-bend frames for each fish
-    """
-    
-    Jbend_thresholds_radians = np.array(Jbend_thresholds)*(np.pi/180.0)
-    isJbend = np.logical_and(dataset['bend_angle'] > Jbend_thresholds_radians[0],
-                             dataset['bend_angle'] <= Jbend_thresholds_radians[1])
-
-    # Dictionary containing Jbend_frames frames for each fish
-    Nfish = dataset['bend_angle'].shape[1]
-    Jbend_frames = {}
-    for fish in range(Nfish):
-        Jbend_frames[fish] = dataset['frameArray'][isJbend[:, fish]]
-
-    return Jbend_frames
 
 
                       
@@ -1301,7 +1220,7 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
         outputFileName = None
     plot_probability_distr(speeds_mm_s_all, bin_width = 1.0, 
                            bin_range = [0, None], 
-                           xlabelStr = 'Speed (mm/s)', 
+                           ylim = (1e-4, 0.5), xlim = (0.0, 150.0),                           xlabelStr = 'Speed (mm/s)', 
                            titleStr = 'Probability distribution: Speed',
                            outputFileName = outputFileName)
 
@@ -1363,7 +1282,7 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
                            bin_range=[None, None], yScaleType = 'linear',
                            polarPlot = True,
                            titleStr = 'Radial alignment angle (rad)',
-                           ylim = (0, 0.3),
+                           ylim = (0, 0.6),
                            outputFileName = outputFileName)
 
     # Speed vs. time for bouts
@@ -1388,6 +1307,7 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
     plot_function_allSets(speed_ac_all, t_lag, xlabelStr='time (s)', 
                           ylabelStr='Speed autocorrelation', 
                           titleStr='Speed autocorrelation', 
+                          xlim = (-0.1, 2.0),
                           average_in_dataset = True,
                           outputFileName = outputFileName)
 

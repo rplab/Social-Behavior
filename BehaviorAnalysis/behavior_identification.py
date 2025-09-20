@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified August 23, 2025 -- Raghu Parthasarathy
+Last modified Sept. 11, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -24,7 +24,9 @@ from time import perf_counter
 import numpy as np
 from toolkit import wrap_to_pi, combine_all_values_constrained, \
     plot_probability_distr, make_2D_histogram,calculate_value_corr_all, \
-    plot_function_allSets, behaviorFrameCount_all, make_frames_dictionary
+    plot_function_allSets, behaviorFrameCount_all, make_frames_dictionary, \
+    remove_frames, combine_events, calculate_value_corr_all_binned, \
+    plot_waterfall_binned_crosscorr
 from behavior_identification_single import average_bout_trajectory_allSets
 from scipy.stats import skew
 import itertools
@@ -90,7 +92,10 @@ def get_basic_two_fish_characterizations(all_position_data, datasets, CSVcolumns
 
         # Relative orientation of fish (angle between heading and
         # connecting vector). Nframes x Nfish==2 array; radians
-        datasets[j]["relative_orientation"] = \
+        # Also the fish indexes in each frame ordered by relative 
+        # orientation angle, low to high
+        datasets[j]["relative_orientation"], \
+            datasets[j]["rel_orient_rankIdx"] = \
             get_relative_orientation(all_position_data[j], datasets[j], CSVcolumns)   
 
         # Sum of relative orientation (Calculate for any Nfish, though only
@@ -156,7 +161,6 @@ def get_basic_two_fish_characterizations(all_position_data, datasets, CSVcolumns
         # print(f'   (Not in CSV) std, skew heading angle XCorr: {datasets[j]["AngleXCorr_std"]:.4f}, {datasets[j]["AngleXCorr_skew"]:.4f}')
 
     return datasets
-
 
     
 def get_interfish_distance(position_data, CSVcolumns, image_scale):
@@ -1187,7 +1191,18 @@ def get_relative_orientation(position_data, dataset, CSVcolumns):
     Output : 
         relative_orientation : numpy array Nframes x Nfish==2 of 
             relative orientation (phi), radians, for fish 0 and fish 1
+        rel_orient_rankIdx : Fish indexes in each frame ordered by 
+            relative orientation angle, low to high. If, for example, 
+            this is [1, 0] for a given frame, fish 1 has the lower 
+            relative orientation angle. Shape (Nframes, Nfish==2)
+            
+    Note: Valid only for Nfish==2. (Checks this.) Could expand to
+        arbitrary Nfish, giving a matrix of relative orientation values.
     """
+    
+    if dataset["Nfish"] != 2:
+        raise ValueError('Error: Relative orientation valid only for Nfish==2')
+
     # All heading angles
     angle_data = dataset["heading_angle"]
 
@@ -1208,7 +1223,11 @@ def get_relative_orientation(position_data, dataset, CSVcolumns):
     
     relative_orientation = np.stack((phi0, phi1), axis=1)  
     
-    return relative_orientation
+    # Rand order the Fish (indices) by relative orientation angle, low to
+    # high, for each frame
+    rel_orient_rankIdx = np.argsort(relative_orientation, axis=1)
+    
+    return relative_orientation, rel_orient_rankIdx
 
 
 def get_relative_orientation_to_body_positions(head_idx, position_data, 
@@ -1313,6 +1332,7 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
         outputFileName = None
     plot_probability_distr(head_head_mm_all, bin_width = 0.5, 
                            bin_range = [0, None], yScaleType = 'linear',
+                           xlim = (-1.0, 50.0), 
                            xlabelStr = 'Head-head distance (mm)', 
                            titleStr = 'Probability distribution: head-head distance (mm)',
                            outputFileName = outputFileName)
@@ -1327,6 +1347,7 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
         outputFileName = None
     plot_probability_distr(closest_distance_mm_all, bin_width = 0.5, 
                            bin_range = [0, None], yScaleType = 'linear',
+                           xlim = (-1.0, 50.0), 
                            xlabelStr = 'Closest distance (mm)', 
                            titleStr = 'Probability distribution: closest distance (mm)',
                            outputFileName = outputFileName)
@@ -1364,7 +1385,7 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
                            outputFileName = outputFileName)
 
     # Sum of relative orientation angles histogram
-    relative_orientation_sum__all = combine_all_values_constrained(datasets, 
+    relative_orientation_sum_all = combine_all_values_constrained(datasets, 
                                                  keyName='relative_orientation_sum', 
                                                  dilate_plus1 = False)
     if outputFileNameBase is not None:
@@ -1372,11 +1393,12 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
     else:
         outputFileName = None
     bin_width = np.pi/60
-    plot_probability_distr(relative_orientation_sum__all, bin_width = bin_width,
+    plot_probability_distr(relative_orientation_sum_all, bin_width = bin_width,
                            bin_range=[None, None], yScaleType = 'linear',
                            polarPlot = False,
                            titleStr = 'Sum of Relative Orientation Angles',
-                           ylim = (0, 0.6),
+                           xlabelStr = 'Sum of Rel. Orient. Angles (rad)',
+                           ylim = (0, 0.6), xlim = (0.0, 6.3),
                            outputFileName = outputFileName)
 
 
@@ -1388,9 +1410,10 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
     make_2D_histogram(datasets, keyNames = ('speed_array_mm_s', 
                                             'head_head_distance_mm'), 
                           keyIdx = (None, None), 
-                          dilate_plus1=True, bin_ranges=None, Nbins=(20,20),
-                          titleStr = 'speed and hh distance', 
-                          colorRange = (0, 0.01),
+                          dilate_plus1=True, bin_ranges=((0.0, 100.0), (0.0, 50.0)), 
+                          Nbins=(20,20),
+                          titleStr = 'speed and h-h distance', 
+                          colorRange = (0, 0.05),
                           outputFileName = outputFileName)
 
 
@@ -1399,10 +1422,11 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
         outputFileName = outputFileNameBase + '_heading_distance_2D' + '.' + outputFileNameExt
     else:
         outputFileName = None
-    make_2D_histogram(datasets, keyNames = ('relative_heading_angle', 
-                                            'head_head_distance_mm'), 
+    make_2D_histogram(datasets, keyNames = ('head_head_distance_mm', 
+                                            'relative_heading_angle'), 
                           keyIdx = (None, None), 
-                          dilate_plus1=True, bin_ranges=None, Nbins=(20,20),
+                          dilate_plus1=True, bin_ranges=((0.0, 50.0), (0.0, 3.142)), 
+                          Nbins=(20,20),
                           titleStr = 'heading angle and hh distance', outputFileName = outputFileName)
 
     # 2D histogram of relative orientation and head-head distance
@@ -1410,10 +1434,11 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
         outputFileName = outputFileNameBase + '_orientation_distance_2D' + '.' + outputFileNameExt
     else:
         outputFileName = None
-    make_2D_histogram(datasets, keyNames = ('relative_orientation', 
-                                            'head_head_distance_mm'), 
+    make_2D_histogram(datasets, keyNames = ('head_head_distance_mm', 
+                                            'relative_orientation'), 
                           keyIdx = (None, None), 
-                          dilate_plus1=True, bin_ranges=None, Nbins=(20,20),
+                          dilate_plus1=True, bin_ranges=((0.0, 50.0), (0.0, 3.142)), 
+                          Nbins=(20,20),
                           titleStr = 'orientation angle and hh distance', outputFileName = outputFileName)
 
 
@@ -1441,6 +1466,20 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
                                     makePlot=True,
                                     outputFileName = outputFileName)
     
+        
+    # 2D histogram of C- and J-bend frequencies (combined) vs head-head distance
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_CJ_distance_2D' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    keyList = ['Cbend_any', 'Jbend_any']
+    datasets = behaviorFrameCount_all(datasets, keyList, 'CJcombined')
+    make_2D_histogram(datasets, keyNames = ('head_head_distance_mm', 
+                      'CJcombined'), Nbins=(15,10), 
+                      constraintKey='CJcombined', constraintRange=(0.5,100), 
+                      colorRange=(0, 0.001), outputFileName = outputFileName)
+
+    
     # Speed cross-correlation function
     if outputFileNameBase is not None:
         outputFileName = outputFileNameBase + '_speedCrosscorr' + '.' + outputFileNameExt
@@ -1456,16 +1495,265 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
                           average_in_dataset = True,
                           outputFileName = outputFileName)
     
-    # 2D histogram of C- and J-bend frequencies (combined) vs head-head distance
+    # Waterfall plot of speed cross-correlations binned by distance
     if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_CJ_distance_2D' + '.' + outputFileNameExt
+        outputFileName = outputFileNameBase + '_speedCrosscorrDistBinned' + '.' + outputFileNameExt
     else:
         outputFileName = None
-    keyList = ['Cbend_any', 'Jbend_any']
-    datasets = behaviorFrameCount_all(datasets, keyList, 'CJcombined')
-    make_2D_histogram(datasets, keyNames = ('head_head_distance_mm', 
-                      'CJcombined'), Nbins=(15,10), 
-                      constraintKey='CJcombined', constraintRange=(0.5,100), 
-                      colorRange=(0, 0.001), outputFileName = outputFileName)
+    binned_crosscorr_all, bin_centers, t_lag, bin_counts_all = \
+        calculate_value_corr_all_binned(datasets, keyName='speed_array_mm_s', 
+                                        binKeyName = 'closest_distance_mm', 
+                                        bin_value_min = 0.0, bin_value_max = 50.0, 
+                                        bin_width=5.0, t_max=2.0, t_window=5.0)
+    plot_waterfall_binned_crosscorr(binned_crosscorr_all, bin_centers, t_lag,
+                                    bin_counts_all=bin_counts_all, 
+                                    xlabelStr='Time lag (s)',
+                                    titleStr='Closest Distance-Binned Cross-correlation',
+                                    outputFileName=outputFileName)
+
+
+def make_rel_orient_rank_key(dataset, behavior_key_string):
+    """
+    Create new behavior keys based on relative orientation rank ordering
+    and populate the "raw frames" sub-keys.
+    
+    For a single dataset, creates new keys like "behavior_key_string_lowRelOrient{m}" 
+    where m is the rank index (0 = lowest relative orientation, 1 = highest).
+    These new keys contain behavior events for whichever fish has rank m at the 
+    time of each behavior event.
+    
+    If rel_orient_rankIdx key doesn't exist in dataset, create it based on simple
+    rank ordering
 
     
+    Parameters
+    ----------
+    dataset : dictionary containing behavior analysis, probably from datasets[j]
+                Note that this only needs "raw frames", since the behavior dictionary
+                will be made later. Must contain either "rel_orient_rankIdx"
+                or 'relative_orientation' keys.
+    behavior_key_string : string, base behavior name (e.g., "Rbend_Fish")
+        The function will look for keys like "{behavior_key_string}{k}" where k
+        are the fish indices found in rel_orient_rankIdx
+    
+    Returns
+    -------
+    None -- modifies dataset in place, creating dataset[new_key]["raw_frames"]
+    
+    """
+     
+    # Check that rel_orient_rankIdx exists
+    if "rel_orient_rankIdx" not in dataset:
+        print(f"Key 'rel_orient_rankIdx' not found in dataset {dataset['dataset_name']}")
+        print('   Calculating this now...')
+        dataset['rel_orient_rankIdx'] = np.argsort(dataset['relative_orientation'], 
+                                                   axis=1)
+    rel_orient_rankIdx = dataset["rel_orient_rankIdx"]
+    
+    # Get unique fish indices from first frame
+    unique_fish_indices = np.unique(rel_orient_rankIdx[0, :])
+    # print(f"Dataset {dataset_name}: Found fish indices {unique_fish_indices}")
+    
+    # Check that corresponding behavior keys exist
+    behavior_keys_fish = []
+    for fish_idx in unique_fish_indices:
+        behavior_key = f"{behavior_key_string}{fish_idx}"
+        if behavior_key not in dataset:
+            raise ValueError(f"Behavior key '{behavior_key}' not found in dataset {dataset['dataset_name']}")
+        behavior_keys_fish.append(behavior_key)
+    
+    # Number of rank positions (should equal number of fish)
+    n_ranks = len(unique_fish_indices)
+    
+    # Initialize new rank-based behavior dictionaries
+    for rank_idx in range(n_ranks):
+        new_key = f"{behavior_key_string}_lowRelOrient{rank_idx}"
+        dataset[new_key] = {
+            "behavior_name": new_key,
+            "raw_frames": np.array([])
+        }
+    
+    # Collect all behavior frames from all fish, with fish identity
+    all_behavior_frames_with_fish = []
+    for fish_idx in unique_fish_indices:
+        behavior_key = f"{behavior_key_string}{fish_idx}"
+        behavior_frames = dataset[behavior_key]["raw_frames"]
+        for frame in behavior_frames:
+            all_behavior_frames_with_fish.append((int(frame), fish_idx))
+    
+    # Sort by frame number
+    all_behavior_frames_with_fish.sort(key=lambda x: x[0])
+    
+    # For each behavior frame, determine which rank that fish has
+    for frame, fish_idx in all_behavior_frames_with_fish:
+        # Get the rank ordering for this frame (convert to 0-based indexing)
+        frame_idx = frame - 1
+        
+        if 0 <= frame_idx < len(rel_orient_rankIdx):
+            # Find which rank position this fish occupies
+            rank_ordering = rel_orient_rankIdx[frame_idx, :]
+            
+            # Find the rank of this fish (0 = lowest rel orient, etc.)
+            fish_rank = np.where(rank_ordering == fish_idx)[0]
+            
+            if len(fish_rank) > 0:
+                rank = fish_rank[0]
+                
+                # Add this frame to the appropriate rank-based behavior
+                new_key = f"{behavior_key_string}_lowRelOrient{rank}"
+                dataset[new_key]["raw_frames"] = np.append(
+                    dataset[new_key]["raw_frames"], frame)
+    
+    for rank_idx in range(n_ranks):
+        new_key = f"{behavior_key_string}_lowRelOrient{rank_idx}"
+        
+        # Sort raw_frames and convert to integers
+        raw_frames = np.sort(dataset[new_key]["raw_frames"]).astype(int)
+        dataset[new_key]["raw_frames"] = raw_frames
+        
+    
+    
+def make_rel_orient_rank_keys_allDatasets(datasets, behavior_key_string, 
+                              keep_all_frames = False):
+    """
+    Create new behavior keys based on relative orientation rank ordering.
+    NOTE: This function is to be used if behaviors have already been analyzed,
+    and dataset keys already exist. For new datasets, these relative orientation
+    keys are already calculated.
+    See notes Sept. 2025
+    
+    For each dataset, creates new keys like "behavior_key_string_lowRelOrient{m}" 
+    where m is the rank index (0 = lowest relative orientation, 1 = highest).
+    These new keys contain behavior events for whichever fish has rank m at the 
+    time of each behavior event.
+    
+    Parameters
+    ----------
+    datasets : list of dictionaries containing all analysis
+    behavior_key_string : string, base behavior name (e.g., "Rbend_Fish")
+        The function will look for keys like "{behavior_key_string}{k}" where k
+        are the fish indices found in rel_orient_rankIdx
+    keep_all_frames : If True, no no frames will be removed. If false,
+        remove bad tracking and edge rejection frames
+    
+    Returns
+    -------
+    None (modifies datasets in place)
+    
+    Raises
+    ------
+    ValueError : if rel_orient_rankIdx key doesn't exist or if expected 
+                behavior keys don't exist
+    """
+    
+    for j in range(len(datasets)):
+        dataset = datasets[j]
+        dataset_name = dataset.get("dataset_name", f"dataset_{j}")
+        
+        # Check that rel_orient_rankIdx exists
+        if "rel_orient_rankIdx" not in dataset:
+            print(f"Key 'rel_orient_rankIdx' not found in dataset {dataset_name}")
+            print('   Calculating this now...')
+            dataset['rel_orient_rankIdx'] = np.argsort(dataset['relative_orientation'], 
+                                                       axis=1)
+        
+        rel_orient_rankIdx = dataset["rel_orient_rankIdx"]
+        
+        # Get unique fish indices from first frame
+        unique_fish_indices = np.unique(rel_orient_rankIdx[0, :])
+        print(f"Dataset {j} ({dataset_name}): Found fish indices {unique_fish_indices}")
+        
+        # Check that corresponding behavior keys exist
+        behavior_keys_fish = []
+        for fish_idx in unique_fish_indices:
+            behavior_key = f"{behavior_key_string}{fish_idx}"
+            if behavior_key not in dataset:
+                raise ValueError(f"Behavior key '{behavior_key}' not found in dataset {dataset_name}")
+            behavior_keys_fish.append(behavior_key)
+        
+        # Number of rank positions (should equal number of fish)
+        n_ranks = len(unique_fish_indices)
+        
+        # Initialize new rank-based behavior dictionaries
+        for rank_idx in range(n_ranks):
+            new_key = f"{behavior_key_string}_lowRelOrient{rank_idx}"
+            dataset[new_key] = {
+                "behavior_name": new_key,
+                "raw_frames": np.array([]),
+                "edit_frames": np.array([]),
+                "combine_frames": np.array([[], []]),
+                "N_events": 0,
+                "total_duration": 0,
+                "relative_duration": 0.0
+            }
+        
+        # Collect all behavior frames from all fish, with fish identity
+        all_behavior_frames_with_fish = []
+        for fish_idx in unique_fish_indices:
+            behavior_key = f"{behavior_key_string}{fish_idx}"
+            behavior_frames = dataset[behavior_key]["raw_frames"]
+            for frame in behavior_frames:
+                all_behavior_frames_with_fish.append((int(frame), fish_idx))
+        
+        # Sort by frame number
+        all_behavior_frames_with_fish.sort(key=lambda x: x[0])
+        
+        # For each behavior frame, determine which rank that fish has
+        for frame, fish_idx in all_behavior_frames_with_fish:
+            # Get the rank ordering for this frame (convert to 0-based indexing)
+            frame_idx = frame - 1
+            
+            if 0 <= frame_idx < len(rel_orient_rankIdx):
+                # Find which rank position this fish occupies
+                rank_ordering = rel_orient_rankIdx[frame_idx, :]
+                
+                # Find the rank of this fish (0 = lowest rel orient, etc.)
+                fish_rank = np.where(rank_ordering == fish_idx)[0]
+                
+                if len(fish_rank) > 0:
+                    rank = fish_rank[0]
+                    
+                    # Add this frame to the appropriate rank-based behavior
+                    new_key = f"{behavior_key_string}_lowRelOrient{rank}"
+                    dataset[new_key]["raw_frames"] = np.append(
+                        dataset[new_key]["raw_frames"], frame)
+        
+        # Process each new rank-based behavior key using existing helper functions
+        for rank_idx in range(n_ranks):
+            new_key = f"{behavior_key_string}_lowRelOrient{rank_idx}"
+            
+            # Sort raw_frames and convert to integers
+            raw_frames = np.sort(dataset[new_key]["raw_frames"]).astype(int)
+            dataset[new_key]["raw_frames"] = raw_frames
+            
+            # Use remove_frames() function to get edit_frames
+            if keep_all_frames:
+                dataset[new_key]["edit_frames"] = raw_frames.copy()
+            else:
+                frames_to_remove = (datasets[j]["edge_frames"]["raw_frames"],
+                                             datasets[j]["bad_bodyTrack_frames"]["raw_frames"])
+                dataset[new_key]["edit_frames"] = remove_frames(raw_frames, 
+                                                                frames_to_remove)
+            
+            # Use combine_events() function to get combine_frames
+            if len(dataset[new_key]["edit_frames"]) > 0:
+                dataset[new_key]["combine_frames"] = combine_events(dataset[new_key]["edit_frames"])
+                dataset[new_key]["N_events"] = dataset[new_key]["combine_frames"].shape[1]
+                dataset[new_key]["total_duration"] = np.sum(dataset[new_key]["combine_frames"][1, :])
+            else:
+                dataset[new_key]["combine_frames"] = np.array([[], []]).reshape(2, 0)
+                dataset[new_key]["N_events"] = 0
+                dataset[new_key]["total_duration"] = 0
+            
+            # Calculate relative duration
+            if "Nframes" in dataset and dataset["Nframes"] > 0:
+                dataset[new_key]["relative_duration"] = (
+                    dataset[new_key]["total_duration"] / dataset["Nframes"])
+            else:
+                dataset[new_key]["relative_duration"] = 0.0
+            
+            #print(f"  Created {new_key}: {dataset[new_key]['N_events']} events, "
+            #      f"total duration {dataset[new_key]['total_duration']} frames")
+    
+    print(f"\nSuccessfully created relative orientation rank keys for "
+          f"behavior '{behavior_key_string}' across {len(datasets)} datasets.")

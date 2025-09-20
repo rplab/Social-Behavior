@@ -4,7 +4,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Aug 25 20:59:37 2025
-Last modified Aug. 26, 2025 -- Raghuveer Parthasarathy
+Last modified Sept. 9, 2025 -- Raghuveer Parthasarathy
 
 Description
 -----------
@@ -24,12 +24,14 @@ Formerly in toolkit.py
 import numpy as np
 import csv
 import os
+from pathlib import Path
 import pickle
 import pandas as pd
 import yaml
 import tkinter as tk
 import tkinter.filedialog as filedialog
 from time import perf_counter
+import re
 
 from toolkit import get_Nfish
 
@@ -790,7 +792,6 @@ def get_output_pickleFileNames(expt_name, subGroupName = None):
     return pickleFileNames
     
 
-
 def write_pickle_file(dict_for_pickle, dataPath, outputFolderName, pickleFileName):
     """
     Write Pickle file containing a dictionary of variables in the analysis folder
@@ -802,21 +803,79 @@ def write_pickle_file(dict_for_pickle, dataPath, outputFolderName, pickleFileNam
     outputFolderName : output path, should be params['output_subFolder'],
                        appended to dataPath
     pickleFileName : string, filename, including .pickle
-
     Returns
     -------
     None.
-
     """
-    pickle_folder = os.path.join(dataPath, outputFolderName)
+    # Use pathlib for better path handling
+    pickle_folder = Path(dataPath) / outputFolderName
+    pickle_file_path = pickle_folder / pickleFileName
     
-    # Create output directory, if it doesn't exist
-    if not os.path.exists(pickle_folder):
-        os.makedirs(pickle_folder)
-
-    print(f'\nWriting pickle file: {pickleFileName}\n')
-    with open(os.path.join(pickle_folder, pickleFileName), 'wb') as handle:
-        pickle.dump(dict_for_pickle, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # Check path length and shorten if necessary
+    if len(str(pickle_file_path)) > 250:  # Conservative limit for Windows
+        print(f"Warning: Path too long ({len(str(pickle_file_path))} chars). Shortening...")
+        
+        # Try shortening the filename first
+        name_part, ext_part = pickleFileName.rsplit('.', 1) if '.' in pickleFileName else (pickleFileName, '')
+        max_filename_len = 250 - len(str(pickle_folder)) - 1  # -1 for path separator
+        
+        if max_filename_len > 20:  # Need reasonable minimum
+            shortened_name = name_part[:max_filename_len-len(ext_part)-1] + '.' + ext_part if ext_part else name_part[:max_filename_len]
+            pickle_file_path = pickle_folder / shortened_name
+            print(f"Shortened filename to: {shortened_name}")
+        else:
+            # If even shortening filename doesn't work, use a generic name
+            shortened_name = f"datasets_{hash(pickleFileName) % 10000}.pickle"
+            pickle_file_path = pickle_folder / shortened_name
+            print(f"Using generic filename: {shortened_name}")
+    
+    try:
+        # Create output directory with exist_ok=True to handle race conditions
+        pickle_folder.mkdir(parents=True, exist_ok=True)
+        
+        # Double-check the directory was created
+        if not pickle_folder.exists():
+            raise FileNotFoundError(f"Failed to create directory: {pickle_folder}")
+        
+        # Save the pickle file
+        print(f'\nWriting pickle file: {pickle_file_path.name} in {pickle_folder}\n')
+        with open(pickle_file_path, 'wb') as handle:
+            pickle.dump(dict_for_pickle, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        print("Pickle file saved successfully.")
+        
+    except FileNotFoundError as e:
+        print(f"FileNotFoundError: {e}")
+        print(f"Failed path: {pickle_file_path}")
+        print(f"Path length: {len(str(pickle_file_path))} characters")
+        print("Possible causes:")
+        print("- Path too long for Windows (>260 chars)")
+        print("- Parent directory doesn't exist or is inaccessible")
+        print("- Invalid characters in path")
+        
+        # Try one more fallback with a very short name
+        fallback_name = f"data_{hash(str(pickle_file_path)) % 1000}.pkl"
+        fallback_path = pickle_folder / fallback_name
+        print(f"Attempting fallback with short filename: {fallback_name}")
+        
+        try:
+            with open(fallback_path, 'wb') as handle:
+                pickle.dump(dict_for_pickle, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            print(f"Fallback successful! File saved as: {fallback_path}")
+        except Exception as fallback_error:
+            print(f"Fallback also failed: {fallback_error}")
+            raise e  # Raise original error
+            
+    except PermissionError as e:
+        print(f"PermissionError: {e}")
+        print(f"Check write permissions for: {pickle_folder}")
+        raise
+    except OSError as e:
+        print(f"OSError: {e}")
+        print(f"Path length: {len(str(pickle_file_path))} characters")
+        if len(str(pickle_file_path)) > 250:
+            print("This is likely due to Windows path length limitations.")
+            print("Consider using shorter folder/file names or enabling long path support.")
+        raise
 
 
 def load_and_assign_from_pickle():
@@ -888,6 +947,8 @@ def load_dict_from_pickle(pickleFileName=None):
             print("Please try again; will force dialog box.")
             pickleFileName = None
 
+    print(f'\nOpening pickle file: {pickleFileName}')
+    print('\n')
     with open(pickleFileName, 'rb') as handle:
         dict_of_variables = pickle.load(handle)
 
@@ -1098,8 +1159,6 @@ def combine_expts_from_pickle():
                              datasets = datasets_combined)
 
 
-
-    
 def write_output_files(params, output_path, datasets):
     """
     Write the output files (several) for all datasets
@@ -1117,136 +1176,251 @@ def write_output_files(params, output_path, datasets):
     print('\n\nWriting output files...')
     N_datasets = len(datasets)
     
+    # Convert to Path object for better handling
+    output_path = Path(output_path)
+    
     # Create output directory, if it doesn't exist
-    if not os.path.exists(output_path):
-        os.makedirs(output_path)
-    
-    # Go to analysis folder
-    os.chdir(output_path)
+    try:
+        output_path.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"Error creating output directory: {e}")
+        print(f"Path: {output_path}")
+        print(f"Path length: {len(str(output_path))} characters")
+        raise
 
-    # Write to individual text files, individual Excel sheets, 
-    # and summary CSV file
+    # Store original directory to restore later (instead of os.chdir)
+    original_cwd = Path.cwd()
 
-    # behaviors (events) to write. (Superset)
-    Nfish = datasets[0]["Nfish"] # number of fish, take from the first set;
-                             # don't bother checking if same for all
-    key_list = ["close_pair", "perp_noneSee", 
-                "perp_oneSees", "perp_bothSee", 
-                "perp_larger_fish_sees", "perp_smaller_fish_sees", 
-                "contact_any", "contact_head_body", 
-                "contact_larger_fish_head", "contact_smaller_fish_head", 
-                "contact_inferred", "tail_rubbing", "maintain_proximity", 
-                "anyPairBehavior"]
-    for j in range(Nfish):
-        key_list.extend([f"Cbend_Fish{j}"])
-    key_list.extend(["Cbend_any"])  # formerly had a condition "if Nfish > 1:"
-    for j in range(Nfish):
-        key_list.extend([f"Rbend_Fish{j}"])
-    key_list.extend(["Rbend_any"])  
-    for j in range(Nfish):
-        key_list.extend([f"Jbend_Fish{j}"])
-    key_list.extend(["Jbend_any"]) # formerly had a condition "if Nfish > 1:"
-    for j in range(Nfish):
-        key_list.extend([f"approaching_Fish{j}"])
-    if Nfish > 1:
-        key_list.extend(["approaching_any"])
-        key_list.extend(["approaching_all"])
-    for j in range(Nfish):
-        key_list.extend([f"fleeing_Fish{j}"])
-    if Nfish > 1:
-        key_list.extend(["fleeing_any"])
-        key_list.extend(["fleeing_all"])
-    for j in range(Nfish):
-        key_list.extend([f"isMoving_Fish{j}"])
-    key_list.extend(["isMoving_any", "isMoving_all"]) # formerly had a condition "if Nfish > 1:"
-    for j in range(Nfish):
-        key_list.extend([f"isBending_Fish{j}"])
-    key_list.extend(["isBending_any", "isBending_all"]) # formerly had a condition "if Nfish > 1:"
-    for j in range(Nfish):
-        key_list.extend([f"isActive_Fish{j}"])
-    key_list.extend(["isActive_any", "isActive_all"]) # formerly had a condition "if Nfish > 1:"
-    for j in range(Nfish):
-        key_list.extend([f"close_to_edge_Fish{j}"])
-    key_list.extend(["close_to_edge_any", "close_to_edge_all"]) # formerly had a condition "if Nfish > 1:"
-    key_list.extend(["edge_frames", "bad_bodyTrack_frames"])
-    # Remove any keys that are not in the first dataset, for example
-    # two-fish behaviors if that dataset was for single fish data
-    key_list_revised = [key for key in key_list if key in datasets[0]]
-    
-    # Mark frames for each dataset
-    # Create the ExcelWriter object
-    excel_file = os.path.join(output_path, 
-                              params['allDatasets_markFrames_ExcelFile'])
-    writer = pd.ExcelWriter(excel_file, engine='xlsxwriter')
-
-    # Call the function to write frames for each dataset
-    print('   Marking behaviors in each frame for each dataset.')
-    t_mark_frames_start = perf_counter()
-    for j in range(N_datasets):
-        # Annoyingly, Excel won't allow a worksheet name that's
-        # more than 31 characters! Force it to use the last 31.
-        sheet_name = datasets[j]["dataset_name"][-31:]
-        mark_behavior_frames_Excel(writer, datasets[j], key_list_revised, 
-                                   sheet_name)
-    t_mark_frames_end = perf_counter()
-    print(f'       ... {N_datasets} x mark_behavior_frames_Excel: ' + 
-          f'time {t_mark_frames_end - t_mark_frames_start:.1f} s')
-    # Save and close the Excel file
-    writer.close()
-
-    
-    print('   Writing summary text file and basic measurements for each dataset.')
-    # For each dataset, summary text file and basic measurements    
-    t_writing_summary_start = perf_counter()
-    for j in range(N_datasets):
-        # Write for this dataset: summary in text file
-        write_behavior_txt_file(datasets[j], key_list_revised)
-        # Write for this dataset: frame-by-frame "basic measurements"
-        write_basicMeasurements_txt_file(datasets[j])
-    t_writing_summary_end = perf_counter()
-    print( f'   ... Elapsed time {t_writing_summary_end - t_writing_summary_start:.1f} s')
+    try:
+        # behaviors (events) to write. (Superset)
+        Nfish = datasets[0]["Nfish"] # number of fish, take from the first set;
+                                 # don't bother checking if same for all
+        key_list = ["close_pair", "perp_noneSee", 
+                    "perp_oneSees", "perp_bothSee", 
+                    "perp_larger_fish_sees", "perp_smaller_fish_sees", 
+                    "contact_any", "contact_head_body", 
+                    "contact_larger_fish_head", "contact_smaller_fish_head", 
+                    "contact_inferred", "tail_rubbing", "maintain_proximity", 
+                    "anyPairBehavior"]
+        for j in range(Nfish):
+            key_list.extend([f"Cbend_Fish{j}"])
+        key_list.extend(["Cbend_any"])  # formerly had a condition "if Nfish > 1:"
+        for j in range(Nfish):
+            key_list.extend([f"Rbend_Fish{j}"])
+        key_list.extend(["Rbend_any"])  
+        for j in range(Nfish):
+            key_list.extend([f"Jbend_Fish{j}"])
+        key_list.extend(["Jbend_any"]) # formerly had a condition "if Nfish > 1:"
+        for j in range(Nfish):
+            key_list.extend([f"approaching_Fish{j}"])
+        if Nfish > 1:
+            key_list.extend(["approaching_any"])
+            key_list.extend(["approaching_all"])
+        for j in range(Nfish):
+            key_list.extend([f"fleeing_Fish{j}"])
+        if Nfish > 1:
+            key_list.extend(["fleeing_any"])
+            key_list.extend(["fleeing_all"])
+        for j in range(Nfish):
+            key_list.extend([f"isMoving_Fish{j}"])
+        key_list.extend(["isMoving_any", "isMoving_all"]) # formerly had a condition "if Nfish > 1:"
+        for j in range(Nfish):
+            key_list.extend([f"isBending_Fish{j}"])
+        key_list.extend(["isBending_any", "isBending_all"]) # formerly had a condition "if Nfish > 1:"
+        for j in range(Nfish):
+            key_list.extend([f"isActive_Fish{j}"])
+        key_list.extend(["isActive_any", "isActive_all"]) # formerly had a condition "if Nfish > 1:"
+        for j in range(Nfish):
+            key_list.extend([f"close_to_edge_Fish{j}"])
+        key_list.extend(["close_to_edge_any", "close_to_edge_all"]) # formerly had a condition "if Nfish > 1:"
+        key_list.extend(["edge_frames", "bad_bodyTrack_frames"])
+        # Remove any keys that are not in the first dataset, for example
+        # two-fish behaviors if that dataset was for single fish data
+        key_list_revised = [key for key in key_list if key in datasets[0]]
         
+        # Mark frames for each dataset
+        # Create the ExcelWriter object with path validation
+        excel_filename = sanitize_filename(params['allDatasets_markFrames_ExcelFile'])
+        excel_file_path = output_path / excel_filename
         
-    # Excel workbook for summary of all behavior counts, durations,
-    # relative durations, and relative durations normalized to activity
-    print('   Writing summary file of all behavior counts, durations to ' + 
-          params['allDatasets_ExcelFile'])
-    initial_keys = ["dataset_name", "fps", "image_scale",
-                    "total_time_seconds", "close_pair_fraction", 
-                    "speed_mm_s_mean", "speed_whenMoving_mm_s_mean",
-                    "bout_rate_bpm", "bout_duration_s", "bout_ibi_s",
-                    "fish_length_Delta_mm_mean", 
-                    "head_head_distance_mm_mean", "closest_distance_mm_mean",
-                    "AngleXCorr_mean"]
-    initial_strings = ["Dataset", "Frames per sec", 
-                       "Image scale (um/px)",
-                       "Total Time (s)", "Fraction of time in proximity", 
-                       "Mean speed (mm/s)", "Mean moving speed (mm/s)", 
-                       "Mean bout rate (/min)", "Mean bout duration (s)",
-                       "Mean inter-bout interval (s)",
-                       "Mean difference in fish lengths (mm)", 
-                       "Mean head-head dist (mm)", "Mean closest distance (mm)",
-                       "AngleXCorr_mean"]
+        # Check if full path length is reasonable
+        if len(str(excel_file_path)) > 250:  # Conservative limit
+            # Try shortening the filename
+            name, ext = excel_filename.rsplit('.', 1)
+            shortened_name = name[:100] + '_shortened.' + ext
+            excel_file_path = output_path / shortened_name
+            print(f"Warning: Excel filename was too long, shortened to: {shortened_name}")
+        
+        try:
+            writer = pd.ExcelWriter(excel_file_path, engine='xlsxwriter')
+        except (FileNotFoundError, OSError, PermissionError) as e:
+            print(f"Error creating Excel file: {e}")
+            print(f"Attempted path: {excel_file_path}")
+            print(f"Path length: {len(str(excel_file_path))} characters")
+            
+            # Fallback: try with a very short filename
+            fallback_name = "output_data.xlsx"
+            excel_file_path = output_path / fallback_name
+            print(f"Trying fallback filename: {fallback_name}")
+            writer = pd.ExcelWriter(excel_file_path, engine='xlsxwriter')
 
-    # Remove any keys that are not in the first dataset, for example
-    # two-fish behaviors if that dataset was for single fish data
-    # Also remove the corresponding strings
-    initial_keys_revised = []
-    initial_strings_revised = []
-    
-    for key, name in zip(initial_keys, initial_strings):
-        if key in datasets[0]:
-            initial_keys_revised.append(key)
-            initial_strings_revised.append(name)
+        # Call the function to write frames for each dataset
+        print('   Marking behaviors in each frame for each dataset.')
+        t_mark_frames_start = perf_counter()
+        for j in range(N_datasets):
+            # Excel worksheet name handling - more robust sanitization
+            dataset_name = str(datasets[j]["dataset_name"])
+            sheet_name = sanitize_sheet_name(dataset_name)
+            
+            mark_behavior_frames_Excel(writer, datasets[j], key_list_revised, 
+                                       sheet_name)
+        t_mark_frames_end = perf_counter()
+        print(f'       ... {N_datasets} x mark_behavior_frames_Excel: ' + 
+              f'time {t_mark_frames_end - t_mark_frames_start:.1f} s')
+        
+        # Save and close the Excel file
+        try:
+            writer.close()
+        except Exception as e:
+            print(f"Warning: Error closing Excel writer: {e}")
+            # Try to save manually if possible
+            try:
+                writer.save()
+            except:
+                pass
 
-    write_behaviorCounts_Excel(params["allDatasets_ExcelFile"], 
-                              datasets, key_list_revised, 
-                              initial_keys_revised, initial_strings_revised)
+        
+        print('   Writing summary text file and basic measurements for each dataset.')
+        # For each dataset, summary text file and basic measurements    
+        t_writing_summary_start = perf_counter()
+        
+        # Change to output directory for the text file functions
+        # (assuming they expect to write in current directory)
+        os.chdir(output_path)
+        
+        try:
+            for j in range(N_datasets):
+                # Write for this dataset: summary in text file
+                write_behavior_txt_file(datasets[j], key_list_revised)
+                # Write for this dataset: frame-by-frame "basic measurements"
+                write_basicMeasurements_txt_file(datasets[j])
+        finally:
+            # Always restore original directory
+            os.chdir(original_cwd)
+            
+        t_writing_summary_end = perf_counter()
+        print( f'   ... Elapsed time {t_writing_summary_end - t_writing_summary_start:.1f} s')
+            
+            
+        # Excel workbook for summary of all behavior counts, durations,
+        # relative durations, and relative durations normalized to activity
+        print('   Writing summary file of all behavior counts, durations to ' + 
+              params['allDatasets_ExcelFile'])
+        initial_keys = ["dataset_name", "fps", "image_scale",
+                        "total_time_seconds", "close_pair_fraction", 
+                        "speed_mm_s_mean", "speed_whenMoving_mm_s_mean",
+                        "bout_rate_bpm", "bout_duration_s", "bout_ibi_s",
+                        "fish_length_Delta_mm_mean", 
+                        "head_head_distance_mm_mean", "closest_distance_mm_mean",
+                        "AngleXCorr_mean"]
+        initial_strings = ["Dataset", "Frames per sec", 
+                           "Image scale (um/px)",
+                           "Total Time (s)", "Fraction of time in proximity", 
+                           "Mean speed (mm/s)", "Mean moving speed (mm/s)", 
+                           "Mean bout rate (/min)", "Mean bout duration (s)",
+                           "Mean inter-bout interval (s)",
+                           "Mean difference in fish lengths (mm)", 
+                           "Mean head-head dist (mm)", "Mean closest distance (mm)",
+                           "AngleXCorr_mean"]
+
+        # Remove any keys that are not in the first dataset, for example
+        # two-fish behaviors if that dataset was for single fish data
+        # Also remove the corresponding strings
+        initial_keys_revised = []
+        initial_strings_revised = []
+        
+        for key, name in zip(initial_keys, initial_strings):
+            if key in datasets[0]:
+                initial_keys_revised.append(key)
+                initial_strings_revised.append(name)
+
+        # Sanitize the Excel filename for the summary file
+        summary_excel_filename = sanitize_filename(params["allDatasets_ExcelFile"])
+        summary_excel_path = output_path / summary_excel_filename
+        
+        # Check path length for summary file too
+        if len(str(summary_excel_path)) > 250:
+            name, ext = summary_excel_filename.rsplit('.', 1)
+            shortened_name = name[:100] + '_summary.' + ext
+            summary_excel_path = output_path / shortened_name
+            print(f"Warning: Summary Excel filename was too long, shortened to: {shortened_name}")
+
+        write_behaviorCounts_Excel(str(summary_excel_path), 
+                                  datasets, key_list_revised, 
+                                  initial_keys_revised, initial_strings_revised)
+        
+        # Return the full path for use by add_statistics_to_excel
+        return str(summary_excel_path)
+        
+    except Exception as e:
+        print(f"Error in write_output_files: {e}")
+        raise
+    finally:
+        # Ensure we're back in the original directory
+        try:
+            os.chdir(original_cwd)
+        except:
+            pass
     
     t_writing_all_end = perf_counter()
     print('   Done writing output files. ' + 
           f'Elapsed time {t_writing_all_end - t_writing_all_start:.1f} s')
 
+
+def sanitize_filename(filename):
+    """
+    Sanitize filename by removing or replacing invalid characters
+    """
+    if not filename:
+        return "output_file"
+    
+    # Remove or replace invalid characters for Windows/Unix
+    invalid_chars = r'[<>:"/\\|?*]'
+    sanitized = re.sub(invalid_chars, '_', str(filename))
+    
+    # Remove leading/trailing spaces and dots
+    sanitized = sanitized.strip(' .')
+    
+    # Ensure filename isn't empty after sanitization
+    if not sanitized:
+        sanitized = "output_file"
+    
+    return sanitized
+
+
+def sanitize_sheet_name(dataset_name):
+    """
+    Sanitize and truncate Excel sheet name to meet Excel's requirements
+    """
+    if not dataset_name:
+        return "Sheet1"
+    
+    # Excel sheet names cannot contain: [ ] : * ? / \
+    invalid_chars = r'[\[\]:*?/\\]'
+    sanitized = re.sub(invalid_chars, '_', str(dataset_name))
+    
+    # Remove leading/trailing spaces
+    sanitized = sanitized.strip()
+    
+    # Truncate to 31 characters (Excel limit)
+    if len(sanitized) > 31:
+        sanitized = sanitized[-31:]  # Take last 31 chars as in original
+    
+    # Ensure sheet name isn't empty
+    if not sanitized:
+        sanitized = "Sheet1"
+    
+    return sanitized
 
         
 def write_behavior_txt_file(dataset, key_list):
@@ -1394,18 +1568,20 @@ def write_CSV_Excel_YAML(expt_config, params, dataPath, datasets):
     
     """
     print(f'\nWriting to dataPath: {dataPath}')
-    # Write the output files (CSV, Excel)
+    # Write the output files (CSV, Excel) - THIS WAS MISSING!
     output_path = os.path.join(dataPath, params['output_subFolder'])
-    write_output_files(params, output_path, datasets)
+    excel_file_path = write_output_files(params, output_path, datasets)
     
     # Modify the Excel file with statistics
-    add_statistics_to_excel(params['allDatasets_ExcelFile'])
+    print(f'\nAdding statistics to Excel file: {excel_file_path}')
+    add_statistics_to_excel(excel_file_path)
     
-    # Write a YAML file with parameters
+    # Write a YAML file with parameters  
     more_param_output = {'dataPath': dataPath}
     all_outputs = expt_config | params | more_param_output
     print('\nWriting output YAML file.')
-    with open('all_params.yaml', 'w') as file:
+    yaml_path = os.path.join(output_path, 'all_params.yaml')
+    with open(yaml_path, 'w') as file:
         yaml.dump(all_outputs, file)
         
 
@@ -1551,64 +1727,146 @@ def add_statistics_to_excel(file_path='behaviorCounts.xlsx'):
     Modify the Excel sheet containing behavior counts to include
     summary statistics for all datasets (e.g. average for 
     each behavior)
+    
+    Parameters:
+    -----------
+    file_path : str or Path
+        Full path to the Excel file (can be relative or absolute)
     """
-    # Load the Excel file
-    xls = pd.ExcelFile(file_path)
-    writer = pd.ExcelWriter(file_path, engine='openpyxl', mode='a')
+    # Convert to Path object for better handling
+    file_path = Path(file_path)
     
-    # Get the existing workbook
-    book = writer.book
-    
-    for sheet_name in xls.sheet_names:
-        # Read the sheet
-        df = pd.read_excel(xls, sheet_name=sheet_name)
-        
-        # Separate non-numeric and numeric columns
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
-        
-        # Calculate statistics for numeric columns
-        mean = df[numeric_cols].mean()
-        std = df[numeric_cols].std()
-        n = df[numeric_cols].count()
-        sem = std / np.sqrt(n)
-        
-        # Prepare statistics rows
-        stats_df = pd.DataFrame({
-            'Statistic': ['Mean', 'Std. Dev.', 'Std. Error of Mean', 'N datasets']
-        })
-        stats_df = pd.concat([stats_df, pd.DataFrame({
-            col: [mean[col], std[col], sem[col], n[col]] for col in numeric_cols
-        })], axis=1)
-        
-        # Clear the existing sheet
-        if sheet_name in book.sheetnames:
-            book.remove(book[sheet_name])
-        
-        # Write the original data
-        df.to_excel(writer, sheet_name=sheet_name, index=False)
-        
-        # Get the worksheet
-        worksheet = writer.sheets[sheet_name]
-        
-        # Write statistics rows
-        start_row = len(df) + 3  # +3 to leave a blank row
-        for i, row in enumerate(stats_df.itertuples(index=False), start=start_row):
-            for j, value in enumerate(row):
-                cell = worksheet.cell(row=i, column=j+1, value=value)
-        
-        # Adjust column widths
-        for idx, column in enumerate(worksheet.columns, start=1):
-            max_length = 0
-            column = [cell for cell in column]
-            for cell in column:
+    # Check if file exists
+    if not file_path.exists():
+        # Try to find it in current directory if only filename was provided
+        if not file_path.is_absolute():
+            cwd_file = Path.cwd() / file_path.name
+            if cwd_file.exists():
+                file_path = cwd_file
+            else:
+                print(f"Error: Excel file not found at: {file_path}")
+                print(f"Current working directory: {Path.cwd()}")
+                print(f"Also tried: {cwd_file}")
+                
+                # List files in current directory for debugging
                 try:
-                    if len(str(cell.value)) > max_length:
-                        max_length = len(cell.value)
+                    files = list(Path.cwd().glob("*.xlsx"))
+                    if files:
+                        print(f"Excel files in current directory: {[f.name for f in files]}")
+                    else:
+                        print("No .xlsx files found in current directory")
                 except:
                     pass
-            adjusted_width = (max_length + 2)
-            worksheet.column_dimensions[column[0].column_letter].width = adjusted_width
+                
+                raise FileNotFoundError(f"Could not find Excel file: {file_path}")
     
-    # Save the workbook
-    writer.close()
+    print(f"Processing Excel file: {file_path}")
+    
+    try:
+        # Load the Excel file
+        xls = pd.ExcelFile(file_path)
+        
+        # Create a temporary file for writing (to avoid conflicts)
+        temp_file = file_path.parent / f"temp_{file_path.name}"
+        writer = pd.ExcelWriter(temp_file, engine='openpyxl')
+        
+        for sheet_name in xls.sheet_names:
+            try:
+                # Read the sheet
+                df = pd.read_excel(xls, sheet_name=sheet_name)
+                
+                # Separate non-numeric and numeric columns
+                numeric_cols = df.select_dtypes(include=[np.number]).columns
+                
+                if len(numeric_cols) == 0:
+                    print(f"Warning: No numeric columns found in sheet '{sheet_name}', skipping statistics")
+                    # Just write the original data
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+                    continue
+                
+                # Calculate statistics for numeric columns
+                mean = df[numeric_cols].mean()
+                std = df[numeric_cols].std()
+                n = df[numeric_cols].count()
+                sem = std / np.sqrt(n)
+                
+                # Write the original data first
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
+                
+                # Get the worksheet to add statistics
+                worksheet = writer.sheets[sheet_name]
+                
+                # Add a blank row, then statistics
+                start_row = len(df) + 3  # +2 for header and +1 for blank row
+                
+                # Create statistics data
+                stats_data = [
+                    ['Mean'] + [mean.get(col, '') for col in numeric_cols],
+                    ['Std. Dev.'] + [std.get(col, '') for col in numeric_cols],
+                    ['Std. Error of Mean'] + [sem.get(col, '') for col in numeric_cols],
+                    ['N datasets'] + [n.get(col, '') for col in numeric_cols]
+                ]
+                
+                # Write statistics with proper column alignment
+                non_numeric_cols = [col for col in df.columns if col not in numeric_cols]
+                
+                for i, row_data in enumerate(stats_data):
+                    # Start with the statistic name
+                    worksheet.cell(row=start_row + i, column=1, value=row_data[0])
+                    
+                    # Fill in empty cells for non-numeric columns
+                    for j, col in enumerate(non_numeric_cols[1:], start=2):  # Skip first col (statistic name)
+                        worksheet.cell(row=start_row + i, column=j, value='')
+                    
+                    # Add the numeric values in the correct columns
+                    numeric_start_col = len(non_numeric_cols) + 1
+                    for j, value in enumerate(row_data[1:]):
+                        if value != '':  # Only write non-empty values
+                            worksheet.cell(row=start_row + i, column=numeric_start_col + j, value=value)
+                
+                # Adjust column widths
+                for column in worksheet.columns:
+                    max_length = 0
+                    column_letter = column[0].column_letter
+                    
+                    for cell in column:
+                        try:
+                            if cell.value is not None:
+                                length = len(str(cell.value))
+                                if length > max_length:
+                                    max_length = length
+                        except:
+                            pass
+                    
+                    # Set width with some padding
+                    adjusted_width = min(max_length + 2, 50)  # Cap at 50 for very long headers
+                    worksheet.column_dimensions[column_letter].width = adjusted_width
+                    
+            except Exception as e:
+                print(f"Error processing sheet '{sheet_name}': {e}")
+                # Still write the original data even if statistics fail
+                try:
+                    df = pd.read_excel(xls, sheet_name=sheet_name)
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+                except:
+                    print(f"Could not even write original data for sheet '{sheet_name}'")
+        
+        # Save and close the writer
+        writer.close()
+        xls.close()
+        
+        # Replace the original file with the updated one
+        if file_path.exists():
+            file_path.unlink()  # Delete original
+        temp_file.rename(file_path)  # Rename temp to original
+        
+        print(f"Successfully added statistics to: {file_path}")
+        
+    except Exception as e:
+        print(f"Error in add_statistics_to_excel: {e}")
+        # Clean up temp file if it exists
+        temp_file = file_path.parent / f"temp_{file_path.name}"
+        if temp_file.exists():
+            temp_file.unlink()
+        raise
 

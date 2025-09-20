@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, August 26, 2025
+Last modified by Rghuveer Parthasarathy, Sept. 14, 2025
 
 Description
 -----------
@@ -130,33 +130,6 @@ def remove_frames(frames, frames_to_remove, dilate_frames=np.array([0])):
     
     return frames_edit
 
-def dilate_frames(frames, dilate_frames=np.array([0])):
-    """
-    "dilate" the array of frame numbers.
-    Note: doesn't check that dilated frame numbers are valid.
-    
-    Inputs:
-        frames (numpy.ndarray): 1D array of frame numbers, for example
-            bad tracking frames
-        dilate_frames (numpy.ndarray): 1D array of integers, 
-            where each non-zero value 'j' will cause frames
-            'frames + j' to be added to the array of frames
-            the set of frames to remove. (Leave as zero for no dilation)
-        
-    Outputs:
-        frames_edit (numpy.ndarray): 1D array of unique frame numbers
-    """
-    
-    frames_edit = frames.copy()
-    
-    # Dilate the set of frames to remove if dilate_frames is provided
-    for j in dilate_frames:
-        if j != 0:
-            frames_edit = np.concatenate((frames_edit, frames + j))
-    frames_edit = np.unique(frames_edit)
-   
-    return frames_edit
-
 
 
 def combine_events(events):
@@ -196,6 +169,35 @@ def combine_events(events):
     
     combined_events_and_durations = np.stack((events[idx_keep], durations))
     return combined_events_and_durations
+
+
+def dilate_frames(frames, dilate_frames=np.array([0])):
+    """
+    "dilate" the array of frame numbers.
+    Note: doesn't check that dilated frame numbers are valid.
+    
+    Inputs:
+        frames (numpy.ndarray): 1D array of frame numbers, for example
+            bad tracking frames
+        dilate_frames (numpy.ndarray): 1D array of integers, 
+            where each non-zero value 'j' will cause frames
+            'frames + j' to be added to the array of frames
+            the set of frames to remove. (Leave as zero for no dilation)
+        
+    Outputs:
+        frames_edit (numpy.ndarray): 1D array of unique frame numbers
+    """
+    
+    frames_edit = frames.copy()
+    
+    # Dilate the set of frames to remove if dilate_frames is provided
+    for j in dilate_frames:
+        if j != 0:
+            frames_edit = np.concatenate((frames_edit, frames + j))
+    frames_edit = np.unique(frames_edit)
+   
+    return frames_edit
+
 
 
 def get_edgeRejection_frames(dataset, params, arena_radius_mm):
@@ -952,7 +954,8 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
     in datasets[j][keyName], and collect all these in a list of 
     numpy arrays, one array per dataset. 
 	Ignore, in each dataset, "bad tracking" frames. 
-       If "dilate_plus1" is True, dilate the bad frames +1; do this for speed values, since bad tracking affects adjacent frames!
+       If "dilate_plus1" is True, dilate the bad frames +1; 
+       do this for speed values, since bad tracking affects adjacent frames!
     if datasets[j][keyName] is multi-dimensional, return the
         multidimensional array for each dataset
         (i.e. a list of these multidimensional arrays as output)
@@ -1014,7 +1017,6 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
     Ndatasets = len(datasets)
     # print(f'\nCombining values of {keyName} for {Ndatasets} datasets...')
     
-    
     values_all_constrained = []
     
     if constraintKey is None or constraintRange is None \
@@ -1023,14 +1025,16 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
         # minus those from bad tracking frames.
         for j in range(Ndatasets):
             frames = datasets[j]["frameArray"]
+            idx_offset = min(frames) # should be 1, but ensure
             badTrackFrames = datasets[j]["bad_bodyTrack_frames"]["raw_frames"]
             if dilate_plus1:
-                dilate_badTrackFrames = np.concatenate((badTrackFrames, badTrackFrames + 1))
-                bad_frames_set = set(dilate_badTrackFrames)
+                dilate_badTrackFrames = np.concatenate((badTrackFrames, badTrackFrames - 1))
+                bad_frames = np.unique(dilate_badTrackFrames)
             else:
-                bad_frames_set = set(badTrackFrames)
-            
-            good_frames_mask = np.isin(frames, list(bad_frames_set), invert=True)
+                bad_frames = badTrackFrames
+                
+            good_frames_mask = np.isin(frames-idx_offset, 
+                                       bad_frames-idx_offset, invert=True)
             values = get_values_subset(datasets[j][keyName], keyIdx)
             values_this_set = values[good_frames_mask, ...]
             values_all_constrained.append(values_this_set)
@@ -1040,15 +1044,17 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
     # print(f'    ... with constraint on {constraintKey}')
     for j in range(Ndatasets):
         frames = datasets[j]["frameArray"]
+        idx_offset = min(frames) # should be 1, but ensure
         badTrackFrames = datasets[j]["bad_bodyTrack_frames"]["raw_frames"]
         if dilate_plus1:
-            dilate_badTrackFrames = np.concatenate((badTrackFrames, badTrackFrames + 1))
-            bad_frames_set = set(dilate_badTrackFrames)
+            dilate_badTrackFrames = np.concatenate((badTrackFrames, badTrackFrames - 1))
+            bad_frames = np.unique(dilate_badTrackFrames)
         else:
-            bad_frames_set = set(badTrackFrames)
+            bad_frames = badTrackFrames
         
         # Filter values based on constraint
-        good_frames_mask = np.isin(frames, list(bad_frames_set), invert=True)
+        good_frames_mask = np.isin(frames-idx_offset, 
+                                   bad_frames-idx_offset, invert=True)
         constraint_array = get_values_subset(datasets[j][constraintKey], 
                                              constraintIdx)
         constrained_mask = (constraint_array >= constraintRange[0]) \
@@ -1161,7 +1167,7 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
         if polarPlot==True:
             bin_range[0] = (np.nanmin(x_all) // np.pi)*np.pi # floor * pi
         else:
-            bin_range[0] = x_all.min()
+            bin_range[0] = np.nanmin(x_all)
     if bin_range[1] is None:
         if polarPlot==True:
             # next mult of pi
@@ -1242,7 +1248,8 @@ def calculate_block_autocorr(data, n_lags, window_size):
         end = (i + 1) * window_size
         block = data[start:end]
         block_centered = block - np.mean(block)
-        block_autocorr = signal.correlate(block_centered, block_centered, mode='full')
+        block_autocorr = signal.correlate(block_centered, block_centered, 
+                                          mode='full')
         block_autocorr = block_autocorr[len(block_autocorr)//2:]
         block_autocorr /= (np.var(block) * len(block))
         block_autocorrs.append(block_autocorr[:n_lags])
@@ -1287,13 +1294,18 @@ def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s',
                                 t_max=10, t_window=None):
     """
     For a *single* dataset, calculate the auto or cross-correlation of the numerical
-    property in the given key (e.g. speed)
+    property in the given key (e.g. speed).
+    Cross-correlation is valid only for Nfish==2 (verified)
     Ignore "bad tracking" frames. If a frame is in the bad tracking list,
     replace the value with a Gaussian random number with the same mean, 
     std. dev. as the frames not in the bad tracking list. This avoids
     having to figure out how to deal with non-uniform time lags.
+    NOTE: replaces values for *both* fish if a frame is a bad-tracking frame, 
+       even if one of the fish is properly tracked. (Simpler to implement, and
+       also both fish's values may be unreliable)
     If "dilate_plus1" is True, dilate the bad frames +1.
-    Output is a numpy array with dim 1 corresponding to each fish.
+    Output is a numpy array with dim 1 corresponding to each fish, for auto-
+    correlation, and a 1D numpy array for cross-correlation.
     
     Parameters
     ----------
@@ -1302,7 +1314,9 @@ def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s',
     corr_type : 'auto' for autocorrelation, 'cross' for cross-correlation (only for Nfish==2)
     dilate_plus1 : If True, dilate the bad frames +1
     t_max : max time to consider for autocorrelation, seconds.
-    t_window : size of sliding window in seconds. If None, don't use a sliding window.
+    t_window : size of sliding window in seconds. 
+        If None, don't use a sliding window.
+        Using a sliding window is strongly recommended!
     
     Returns
     -------
@@ -1317,7 +1331,7 @@ def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s',
     badTrackFrames = dataset["bad_bodyTrack_frames"]["raw_frames"]
     if dilate_plus1:
         dilate_badTrackFrames = dilate_frames(badTrackFrames, 
-                                              dilate_frames=np.array([1]))
+                                              dilate_frames=np.array([-1]))
         bad_frames_set = set(dilate_badTrackFrames)
     else:
         bad_frames_set = set(badTrackFrames)
@@ -1327,42 +1341,46 @@ def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s',
         n_lags = len(t_lag)
         corr = np.zeros((n_lags, Nfish))
     elif corr_type == 'cross':
-        t_lag = np.arange(-t_max, t_max + 1.0/fps, 1.0/fps)
-        n_lags = len(t_lag)
         if Nfish != 2:
             raise ValueError("Cross-correlation is only supported for Nfish==2")
+        t_lag = np.arange(-t_max, t_max + 1.0/fps, 1.0/fps)
+        n_lags = len(t_lag)
         corr = np.zeros(n_lags)
     else:
         raise ValueError("corr_type must be 'auto' or 'cross'")
     
+    # Lowest frame number (should be 1)   
+    idx_offset = min(dataset["frameArray"])
+    # Replace values from bad tracking frames with mean, std.
+    fish_value = value_array.copy()
+    for fish in range(Nfish):
+        good_values = [val for i, val in enumerate(fish_value[:,fish]) \
+                       if (i + idx_offset) not in bad_frames_set]
+        mean_value = np.mean(good_values)
+        std_value = np.std(good_values)
+        for frame in bad_frames_set:
+            if frame < Nframes:
+                fish_value[frame - idx_offset, fish] = \
+                    np.random.normal(mean_value, std_value)
+
     if corr_type == 'auto':
         for fish in range(Nfish):
-            fish_value = value_array[:, fish].copy()
-            
-            good_frames = [speed for i, speed in enumerate(fish_value) if i not in bad_frames_set]
-            mean_value = np.mean(good_frames)
-            std_value = np.std(good_frames)
-            
-            for frame in bad_frames_set:
-                if frame < Nframes:
-                    fish_value[frame] = np.random.normal(mean_value, std_value)
-    
-                if t_window is None:
-                    fish_corr = calculate_autocorr(fish_value, n_lags)
-                else:
-                    window_size = int(t_window * fps)
-                    fish_corr = calculate_block_autocorr(fish_value, n_lags, 
-                                                         window_size)
-                corr[:, fish] = fish_corr
+            if t_window is None:
+                fish_corr = calculate_autocorr(fish_value[:, fish], n_lags)
+            else:
+                window_size = int(t_window * fps)
+                fish_corr = calculate_block_autocorr(fish_value[:, fish],  
+                                                     n_lags, window_size)
+            corr[:, fish] = fish_corr
             
     if corr_type == 'cross':
         if t_window is None:
-            corr = calculate_crosscorr(value_array[:, 0], value_array[:, 1], 
+            corr = calculate_crosscorr(fish_value[:, 0], fish_value[:, 1], 
                                        n_lags)
         else:
             window_size = int(t_window * fps)
-            corr = calculate_block_crosscorr(value_array[:, 0], 
-                                             value_array[:, 1], n_lags, 
+            corr = calculate_block_crosscorr(fish_value[:, 0], 
+                                             fish_value[:, 1], n_lags, 
                                              window_size)
     
     return corr, t_lag
@@ -1409,12 +1427,14 @@ def calculate_value_corr_all(datasets, keyName = 'speed_array_mm_s',
     get_fps(datasets, fpstol = 1e-6) # will give error if not valid
 
     for j in range(Ndatasets):
+        print(f'  {j},', end='')
         (autocorr_one, t_lag) = calculate_value_corr_oneSet(datasets[j], 
                                             keyName = keyName, 
                                             corr_type=corr_type,
                                             dilate_plus1 = dilate_plus1, 
                                             t_max = t_max, t_window = t_window)
         autocorr_all.append(autocorr_one)
+    print('\n')
     return autocorr_all, t_lag
 
 
@@ -1464,7 +1484,7 @@ def calculate_value_corr_oneSet_binned(dataset, keyName='speed_array_mm_s',
     badTrackFrames = dataset["bad_bodyTrack_frames"]["raw_frames"]
     if dilate_plus1:
         dilate_badTrackFrames = dilate_frames(badTrackFrames, 
-                                              dilate_frames=np.array([1]))
+                                              dilate_frames=np.array([-1]))
         bad_frames_set = set(dilate_badTrackFrames)
     else:
         bad_frames_set = set(badTrackFrames)
@@ -2272,8 +2292,6 @@ def timeShift(position_data, dataset, CSVcolumns, fishIdx = 1,
     # Cyclicly shift position and heading data by shift_idx
     new_dataset = dataset.copy()
     new_position_data = position_data.copy()
-    # Note that position data cols 0 and 1 are ID no and frame no., so don't 
-    # shift these (shouldn't matter...)
     new_dataset["heading_angle"][:,fishIdx] = \
         np.roll(dataset["heading_angle"][:,fishIdx], frameShift, axis=0)
     # Note that position data cols 0 and 1 are ID no and frame no., so don't 
