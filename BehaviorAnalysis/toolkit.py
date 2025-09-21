@@ -1234,6 +1234,64 @@ def calculate_autocorr(data, n_lags):
     autocorr /= (np.var(data) * len(data))
     return autocorr[:n_lags]
 
+def calculate_autocorr_with_nan(data, n_lags):
+    """
+    Calculate autocorrelation for data that may contain NaNs.
+    Only uses valid (non-NaN) data points for calculation.
+    
+    Parameters
+    ----------
+    data : 1D numpy array
+        Time series data that may contain NaN values
+    n_lags : int
+        Number of lag values to return (including lag 0)
+    
+    Returns
+    -------
+    autocorr : 1D numpy array of length n_lags
+        Autocorrelation values for lags 0 to n_lags-1
+        Returns NaN values if insufficient valid data
+    """
+    # Find valid (non-NaN) indices
+    valid_mask = ~np.isnan(data)
+    
+    if np.sum(valid_mask) < 3:  # Need at least 3 valid points
+        return np.full(n_lags, np.nan)
+    
+    # Use only valid data points
+    clean_data = data[valid_mask]
+    
+    # Check if we have enough data for the requested number of lags
+    if len(clean_data) < n_lags:
+        # Return what we can calculate, pad rest with NaN
+        max_possible_lags = len(clean_data)
+        autocorr_result = np.full(n_lags, np.nan)
+    else:
+        max_possible_lags = n_lags
+        autocorr_result = np.zeros(n_lags)
+    
+    # Center the data
+    clean_data_centered = clean_data - np.mean(clean_data)
+    
+    # Calculate autocorrelation using scipy.signal.correlate
+    autocorr_full = signal.correlate(clean_data_centered, clean_data_centered, mode='full')
+    
+    # Take only the positive lags (including lag 0)
+    autocorr_positive = autocorr_full[len(autocorr_full)//2:]
+    
+    # Normalize by variance and length
+    var_data = np.var(clean_data)
+    if var_data > 0:
+        autocorr_positive = autocorr_positive / (var_data * len(clean_data))
+        
+        # Fill in the result array with calculated values
+        autocorr_result[:max_possible_lags] = autocorr_positive[:max_possible_lags]
+    else:
+        # If variance is 0 (constant data), autocorr should be 1 at lag 0, 0 elsewhere
+        autocorr_result[0] = 1.0
+        # Rest remain NaN or 0 as initialized
+    
+    return autocorr_result
 
 def calculate_block_autocorr(data, n_lags, window_size):
     """
@@ -1255,7 +1313,7 @@ def calculate_block_autocorr(data, n_lags, window_size):
         block_autocorrs.append(block_autocorr[:n_lags])
     
     # Average the autocorrelations from all blocks
-    avg_autocorr = np.mean(block_autocorrs, axis=0)
+    avg_autocorr = np.nanmean(block_autocorrs, axis=0)
     
     return avg_autocorr
 
@@ -1410,7 +1468,7 @@ def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s',
     if corr_type == 'auto':
         for fish in range(Nfish):
             if t_window is None:
-                fish_corr = calculate_autocorr(fish_value[:, fish], n_lags)
+                fish_corr = calculate_autocorr_with_nan(fish_value[:, fish], n_lags)
             else:
                 window_size = int(t_window * fps)
                 fish_corr = calculate_block_autocorr(fish_value[:, fish],  
@@ -1591,6 +1649,7 @@ def calculate_value_corr_oneSet_binned(dataset, keyName='speed_array_mm_s',
         
         # Skip if mean distance is NaN (all distances in window were bad)
         if np.isnan(mean_window_binValue):
+            print('All distances in window are bad.')
             continue
         
         # Find which distance bin this window belongs to
@@ -1601,11 +1660,10 @@ def calculate_value_corr_oneSet_binned(dataset, keyName='speed_array_mm_s',
             bin_crosscorr_lists[bin_idx].append(window_crosscorr)
             
             
-        # Calculate averages for each bin using nanmean
-        binned_crosscorr = np.zeros((n_bins, n_lags))
-        bin_counts = np.zeros(n_bins, dtype=int)
-    
-                
+    # Calculate averages for each bin using nanmean
+    binned_crosscorr = np.zeros((n_bins, n_lags))
+    bin_counts = np.zeros(n_bins, dtype=int)
+                    
     # Calculate averages for each bin
     for bin_idx in range(n_bins):
         if len(bin_crosscorr_lists[bin_idx]) > 0:
@@ -1614,8 +1672,10 @@ def calculate_value_corr_oneSet_binned(dataset, keyName='speed_array_mm_s',
             binned_crosscorr[bin_idx] = np.nanmean(bin_crosscorr_array, axis=0)
             bin_counts[bin_idx] = len(bin_crosscorr_lists[bin_idx])
         else:
+            print(f'No data for {bin_idx}')
             binned_crosscorr[bin_idx] = np.nan  # No data for this bin
 
+    return binned_crosscorr, bin_centers, t_lag, bin_counts
 
 def calculate_value_corr_all_binned(datasets, keyName='speed_array_mm_s',
                                     binKeyName = 'head_head_distance_mm',

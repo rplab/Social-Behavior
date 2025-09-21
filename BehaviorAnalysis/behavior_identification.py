@@ -1425,7 +1425,7 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
     make_2D_histogram(datasets, keyNames = ('head_head_distance_mm', 
                                             'relative_heading_angle'), 
                           keyIdx = (None, None), 
-                          dilate_minus1=True, bin_ranges=((0.0, 50.0), (0.0, 3.142)), 
+                          dilate_minus1=False, bin_ranges=((0.0, 50.0), (0.0, 3.142)), 
                           Nbins=(20,20),
                           titleStr = 'heading angle and hh distance', outputFileName = outputFileName)
 
@@ -1437,7 +1437,7 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
     make_2D_histogram(datasets, keyNames = ('head_head_distance_mm', 
                                             'relative_orientation'), 
                           keyIdx = (None, None), 
-                          dilate_minus1=True, bin_ranges=((0.0, 50.0), (0.0, 3.142)), 
+                          dilate_minus1=False, bin_ranges=((0.0, 50.0), (0.0, 3.142)), 
                           Nbins=(20,20),
                           titleStr = 'orientation angle and hh distance', outputFileName = outputFileName)
 
