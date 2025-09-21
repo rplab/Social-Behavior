@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Rghuveer Parthasarathy, Sept. 14, 2025
+Last modified by Raghuveer Parthasarathy, Sept. 20, 2025
 
 Description
 -----------
@@ -1287,7 +1287,56 @@ def calculate_block_crosscorr(data1, data2, n_lags, window_size):
         block_crosscorr /= (np.std(block1) * np.std(block2) * len(block1))
         block_crosscorrs.append(block_crosscorr)
     
-    return np.mean(block_crosscorrs, axis=0)
+    return np.nanmean(block_crosscorrs, axis=0)
+
+
+def calculate_crosscorr_with_nan(data1, data2, n_lags):
+    """
+    Calculate cross-correlation for data that may contain NaNs.
+    Only uses overlapping non-NaN data points for each lag.
+    """
+    # Find valid (non-NaN) indices
+    valid_mask = ~(np.isnan(data1) | np.isnan(data2))
+    
+    if np.sum(valid_mask) < 3:  # Need at least 3 valid points
+        return np.full(n_lags, np.nan)
+    
+    # Use only valid data points
+    clean_data1 = data1[valid_mask]
+    clean_data2 = data2[valid_mask]
+    
+    # Center the data
+    clean_data1_centered = clean_data1 - np.mean(clean_data1)
+    clean_data2_centered = clean_data2 - np.mean(clean_data2)
+    
+    # Calculate cross-correlation using scipy.signal.correlate
+    crosscorr = signal.correlate(clean_data1_centered, clean_data2_centered, mode='full')
+    
+    # Extract the desired range of lags
+    center_idx = len(crosscorr) // 2
+    start_idx = center_idx - n_lags // 2
+    end_idx = start_idx + n_lags
+    
+    # Handle edge cases
+    if start_idx < 0 or end_idx > len(crosscorr):
+        # Pad with NaNs if we don't have enough data for all requested lags
+        crosscorr_subset = np.full(n_lags, np.nan)
+        valid_start = max(0, start_idx)
+        valid_end = min(len(crosscorr), end_idx)
+        output_start = max(0, -start_idx)
+        output_end = output_start + (valid_end - valid_start)
+        crosscorr_subset[output_start:output_end] = crosscorr[valid_start:valid_end]
+    else:
+        crosscorr_subset = crosscorr[start_idx:end_idx]
+    
+    # Normalize
+    norm_factor = np.std(clean_data1) * np.std(clean_data2) * len(clean_data1)
+    if norm_factor > 0:
+        crosscorr_subset = crosscorr_subset / norm_factor
+    else:
+        crosscorr_subset = np.full(n_lags, np.nan)
+    
+    return crosscorr_subset
 
 def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s', 
                                 corr_type='auto', dilate_minus1=True, 
@@ -1297,9 +1346,7 @@ def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s',
     property in the given key (e.g. speed).
     Cross-correlation is valid only for Nfish==2 (verified)
     Ignore "bad tracking" frames. If a frame is in the bad tracking list,
-    replace the value with a Gaussian random number with the same mean, 
-    std. dev. as the frames not in the bad tracking list. This avoids
-    having to figure out how to deal with non-uniform time lags.
+    replace the value with NaN -- see Sept. 2025 notes.
     NOTE: replaces values for *both* fish if a frame is a bad-tracking frame, 
        even if one of the fish is properly tracked. (Simpler to implement, and
        also both fish's values may be unreliable)
@@ -1316,7 +1363,6 @@ def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s',
     t_max : max time to consider for autocorrelation, seconds.
     t_window : size of sliding window in seconds. 
         If None, don't use a sliding window.
-        Using a sliding window is strongly recommended!
     
     Returns
     -------
@@ -1351,17 +1397,15 @@ def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s',
     
     # Lowest frame number (should be 1)   
     idx_offset = min(dataset["frameArray"])
-    # Replace values from bad tracking frames with mean, std.
+
+    # Replace values from bad tracking frames with local mean, std.
     fish_value = value_array.copy()
+    
     for fish in range(Nfish):
-        good_values = [val for i, val in enumerate(fish_value[:,fish]) \
-                       if (i + idx_offset) not in bad_frames_set]
-        mean_value = np.mean(good_values)
-        std_value = np.std(good_values)
         for frame in bad_frames_set:
-            if frame < Nframes:
-                fish_value[frame - idx_offset, fish] = \
-                    np.random.normal(mean_value, std_value)
+            frame_idx = frame - idx_offset  # Convert to 0-based indexing
+            # Replace with NaN
+            fish_value[frame_idx, fish] = np.NaN
 
     if corr_type == 'auto':
         for fish in range(Nfish):
@@ -1375,7 +1419,7 @@ def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s',
             
     if corr_type == 'cross':
         if t_window is None:
-            corr = calculate_crosscorr(fish_value[:, 0], fish_value[:, 1], 
+            corr = calculate_crosscorr_with_nan(fish_value[:, 0], fish_value[:, 1], 
                                        n_lags)
         else:
             window_size = int(t_window * fps)
@@ -1448,6 +1492,7 @@ def calculate_value_corr_oneSet_binned(dataset, keyName='speed_array_mm_s',
     Calculate the cross-correlation (between fish) of a property such
     as speed (default) binned by another property (default head-to-head distance)
     for a single dataset.
+    Uses NaNs for bad frames and nanmean for averaging.
     
     Parameters
     ----------
@@ -1488,6 +1533,9 @@ def calculate_value_corr_oneSet_binned(dataset, keyName='speed_array_mm_s',
         bad_frames_set = set(dilate_badTrackFrames)
     else:
         bad_frames_set = set(badTrackFrames)
+
+    # Lowest frame number (should be 1)   
+    idx_offset = min(dataset["frameArray"])
     
     # Set up time parameters
     window_size = int(t_window * fps)
@@ -1499,10 +1547,9 @@ def calculate_value_corr_oneSet_binned(dataset, keyName='speed_array_mm_s',
     bin_centers = bins[:-1] + bin_width / 2
     n_bins = len(bin_centers)
     
-    # Initialize output arrays
-    binned_crosscorr = np.zeros((n_bins, n_lags))
-    bin_counts = np.zeros(n_bins, dtype=int)
-    bin_sums = np.zeros((n_bins, n_lags))
+    # Initialize lists to collect cross-correlations for each bin
+    # Each element will be a list of cross-correlation arrays for that bin
+    bin_crosscorr_lists = [[] for _ in range(n_bins)]
     
     # Process data in non-overlapping windows
     num_windows = Nframes // window_size
@@ -1512,7 +1559,7 @@ def calculate_value_corr_oneSet_binned(dataset, keyName='speed_array_mm_s',
         end = (window_idx + 1) * window_size
         
         # Check if this window has too many bad frames (skip if >50% are bad)
-        window_bad_frames = sum(1 for frame in range(start, end) if frame in bad_frames_set)
+        window_bad_frames = sum(1 for frame in range(start, end) if (frame + idx_offset) in bad_frames_set)
         if window_bad_frames / window_size > 0.5:
             print('\ncalculate_value_corr_oneSet_binned:')
             print('  Too many bad frames.')
@@ -1523,51 +1570,51 @@ def calculate_value_corr_oneSet_binned(dataset, keyName='speed_array_mm_s',
         window_data2 = value_array[start:end, 1].copy()
         window_binValue = bin_value_array[start:end].copy()
         
-        # Replace bad frames with random values based on good frame statistics
-        good_indices1 = [i for i in range(len(window_data1)) if (start + i) not in bad_frames_set]
-        good_indices2 = [i for i in range(len(window_data2)) if (start + i) not in bad_frames_set]
-        good_indices_dist = [i for i in range(len(window_binValue)) if (start + i) not in bad_frames_set]
-        
-        if len(good_indices1) < window_size // 4:  # Skip if too few good frames
-            print('calculate_value_corr_oneSet_binned:')
-            print('  Too few good frames.')
-            continue
-            
-        mean_val1 = np.mean(window_data1[good_indices1])
-        std_val1 = np.std(window_data1[good_indices1])
-        mean_val2 = np.mean(window_data2[good_indices2])
-        std_val2 = np.std(window_data2[good_indices2])
-        mean_dist = np.mean(window_binValue[good_indices_dist])
-        
-        # Replace bad frames
+        # Replace bad frames with NaN
         for i in range(len(window_data1)):
-            if (start + i) in bad_frames_set:
-                window_data1[i] = np.random.normal(mean_val1, std_val1)
-                window_data2[i] = np.random.normal(mean_val2, std_val2)
-                window_binValue[i] = mean_dist  # Use mean distance for bad frames
+            if (start + i + idx_offset) in bad_frames_set:
+                window_data1[i] = np.nan
+                window_data2[i] = np.nan
+                window_binValue[i] = np.nan
+                
+        # Check if we have enough good data points in this window
+        good_points = np.sum(~np.isnan(window_data1))
+        if good_points < window_size // 4:  # Skip if too few good frames
+            print(f'calculate_value_corr_oneSet_binned: Window {window_idx}: Too few good frames.')
+            continue
+                    
+        # Calculate cross-correlation for this window (handles NaNs internally)
+        window_crosscorr = calculate_crosscorr_with_nan(window_data1, window_data2, n_lags)
         
-        # Calculate cross-correlation for this window
-        window_crosscorr = calculate_crosscorr(window_data1, window_data2, n_lags)
+        # Calculate mean distance for this window (ignoring NaNs)
+        mean_window_binValue = np.nanmean(window_binValue)
         
-        # Calculate mean distance for this window
-        mean_window_binValue = np.mean(window_binValue)
+        # Skip if mean distance is NaN (all distances in window were bad)
+        if np.isnan(mean_window_binValue):
+            continue
         
         # Find which distance bin this window belongs to
         bin_idx = np.digitize(mean_window_binValue, bins) - 1
         
         # Make sure bin index is valid
         if 0 <= bin_idx < n_bins:
-            bin_sums[bin_idx] += window_crosscorr
-            bin_counts[bin_idx] += 1
+            bin_crosscorr_lists[bin_idx].append(window_crosscorr)
+            
+            
+        # Calculate averages for each bin using nanmean
+        binned_crosscorr = np.zeros((n_bins, n_lags))
+        bin_counts = np.zeros(n_bins, dtype=int)
+    
                 
     # Calculate averages for each bin
     for bin_idx in range(n_bins):
-        if bin_counts[bin_idx] > 0:
-            binned_crosscorr[bin_idx] = bin_sums[bin_idx] / bin_counts[bin_idx]
+        if len(bin_crosscorr_lists[bin_idx]) > 0:
+            # Stack all cross-correlations for this bin and take nanmean
+            bin_crosscorr_array = np.stack(bin_crosscorr_lists[bin_idx], axis=0)
+            binned_crosscorr[bin_idx] = np.nanmean(bin_crosscorr_array, axis=0)
+            bin_counts[bin_idx] = len(bin_crosscorr_lists[bin_idx])
         else:
             binned_crosscorr[bin_idx] = np.nan  # No data for this bin
-    
-    return binned_crosscorr, bin_centers, t_lag, bin_counts
 
 
 def calculate_value_corr_all_binned(datasets, keyName='speed_array_mm_s',
