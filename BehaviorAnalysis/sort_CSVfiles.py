@@ -227,7 +227,8 @@ def main():
         return
 
     # Get destination parent path
-    destination_parent_path = get_user_input("Enter destination CSV *Parent* folder path (or press Enter for dialog): ", 
+    destination_parent_path = \
+        get_user_input("Enter destination CSV *Parent* folder path (or press Enter for dialog): ", 
                                            is_file=False)
     if destination_parent_path is None:
         print("No destination parent path selected. Exiting.")

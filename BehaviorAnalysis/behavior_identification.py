@@ -1488,7 +1488,7 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
     speed_cc_all, t_lag = \
         calculate_value_corr_all(datasets, keyName = 'speed_array_mm_s',
                                  corr_type='cross', dilate_minus1 = True, 
-                                 t_max = 3.0, t_window = 10.0, fpstol = 1e-6)
+                                 t_max = 2.0, t_window = 5.0, fpstol = 1e-6)
     plot_function_allSets(speed_cc_all, t_lag, xlabelStr='time (s)', 
                           ylabelStr='Speed Cross-correlation', 
                           titleStr='Speed Cross-correlation', 
@@ -1504,7 +1504,8 @@ def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
         calculate_value_corr_all_binned(datasets, keyName='speed_array_mm_s', 
                                         binKeyName = 'closest_distance_mm', 
                                         bin_value_min = 0.0, bin_value_max = 50.0, 
-                                        bin_width=5.0, t_max=2.0, t_window=5.0)
+                                        bin_width=5.0, t_max=2.0, t_window=5.0,
+                                        dilate_minus1=True)
     plot_waterfall_binned_crosscorr(binned_crosscorr_all, bin_centers, t_lag,
                                     bin_counts_all=bin_counts_all, 
                                     xlabelStr='Time lag (s)',

@@ -171,8 +171,28 @@ def main():
     else:
         raise ValueError("Error: Bad Loading Option.")
         
+        
+
+    #%% Identify bad tracking
+            
+    # Identify bad-tracking frames for each dataset
+    # Call get_bad_headTrack_frames and get_bad_bodyTrack_frames
+    # for each datasets[j] and put results in a 
+    # dictionary that includes durations of events, etc.
+    datasets = get_badTracking_frames_dictionary(all_position_data, datasets, 
+                                                 params, CSVcolumns, tol=0.001)
+    
+    #%% Re-link all fish based on whole-body distance minimizing
+    all_position_data, datasets = relink_fish_ids_all_datasets(all_position_data,
+                                                     datasets, CSVcolumns)
+    # Re-calculate fish lengths 
+    for j in range(len(datasets)):
+        datasets[j]["fish_length_array_mm"] = \
+            get_fish_lengths(all_position_data[j], 
+                             datasets[j]["image_scale"], CSVcolumns)
+        
     #%% Time-shift one of the fish
-    time_shift_fish_idx = 0 # set to None to avoid shifting
+    time_shift_fish_idx = None # set to None to avoid shifting
     if time_shift_fish_idx is not None:
         print('\n\n***************************')
         caution_check = input(f'\nARE YOU SURE you want to time-shift fish {time_shift_fish_idx}? (y/n): ')
@@ -191,51 +211,19 @@ def main():
                     datasets[j]["fish_length_array_mm"] = \
                         get_fish_lengths(all_position_data[j], 
                                          datasets[j]["image_scale"], CSVcolumns)
+                # Re-calculate bad tracking frames
+                # This could be avoided by shifting these, but this is easier.
+                datasets = get_badTracking_frames_dictionary(all_position_data, 
+                                                             datasets, 
+                                                             params, CSVcolumns, 
+                                                             tol=0.001)
             else:
                 print('Invalid index; *NOT* flipping')
                 input('Press enter to indicate acknowlegement: ')
                 
-    #%% Time-reverse one of the fish
-    time_reverse_fish_idx = None # set to None to avoid flipping
-    if time_reverse_fish_idx is not None:
-        caution_check = input(f'ARE YOU SURE you want to time-flip fish {time_reverse_fish_idx}? (y/n): ')
-        if caution_check=='y':
-            valid_idx = (np.isin(time_reverse_fish_idx, np.arange(0, Nfish))) and \
-                        (type(time_reverse_fish_idx)==int)
-            if valid_idx==True:
-                print(f'\n\n  ** Time-flipping fish {time_reverse_fish_idx}**')
-                print('\n\n  ** Keeping the first two columns unchanged.** \n\n')
-                for j in range(len(datasets)):
-                    all_position_data[j][:,2:,time_reverse_fish_idx] = \
-                        np.flip(all_position_data[j][:,2:,time_reverse_fish_idx], axis=0)
-            else:
-                print('Invalid index; *NOT* flipping')
-                input('Press enter to indicate acknowlegement: ')
 
-    #%% Analysis: basic characterizations, identify bad tracking
     
-    # For each dataset, get simple coordinate characterizations
-    # (polar coordinates, radial alignment) 
-    datasets = get_coord_characterizations(all_position_data, 
-                                           datasets, CSVcolumns, expt_config, params)
-        
-    # Identify bad-tracking frames for each dataset
-    # Call get_bad_headTrack_frames and get_bad_bodyTrack_frames
-    # for each datasets[j] and put results in a 
-    # dictionary that includes durations of events, etc.
-    datasets = get_badTracking_frames_dictionary(all_position_data, datasets, 
-                                                 params, CSVcolumns, tol=0.001)
-    
-    # Re-link all fish based on whole-body distance minimizing
-    all_position_data, datasets = relink_fish_ids_all_datasets(all_position_data,
-                                                     datasets, CSVcolumns)
-    # Re-calculate fish lengths 
-    for j in range(len(datasets)):
-        datasets[j]["fish_length_array_mm"] = \
-            get_fish_lengths(all_position_data[j], 
-                             datasets[j]["image_scale"], CSVcolumns)
-    
-    # Calculate statistics of continuous spans of good tracking
+    #%% Calculate statistics of continuous spans of good tracking
     for j in range(len(datasets)):
         datasets[j]["good_tracking_spans"] = calc_good_tracking_spans(datasets[j], 
                                                                       verbose = False)
@@ -246,6 +234,13 @@ def main():
     datasets = get_edgeRejection_frames_dictionary(datasets, params, 
                                           expt_config['arena_radius_mm'])
     
+    #%% Analysis: Basic characterizations
+    
+    # For each dataset, get simple coordinate characterizations
+    # (polar coordinates, radial alignment) 
+    datasets = get_coord_characterizations(all_position_data, 
+                                           datasets, CSVcolumns, expt_config, params)
+        
     #%% Analysis: single fish characterizations
 
     # For each dataset, characterizations that involve single fish

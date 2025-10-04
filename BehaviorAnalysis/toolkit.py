@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Raghuveer Parthasarathy, Sept. 20, 2025
+Last modified by Raghuveer Parthasarathy, Sept. 25, 2025
 
 Description
 -----------
@@ -31,7 +31,6 @@ from scipy.optimize import linear_sum_assignment
 from sklearn.mixture import GaussianMixture
 import tkinter as tk
 from tkinter import ttk
-from scipy import signal
 import warnings
 
 
@@ -324,7 +323,6 @@ def get_badTracking_frames_dictionary(all_position_data, datasets, params, CSVco
                                                                      (), 
                                                                      behavior_name='Bad head track frames',
                                                                      Nframes=datasets[j]['Nframes'])
-        print('   Number of bad head tracking frames: ', len(datasets[j]["bad_headTrack_frames"]["raw_frames"]))
         bad_bodyTrack_frames = get_bad_bodyTrack_frames(all_position_data[j], 
                                                         datasets[j]["frameArray"], 
                                                         params, 
@@ -335,7 +333,10 @@ def get_badTracking_frames_dictionary(all_position_data, datasets, params, CSVco
         datasets[j]["bad_bodyTrack_frames"] = make_frames_dictionary(bad_bodyTrack_frames, (), 
                                                                      behavior_name='Bad track frames',
                                                                      Nframes=datasets[j]['Nframes'])
-        print('   Number of bad body tracking frames: ', len(datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
+        print('   Number of bad tracking frames.  Head: ', 
+              len(datasets[j]["bad_headTrack_frames"]["raw_frames"]),
+              '.  Body: ', 
+              len(datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
     
     return datasets
 
@@ -409,7 +410,6 @@ def get_bad_bodyTrack_frames(position_data, frameArray, params, body_column_x_st
     # Flag frames with either zeros or large 1-2 distances.
     badidx = np.where(np.logical_or(bad_bodyTrack, bad_12_distance))
     bad_bodyTrack_frames = np.array(frameArray[badidx])
-    # print(bad_bodyTrack_frames)
     
     return bad_bodyTrack_frames
     
@@ -674,7 +674,6 @@ def relink_fish_ids(position_data, dataset, CSVcolumns,
     return new_position_data, heading_angles
 
 
-
 def relink_fish_ids_all_datasets(all_position_data, datasets, CSVcolumns,
                                  verbose = False):
     """
@@ -936,6 +935,12 @@ def repair_double_length_fish(all_position_data, datasets, CSVcolumns,
                                 (CSVcolumns["body_column_x_start"]+Npositions),1] = x1_new
             position_data_repaired[frameIdx,CSVcolumns["body_column_y_start"] :
                                 (CSVcolumns["body_column_y_start"]+Npositions),1] = y1_new
+            
+            # And the head positions (redundant in the arrays)
+            position_data_repaired[frameIdx,CSVcolumns["head_column_x"],0] = x0_new[0]
+            position_data_repaired[frameIdx,CSVcolumns["head_column_y"],0] = y0_new[0]
+            position_data_repaired[frameIdx,CSVcolumns["head_column_x"],1] = x1_new[0]
+            position_data_repaired[frameIdx,CSVcolumns["head_column_y"],1] = y1_new[0]
             
         all_position_data[j] = position_data_repaired
         datasets[j] = dataset_repaired
@@ -1223,77 +1228,24 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
     if outputFileName != None:
         plt.savefig(outputFileName, bbox_inches='tight')
     
-def calculate_autocorr(data, n_lags):
+
+def calculate_autocorr_NaN_zero(data, n_lags):
     """
     Calculate autocorrelation for the entire dataset.
+    Replaces NaNs with zeros.
     Helper function for calculate_value_autocorr_oneSet()
     """
-    data_centered = data - np.mean(data)
-    autocorr = signal.correlate(data_centered, data_centered, mode='full')
+    data_centered = data - np.nanmean(data)
+    clean_data = np.nan_to_num(data_centered, nan=0)
+    autocorr = np.correlate(clean_data, clean_data, 
+                            mode='full')
     autocorr = autocorr[len(autocorr)//2:]
     autocorr /= (np.var(data) * len(data))
     return autocorr[:n_lags]
 
-def calculate_autocorr_with_nan(data, n_lags):
-    """
-    Calculate autocorrelation for data that may contain NaNs.
-    Only uses valid (non-NaN) data points for calculation.
-    
-    Parameters
-    ----------
-    data : 1D numpy array
-        Time series data that may contain NaN values
-    n_lags : int
-        Number of lag values to return (including lag 0)
-    
-    Returns
-    -------
-    autocorr : 1D numpy array of length n_lags
-        Autocorrelation values for lags 0 to n_lags-1
-        Returns NaN values if insufficient valid data
-    """
-    # Find valid (non-NaN) indices
-    valid_mask = ~np.isnan(data)
-    
-    if np.sum(valid_mask) < 3:  # Need at least 3 valid points
-        return np.full(n_lags, np.nan)
-    
-    # Use only valid data points
-    clean_data = data[valid_mask]
-    
-    # Check if we have enough data for the requested number of lags
-    if len(clean_data) < n_lags:
-        # Return what we can calculate, pad rest with NaN
-        max_possible_lags = len(clean_data)
-        autocorr_result = np.full(n_lags, np.nan)
-    else:
-        max_possible_lags = n_lags
-        autocorr_result = np.zeros(n_lags)
-    
-    # Center the data
-    clean_data_centered = clean_data - np.mean(clean_data)
-    
-    # Calculate autocorrelation using scipy.signal.correlate
-    autocorr_full = signal.correlate(clean_data_centered, clean_data_centered, mode='full')
-    
-    # Take only the positive lags (including lag 0)
-    autocorr_positive = autocorr_full[len(autocorr_full)//2:]
-    
-    # Normalize by variance and length
-    var_data = np.var(clean_data)
-    if var_data > 0:
-        autocorr_positive = autocorr_positive / (var_data * len(clean_data))
-        
-        # Fill in the result array with calculated values
-        autocorr_result[:max_possible_lags] = autocorr_positive[:max_possible_lags]
-    else:
-        # If variance is 0 (constant data), autocorr should be 1 at lag 0, 0 elsewhere
-        autocorr_result[0] = 1.0
-        # Rest remain NaN or 0 as initialized
-    
-    return autocorr_result
 
-def calculate_block_autocorr(data, n_lags, window_size):
+
+def calculate_block_autocorr_NaN_zero(data, n_lags, window_size):
     """
     Calculate autocorrelation using non-overlapping blocks.
     Helper function for calculate_value_autocorr_oneSet()
@@ -1305,8 +1257,9 @@ def calculate_block_autocorr(data, n_lags, window_size):
         start = i * window_size
         end = (i + 1) * window_size
         block = data[start:end]
-        block_centered = block - np.mean(block)
-        block_autocorr = signal.correlate(block_centered, block_centered, 
+        block_centered = block - np.nanmean(block)
+        clean_data = np.nan_to_num(block_centered, nan=0)
+        block_autocorr = np.correlate(clean_data, clean_data, 
                                           mode='full')
         block_autocorr = block_autocorr[len(block_autocorr)//2:]
         block_autocorr /= (np.var(block) * len(block))
@@ -1318,17 +1271,11 @@ def calculate_block_autocorr(data, n_lags, window_size):
     return avg_autocorr
 
 
-def calculate_crosscorr(data1, data2, n_lags):
-    """Calculate cross-correlation for the entire dataset."""
-    data1_centered = data1 - np.mean(data1)
-    data2_centered = data2 - np.mean(data2)
-    crosscorr = signal.correlate(data1_centered, data2_centered, mode='full')
-    crosscorr = crosscorr[len(crosscorr)//2-n_lags//2:len(crosscorr)//2+n_lags//2+1]
-    crosscorr /= (np.std(data1) * np.std(data2) * len(data1))
-    return crosscorr
-
-def calculate_block_crosscorr(data1, data2, n_lags, window_size):
-    """Calculate cross-correlation using non-overlapping blocks."""
+def calculate_block_crosscorr_NaN_zero(data1, data2, n_lags, window_size):
+    """
+    Calculate cross-correlation using non-overlapping blocks.
+    Replaces NaNs with zeros.
+    """
     num_blocks = len(data1) // window_size
     block_crosscorrs = []
     
@@ -1337,38 +1284,40 @@ def calculate_block_crosscorr(data1, data2, n_lags, window_size):
         end = (i + 1) * window_size
         block1 = data1[start:end]
         block2 = data2[start:end]
-        block1_centered = block1 - np.mean(block1)
-        block2_centered = block2 - np.mean(block2)
-        block_crosscorr = signal.correlate(block1_centered, block2_centered, 
-                                           mode='full', method='direct')
+        block1_centered = block1 - np.nanmean(block1)
+        block2_centered = block2 - np.nanmean(block2)
+
+        # Use only valid data points; NaNs to zero, to not count for sum
+        clean_data1 = np.nan_to_num(block1_centered, nan=0)
+        clean_data2 = np.nan_to_num(block2_centered, nan=0)
+
+        block_crosscorr = np.correlate(clean_data1, clean_data2, 
+                                           mode='full')
         block_crosscorr = block_crosscorr[len(block_crosscorr)//2-n_lags//2:len(block_crosscorr)//2+n_lags//2+1]
-        block_crosscorr /= (np.std(block1) * np.std(block2) * len(block1))
+        block_crosscorr /= (np.nanstd(block1) * np.nanstd(block2) * len(block1))
         block_crosscorrs.append(block_crosscorr)
     
     return np.nanmean(block_crosscorrs, axis=0)
 
 
-def calculate_crosscorr_with_nan(data1, data2, n_lags):
+def calculate_crosscorr_NaN_zero(data1, data2, n_lags):
     """
     Calculate cross-correlation for data that may contain NaNs.
+    Replaces NaNs with zeros.
     Only uses overlapping non-NaN data points for each lag.
     """
-    # Find valid (non-NaN) indices
-    valid_mask = ~(np.isnan(data1) | np.isnan(data2))
-    
-    if np.sum(valid_mask) < 3:  # Need at least 3 valid points
-        return np.full(n_lags, np.nan)
-    
-    # Use only valid data points
-    clean_data1 = data1[valid_mask]
-    clean_data2 = data2[valid_mask]
     
     # Center the data
-    clean_data1_centered = clean_data1 - np.mean(clean_data1)
-    clean_data2_centered = clean_data2 - np.mean(clean_data2)
+    data1_centered = data1 - np.nanmean(data1)
+    data2_centered = data2 - np.nanmean(data2)
     
-    # Calculate cross-correlation using scipy.signal.correlate
-    crosscorr = signal.correlate(clean_data1_centered, clean_data2_centered, mode='full')
+    # Use only valid data points; NaNs to zero, to not count for sum
+    clean_data1 = np.nan_to_num(data1_centered, nan=0)
+    clean_data2 = np.nan_to_num(data2_centered, nan=0)
+    
+    # Calculate cross-correlation 
+    crosscorr = np.correlate(clean_data1, clean_data2, 
+                                 mode='full')
     
     # Extract the desired range of lags
     center_idx = len(crosscorr) // 2
@@ -1388,7 +1337,7 @@ def calculate_crosscorr_with_nan(data1, data2, n_lags):
         crosscorr_subset = crosscorr[start_idx:end_idx]
     
     # Normalize
-    norm_factor = np.std(clean_data1) * np.std(clean_data2) * len(clean_data1)
+    norm_factor = np.nanstd(data1_centered) * np.nanstd(data2_centered) * len(clean_data1)
     if norm_factor > 0:
         crosscorr_subset = crosscorr_subset / norm_factor
     else:
@@ -1396,9 +1345,12 @@ def calculate_crosscorr_with_nan(data1, data2, n_lags):
     
     return crosscorr_subset
 
+
+
+
 def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s', 
                                 corr_type='auto', dilate_minus1=True, 
-                                t_max=10, t_window=None):
+                                t_max=2.0, t_window=5.0):
     """
     For a *single* dataset, calculate the auto or cross-correlation of the numerical
     property in the given key (e.g. speed).
@@ -1468,20 +1420,20 @@ def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s',
     if corr_type == 'auto':
         for fish in range(Nfish):
             if t_window is None:
-                fish_corr = calculate_autocorr_with_nan(fish_value[:, fish], n_lags)
+                fish_corr = calculate_autocorr_NaN_zero(fish_value[:, fish], n_lags)
             else:
                 window_size = int(t_window * fps)
-                fish_corr = calculate_block_autocorr(fish_value[:, fish],  
+                fish_corr = calculate_block_autocorr_NaN_zero(fish_value[:, fish],  
                                                      n_lags, window_size)
             corr[:, fish] = fish_corr
             
     if corr_type == 'cross':
         if t_window is None:
-            corr = calculate_crosscorr_with_nan(fish_value[:, 0], fish_value[:, 1], 
+            corr = calculate_crosscorr_NaN_zero(fish_value[:, 0], fish_value[:, 1], 
                                        n_lags)
         else:
             window_size = int(t_window * fps)
-            corr = calculate_block_crosscorr(fish_value[:, 0], 
+            corr = calculate_block_crosscorr_NaN_zero(fish_value[:, 0], 
                                              fish_value[:, 1], n_lags, 
                                              window_size)
     
@@ -1490,7 +1442,7 @@ def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s',
 
 def calculate_value_corr_all(datasets, keyName = 'speed_array_mm_s',
                              corr_type='auto', dilate_minus1 = True, 
-                             t_max = 10, t_window = None, fpstol = 1e-6):
+                             t_max = 2.0, t_window = 5.0, fpstol = 1e-6):
     """
     Loop through each dataset, call calculate_value_corr_oneSet() to
     calculate the auto- or cross-corrlation of the numerical
@@ -1545,7 +1497,7 @@ def calculate_value_corr_oneSet_binned(dataset, keyName='speed_array_mm_s',
                                        binKeyName = 'head_head_distance_mm',
                                        bin_value_min=0, bin_value_max=50.0, 
                                        bin_width=5.0, t_max=2.0, 
-                                       t_window=10.0, dilate_minus1=True):
+                                       t_window=5.0, dilate_minus1=True):
     """
     Calculate the cross-correlation (between fish) of a property such
     as speed (default) binned by another property (default head-to-head distance)
@@ -1634,7 +1586,7 @@ def calculate_value_corr_oneSet_binned(dataset, keyName='speed_array_mm_s',
                 window_data1[i] = np.nan
                 window_data2[i] = np.nan
                 window_binValue[i] = np.nan
-                
+        
         # Check if we have enough good data points in this window
         good_points = np.sum(~np.isnan(window_data1))
         if good_points < window_size // 4:  # Skip if too few good frames
@@ -1642,8 +1594,8 @@ def calculate_value_corr_oneSet_binned(dataset, keyName='speed_array_mm_s',
             continue
                     
         # Calculate cross-correlation for this window (handles NaNs internally)
-        window_crosscorr = calculate_crosscorr_with_nan(window_data1, window_data2, n_lags)
-        
+        window_crosscorr = calculate_crosscorr_NaN_zero(window_data1, window_data2, n_lags)
+
         # Calculate mean distance for this window (ignoring NaNs)
         mean_window_binValue = np.nanmean(window_binValue)
         
@@ -1681,7 +1633,7 @@ def calculate_value_corr_all_binned(datasets, keyName='speed_array_mm_s',
                                     binKeyName = 'head_head_distance_mm',
                                     bin_value_min=0, bin_value_max=50.0, 
                                     bin_width=5.0, t_max=2.0, 
-                                    t_window=10.0, dilate_minus1=True, fpstol=1e-6):
+                                    t_window=5.0, dilate_minus1=True, fpstol=1e-6):
     """
     Calculate distance-binned cross-correlations for all datasets.
     
@@ -1789,17 +1741,25 @@ def plot_waterfall_binned_crosscorr(binned_crosscorr_all, bin_centers, t_lag,
             weights = np.ones(n_bins)
             
         for bin_idx in range(n_bins):
-            if not np.isnan(binned_crosscorr[bin_idx, 0]) and weights[bin_idx] > 0:
-                total_crosscorr[bin_idx] += binned_crosscorr[bin_idx] * weights[bin_idx]
+            # Check if this bin has any valid (non-NaN) data
+            if not np.all(np.isnan(binned_crosscorr[bin_idx])) and weights[bin_idx] > 0:
+                # Use nansum for proper NaN handling in averaging
+                valid_mask = ~np.isnan(binned_crosscorr[bin_idx])
+                total_crosscorr[bin_idx] += np.where(valid_mask, 
+                                                   binned_crosscorr[bin_idx] * weights[bin_idx], 
+                                                   0)
+                # Only count weights where we have valid data
                 total_weights[bin_idx] += weights[bin_idx]
     
-    # Calculate final averages
-    avg_crosscorr = np.zeros((n_bins, n_time_lags))
+    # Calculate final averages with proper NaN handling
+    avg_crosscorr = np.full((n_bins, n_time_lags), np.nan)
     for bin_idx in range(n_bins):
         if total_weights[bin_idx] > 0:
             avg_crosscorr[bin_idx] = total_crosscorr[bin_idx] / total_weights[bin_idx]
-        else:
-            avg_crosscorr[bin_idx] = np.nan
+            # Set values back to NaN where all original data was NaN
+            all_nan_mask = np.all([np.isnan(binned_crosscorr_all[i][bin_idx]) 
+                                 for i in range(n_datasets)], axis=0)
+            avg_crosscorr[bin_idx][all_nan_mask] = np.nan
     
     # Debug: Print information about the data
     print(f"Bin centers: {bin_centers[:5]}...{bin_centers[-5:]}")
@@ -1814,30 +1774,38 @@ def plot_waterfall_binned_crosscorr(binned_crosscorr_all, bin_centers, t_lag,
     valid_bin_indices = np.where(valid_bins)[0]
     n_valid_bins = len(valid_bin_indices)
     
-    
     if n_valid_bins > 0:
-        # Calculate constant offset between traces based on correlation data range
-        data_range = np.nanmax(avg_crosscorr) - np.nanmin(avg_crosscorr)
+        # Calculate constant offset between traces based on correlation data range (ignoring NaNs)
+        finite_data = avg_crosscorr[np.isfinite(avg_crosscorr)]
+        if len(finite_data) > 0:
+            data_range = np.max(finite_data) - np.min(finite_data)
+        else:
+            data_range = 1.0  # fallback
         offset = offset_scale * data_range
         
         colors = plt.cm.viridis(np.linspace(0, 1, n_valid_bins))
         
         traces_plotted = 0
         for i, bin_idx in enumerate(valid_bin_indices):
-            # Use constant offset
             y_values = avg_crosscorr[bin_idx] + i * offset
-            ax.plot(t_lag, y_values, color=colors[i], linewidth=1.5,
-                    label=f'{bin_centers[bin_idx]:.1f} ' + unit_string)
             
-            # Add text label showing distance bin center
-            # Place text at the right edge of the plot
-            text_x = t_lag[-1] * 0.95  # 95% along the x-axis
-            text_y = np.nanmean(y_values)  # Use mean y-value of the trace
-            ax.text(text_x, text_y, f'{bin_centers[bin_idx]:.1f}' + unit_string, 
-                    fontsize=10, verticalalignment='center', 
-                    bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.8))
-            
-            traces_plotted += 1
+            # Only plot non-NaN portions of the data
+            valid_mask = ~np.isnan(y_values)
+            if np.any(valid_mask):
+                ax.plot(t_lag[valid_mask], y_values[valid_mask], 
+                       color=colors[i], linewidth=1.5,
+                       label=f'{bin_centers[bin_idx]:.1f} ' + unit_string)
+                
+                # Add text label showing distance bin center
+                # Use the mean of valid y-values for text positioning
+                valid_y = y_values[valid_mask]
+                text_x = t_lag[-1] * 0.95  # 95% along the x-axis
+                text_y = np.mean(valid_y)  # Use mean y-value of valid data
+                ax.text(text_x, text_y, f'{bin_centers[bin_idx]:.1f}' + unit_string, 
+                       fontsize=10, verticalalignment='center', 
+                       bbox=dict(boxstyle='round,pad=0.2', facecolor='white', alpha=0.8))
+                
+                traces_plotted += 1
         
         ax.set_xlabel(xlabelStr, fontsize=14)
         ax.set_ylabel('Cross-correlation + offset', fontsize=14)
@@ -1846,12 +1814,15 @@ def plot_waterfall_binned_crosscorr(binned_crosscorr_all, bin_centers, t_lag,
         
         # Add legend for a subset of traces to avoid clutter
         if traces_plotted <= 10:
-            ax.legend(fontsize=10, loc='upper left')  # Move legend to avoid text labels
+            ax.legend(fontsize=10, loc='upper left')  
         else:
             # Show only every nth trace in legend
             step = max(1, traces_plotted // 8)
             handles, labels = ax.get_legend_handles_labels()
             ax.legend(handles[::step], labels[::step], fontsize=10, loc='upper left')
+    else:
+        ax.text(0.5, 0.5, 'No valid data to plot', transform=ax.transAxes, 
+               ha='center', va='center', fontsize=16)
     
     plt.tight_layout()
     
@@ -1861,32 +1832,30 @@ def plot_waterfall_binned_crosscorr(binned_crosscorr_all, bin_centers, t_lag,
     plt.show()
 
     # Print summary statistics
-    valid_bins = ~np.all(np.isnan(avg_crosscorr), axis=1)  # Bins that have at least some valid data
+    valid_bins = ~np.all(np.isnan(avg_crosscorr), axis=1)  
     print('\nSummary:')
     print(f'Number of datasets: {n_datasets}')
     print(f'Bins with data: {np.sum(valid_bins)}/{len(bin_centers)}')
     print(f'Traces plotted in waterfall: {traces_plotted}')
 
-
     if plot_heatmap:
-        # Left panel: 2D color plot
+        # Heatmap plot with proper NaN handling
         fig, ax2 = plt.subplots(figsize=(8, 8))
         
-        if vmin is None or vmax is None:
-            valid_data = avg_crosscorr[~np.isnan(avg_crosscorr)]
-            if len(valid_data) > 0:
-                data_range = np.percentile(valid_data, [5, 95])
+        # Calculate vmin/vmax from finite (non-NaN) data only
+        finite_data = avg_crosscorr[np.isfinite(avg_crosscorr)]
+        if len(finite_data) > 0:
+            if vmin is None or vmax is None:
+                data_range = np.percentile(finite_data, [5, 95])
                 vmin = vmin or data_range[0]
                 vmax = vmax or data_range[1]
-            else:
-                vmin, vmax = -1, 1
-    
-        if len(valid_data) > 0:
-            print(f'Cross-correlation range: {np.min(valid_data):.3f} to {np.max(valid_data):.3f}')
+            print(f'Cross-correlation range: {np.min(finite_data):.3f} to {np.max(finite_data):.3f}')
+        else:
+            vmin, vmax = -1, 1
+            print('No finite data found for heatmap')
         
-        # Create a copy of the data where NaN values are set to a neutral value for display
-        display_data = avg_crosscorr.copy()
-        display_data[np.isnan(display_data)] = 0  # Set NaN to 0 for visualization
+        # Create masked array for proper NaN handling in imshow
+        masked_data = np.ma.masked_where(np.isnan(avg_crosscorr), avg_crosscorr)
         
         # Calculate bin edges for proper extent
         bin_width = bin_centers[1] - bin_centers[0] if len(bin_centers) > 1 else 5
@@ -1895,7 +1864,7 @@ def plot_waterfall_binned_crosscorr(binned_crosscorr_all, bin_centers, t_lag,
         
         print(f"Extent: [{t_lag[0]}, {t_lag[-1]}, {bin_edges_min}, {bin_edges_max}]")
         
-        im = ax2.imshow(display_data, aspect='auto', origin='lower', 
+        im = ax2.imshow(masked_data, aspect='auto', origin='lower', 
                         extent=[t_lag[0], t_lag[-1], bin_edges_min, bin_edges_max],
                         cmap=colormap, vmin=vmin, vmax=vmax)
         
@@ -1914,7 +1883,6 @@ def plot_waterfall_binned_crosscorr(binned_crosscorr_all, bin_centers, t_lag,
             plt.savefig('heatmap_' + outputFileName, bbox_inches='tight')
         
         plt.show()
-    
     
 
 

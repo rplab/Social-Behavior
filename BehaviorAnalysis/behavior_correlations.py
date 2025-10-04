@@ -808,7 +808,7 @@ def plot_behaviorCorrelation(behav_corr_dict, binCenters,
                              corrAB + corrABunc, color='mediumvioletred', alpha=0.3)
         plt.xlabel(r'$\Delta$t (s)', fontsize=20)
         plt.ylabel('Probability', fontsize=20)
-        plt.title(f'{behaviorA} then {behaviorB}; {titleString}', fontsize=22)
+        plt.title(f'{titleString}: {behaviorA} then {behaviorB}', fontsize=22)
         plt.xticks(fontsize=14)
         plt.yticks(fontsize=14)
     
@@ -834,7 +834,7 @@ def plot_behaviorCorrelation(behav_corr_dict, binCenters,
                              corrAB + corrABunc, color=cmap[j,:], alpha=0.3)
     plt.xlabel(r'$\Delta$t (s)', fontsize=20)
     plt.ylabel('Probability', fontsize=20)
-    plt.title(f'{behaviorA} then each behavior; {titleString}', fontsize=22)
+    plt.title(f'{titleString}: {behaviorA} then each behavior', fontsize=22)
     plt.xticks(fontsize=14)
     plt.yticks(fontsize=14)
     plt.legend(fontsize=14)
