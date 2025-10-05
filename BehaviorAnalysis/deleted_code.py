@@ -13,7 +13,317 @@ Misc. deleted code
 """
 
 
+redundant -- was in toolkit.py
 
+def get_values_subset(values_all, keyIdx):
+    """
+    Extract subset of a values array, e.g. datasets[j][constraintKey]
+    to use later, e.g. as a constraint array, specifying which column to
+    use, or min or max values.
+
+    Parameters
+    ----------
+    values_all : numpy array, probably from datasets[j][constraintKey]
+                 if using this to extract an array to use as a constraint,
+                 of shape (N,) or shape (N,1), or (N, Nfish)
+                 If shape[1]=1, output values_all_constrained = values_all
+                 
+    keyIdx : either an integer or a string, probably from keyIdx or constraintIdx.
+          If keyIdx is:
+             None: ignore idx; don't apply constraint; return values_all
+             an integer: the column of values_all to use as the 
+                constraint array
+             a string, use the operation "min", "max", or "mean", 
+                along axis==1 (e.g. for fastest fish), or or "all" to use 
+                "all" (same as idx==None)
+          if None, ignore idx; don't apply constraint
+
+    Returns
+    -------
+    values_all_constrained : numpy array, the subset of values_all,
+                or min or max, etc. Same axis=0 shape as values_all
+
+    """
+    if values_all.ndim == 1:
+        # Only one array, so output = input; ignore idx
+        values_all_constrained = values_all
+    elif keyIdx is None:
+        # No constraint
+        values_all_constrained = values_all    
+    else: 
+        if type(keyIdx)==str:
+            if keyIdx == 'min':
+                values_all_constrained = np.min(values_all, axis=1)
+            elif keyIdx == 'max':
+                values_all_constrained = np.max(values_all, axis=1)
+            elif keyIdx == 'mean':
+                values_all_constrained = np.mean(values_all, axis=1)
+            elif keyIdx == 'all':
+                values_all_constrained = values_all
+            else:
+                raise ValueError(f"Invalid index string {keyIdx}")
+        else:
+            if (keyIdx+1) > values_all.shape[1]:
+                raise ValueError(f"subset index {keyIdx} is too large for the size" + 
+                                 f"of the array, {values_all.shape[1]}")
+            values_all_constrained =  values_all[:,keyIdx]
+
+    return values_all_constrained
+
+
+def calculate_autocorr(data, n_lags):
+    """
+    Calculate autocorrelation for the entire dataset.
+    Helper function for calculate_value_autocorr_oneSet()
+    """
+    data_centered = data - np.mean(data)
+    autocorr = np.correlate(data_centered, data_centered, 
+                            mode='full')
+    autocorr = autocorr[len(autocorr)//2:]
+    autocorr /= (np.var(data) * len(data))
+    return autocorr[:n_lags]
+
+def calculate_autocorr_with_nan(data, n_lags):
+    """
+    Calculate autocorrelation for data that may contain NaNs.
+    Only uses valid (non-NaN) data points for calculation.
+    
+    Parameters
+    ----------
+    data : 1D numpy array
+        Time series data that may contain NaN values
+    n_lags : int
+        Number of lag values to return (including lag 0)
+    
+    Returns
+    -------
+    autocorr : 1D numpy array of length n_lags
+        Autocorrelation values for lags 0 to n_lags-1
+        Returns NaN values if insufficient valid data
+    """
+    # Find valid (non-NaN) indices
+    valid_mask = ~np.isnan(data)
+    
+    if np.sum(valid_mask) < 3:  # Need at least 3 valid points
+        return np.full(n_lags, np.nan)
+    
+    # Use only valid data points
+    clean_data = data[valid_mask]
+    
+    # Check if we have enough data for the requested number of lags
+    if len(clean_data) < n_lags:
+        # Return what we can calculate, pad rest with NaN
+        max_possible_lags = len(clean_data)
+        autocorr_result = np.full(n_lags, np.nan)
+    else:
+        max_possible_lags = n_lags
+        autocorr_result = np.zeros(n_lags)
+    
+    # Center the data
+    clean_data_centered = clean_data - np.mean(clean_data)
+    
+    # Calculate autocorrelation 
+    autocorr_full = np.correlate(clean_data_centered, clean_data_centered, 
+                                 mode='full')
+    
+    # Take only the positive lags (including lag 0)
+    autocorr_positive = autocorr_full[len(autocorr_full)//2:]
+    
+    # Normalize by variance and length
+    var_data = np.var(clean_data)
+    if var_data > 0:
+        autocorr_positive = autocorr_positive / (var_data * len(clean_data))
+        
+        # Fill in the result array with calculated values
+        autocorr_result[:max_possible_lags] = autocorr_positive[:max_possible_lags]
+    else:
+        # If variance is 0 (constant data), autocorr should be 1 at lag 0, 0 elsewhere
+        autocorr_result[0] = 1.0
+        # Rest remain NaN or 0 as initialized
+    
+    return autocorr_result
+
+def calculate_crosscorr(data1, data2, n_lags):
+    """Calculate cross-correlation for the entire dataset."""
+    data1_centered = data1 - np.nanmean(data1)
+    data2_centered = data2 - np.nanmean(data2)
+    crosscorr = np.correlate(data1_centered, data2_centered, mode='full')
+    crosscorr = crosscorr[len(crosscorr)//2-n_lags//2:len(crosscorr)//2+n_lags//2+1]
+    crosscorr /= (np.nanstd(data1) * np.nanstd(data2) * len(data1))
+    return crosscorr
+
+
+        # window_crosscorr = calculate_block_crosscorr(window_data1, window_data2, n_lags, window_size)
+        # Calculate cross-correlation for this window using block processing with NaN handling
+        # Use a smaller sub-window size for block processing (e.g., 1-2 seconds)
+        #sub_window_size = max(int(t_max * fps), window_size // 4)  # At least 1 sec or 1/4 of main window
+        #window_crosscorr = calculate_block_crosscorr_with_nan(window_data1, 
+        #                                                      window_data2, 
+        #                                                      n_lags, 
+        #                                                      sub_window_size)
+
+
+def calculate_block_crosscorr_with_nan(data1, data2, n_lags, window_size):
+    """
+    Calculate cross-correlation using non-overlapping blocks, with NaN handling.
+    This mirrors calculate_block_crosscorr() but handles NaN values properly.
+    """
+    # Debug: Check input data
+    total_valid = np.sum(~(np.isnan(data1) | np.isnan(data2)))
+    print(f"Debug: Input length={len(data1)}, valid points={total_valid}, window_size={window_size}")
+    
+    # If window_size is too large or we have very few valid points, process as single block
+    if window_size >= len(data1) or total_valid < 10:
+        print("Debug: Using single block processing")
+        return calculate_crosscorr_with_nan(data1, data2, n_lags)
+    
+    num_blocks = len(data1) // window_size
+    block_crosscorrs = []
+    
+    for i in range(num_blocks):
+        start = i * window_size
+        end = (i + 1) * window_size
+        block1 = data1[start:end]
+        block2 = data2[start:end]
+        
+        # Skip blocks with too many NaNs (be more lenient)
+        valid_mask = ~(np.isnan(block1) | np.isnan(block2))
+        valid_count = np.sum(valid_mask)
+        
+        print(f"Debug: Block {i}, valid points: {valid_count}/{window_size}")
+        
+        if valid_count < max(3, window_size // 10):  # Need at least 3 points or 10% of window
+            print(f"Debug: Skipping block {i} - insufficient valid data")
+            continue
+            
+        # Use only valid data points for this block
+        clean_block1 = block1[valid_mask]
+        clean_block2 = block2[valid_mask]
+            
+        # Center the data
+        block1_centered = clean_block1 - np.mean(clean_block1)
+        block2_centered = clean_block2 - np.mean(clean_block2)
+        
+        # Check for zero variance
+        if np.std(clean_block1) == 0 or np.std(clean_block2) == 0:
+            print(f"Debug: Skipping block {i} - zero variance")
+            continue
+        
+        # Calculate cross-correlation for this block
+        block_crosscorr = signal.correlate(block1_centered, block2_centered, 
+                                          mode='full', method='direct')
+        
+        # Extract desired lag range - be more flexible about boundaries
+        center_idx = len(block_crosscorr) // 2
+        start_idx = center_idx - n_lags // 2
+        end_idx = start_idx + n_lags
+        
+        # Handle boundary cases more gracefully
+        if start_idx < 0:
+            pad_left = -start_idx
+            start_idx = 0
+        else:
+            pad_left = 0
+            
+        if end_idx > len(block_crosscorr):
+            pad_right = end_idx - len(block_crosscorr)
+            end_idx = len(block_crosscorr)
+        else:
+            pad_right = 0
+        
+        block_crosscorr_subset = block_crosscorr[start_idx:end_idx]
+        
+        # Pad if necessary
+        if pad_left > 0 or pad_right > 0:
+            padded = np.full(n_lags, np.nan)
+            padded[pad_left:n_lags-pad_right] = block_crosscorr_subset
+            block_crosscorr_subset = padded
+        
+        # Normalize
+        norm_factor = np.std(clean_block1) * np.std(clean_block2) * len(clean_block1)
+        if norm_factor > 0:
+            block_crosscorr_subset = block_crosscorr_subset / norm_factor
+            block_crosscorrs.append(block_crosscorr_subset)
+            print(f"Debug: Block {i} processed successfully")
+    
+    print(f"Debug: Processed {len(block_crosscorrs)} blocks out of {num_blocks}")
+    
+    if len(block_crosscorrs) == 0:
+        print("Debug: No valid blocks - returning NaN array")
+        return np.full(n_lags, np.nan)
+    
+    # Average correlations from all valid blocks
+    result = np.nanmean(block_crosscorrs, axis=0)
+    print(f"Debug: Final result has {np.sum(~np.isnan(result))} valid values out of {len(result)}")
+    return result
+
+
+def calculate_crosscorr_with_nan(data1, data2, n_lags):
+    """
+    Calculate cross-correlation for data that may contain NaNs.
+    Only uses overlapping non-NaN data points for each lag.
+    """
+    # Find valid (non-NaN) indices
+    valid_mask = ~(np.isnan(data1) | np.isnan(data2))
+    
+    if np.sum(valid_mask) < 3:  # Need at least 3 valid points
+        return np.full(n_lags, np.nan)
+    
+    # Use only valid data points
+    clean_data1 = data1[valid_mask]
+    clean_data2 = data2[valid_mask]
+    
+    # Center the data
+    clean_data1_centered = clean_data1 - np.mean(clean_data1)
+    clean_data2_centered = clean_data2 - np.mean(clean_data2)
+    
+    # Calculate cross-correlation using scipy.signal.correlate
+    crosscorr = signal.correlate(clean_data1_centered, clean_data2_centered, 
+                                 mode='full', method='direct')
+    
+    # Extract the desired range of lags
+    center_idx = len(crosscorr) // 2
+    start_idx = center_idx - n_lags // 2
+    end_idx = start_idx + n_lags
+    
+    # Handle edge cases
+    if start_idx < 0 or end_idx > len(crosscorr):
+        # Pad with NaNs if we don't have enough data for all requested lags
+        crosscorr_subset = np.full(n_lags, np.nan)
+        valid_start = max(0, start_idx)
+        valid_end = min(len(crosscorr), end_idx)
+        output_start = max(0, -start_idx)
+        output_end = output_start + (valid_end - valid_start)
+        crosscorr_subset[output_start:output_end] = crosscorr[valid_start:valid_end]
+    else:
+        crosscorr_subset = crosscorr[start_idx:end_idx]
+    
+    # Normalize
+    norm_factor = np.std(clean_data1) * np.std(clean_data2) * len(clean_data1)
+    if norm_factor > 0:
+        crosscorr_subset = crosscorr_subset / norm_factor
+    else:
+        crosscorr_subset = np.full(n_lags, np.nan)
+    
+    return crosscorr_subset
+
+
+#%% Time-reverse one of the fish
+time_reverse_fish_idx = None # set to None to avoid flipping
+if time_reverse_fish_idx is not None:
+    caution_check = input(f'ARE YOU SURE you want to time-flip fish {time_reverse_fish_idx}? (y/n): ')
+    if caution_check=='y':
+        valid_idx = (np.isin(time_reverse_fish_idx, np.arange(0, Nfish))) and \
+                    (type(time_reverse_fish_idx)==int)
+        if valid_idx==True:
+            print(f'\n\n  ** Time-flipping fish {time_reverse_fish_idx}**')
+            print('\n\n  ** Keeping the first two columns unchanged.** \n\n')
+            for j in range(len(datasets)):
+                all_position_data[j][:,2:,time_reverse_fish_idx] = \
+                    np.flip(all_position_data[j][:,2:,time_reverse_fish_idx], axis=0)
+        else:
+            print('Invalid index; *NOT* flipping')
+            input('Press enter to indicate acknowlegement: ')
 
 def timeShift(position_data, dataset, CSVcolumns, fishIdx = 1, startFrame = 1, 
               minShiftFrames = 3000, minDistance_mm = 8.0):

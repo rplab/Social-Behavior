@@ -26,7 +26,7 @@ import scipy.stats as st
 import pickle
 from itertools import cycle
 from IO_toolkit import load_and_assign_from_pickle
-from toolkit import get_fps
+from toolkit import get_fps, get_values_subset
 
 def calc_correlations_with_defaults():
     """
@@ -112,48 +112,13 @@ def calc_correlations_with_defaults():
         corr_asymm, fps, behavior_key_list_subset
 
 
-def get_values_subset(data_array, keyIdx):
-    """
-    Helper function to extract subset of data based on keyIdx parameter.
-    Used by constraint checking functions.
-    
-    Parameters
-    ----------
-    data_array : numpy array
-    keyIdx : integer, string, or None
-        If None: return full array
-        If integer: return column keyIdx
-        If string ('min', 'max', 'mean'): apply operation along axis=1
-        
-    Returns
-    -------
-    subset : numpy array
-    """
-    if keyIdx is None:
-        return data_array
-    elif isinstance(keyIdx, int):
-        if data_array.ndim > 1:
-            return data_array[:, keyIdx:keyIdx+1]  # Keep 2D shape
-        else:
-            return data_array
-    elif isinstance(keyIdx, str):
-        if keyIdx.lower() == 'min':
-            return np.min(data_array, axis=1, keepdims=True)
-        elif keyIdx.lower() == 'max':
-            return np.max(data_array, axis=1, keepdims=True)
-        elif keyIdx.lower() == 'mean':
-            return np.mean(data_array, axis=1, keepdims=True)
-        else:
-            raise ValueError(f"Invalid keyIdx string: {keyIdx}")
-    else:
-        raise ValueError(f"keyIdx must be None, int, or string, got {type(keyIdx)}")
-
 
 def apply_behavior_constraints(dataset, behavior_A, 
                                min_duration_behavior = None, min_duration_fr=0, 
                                behavior_C=None, C_delta_f=(0, 1), 
                                constraintKey=None, constraintRange=None, 
-                               constraintIdx=0):
+                               constraintIdx=0, 
+                               use_abs_value_constraint = False):
     """
     Apply all constraints to behavior A events and return filtered event frames.
     
@@ -169,6 +134,10 @@ def apply_behavior_constraints(dataset, behavior_A,
     constraintKey : str or None, key for quantitative constraint
     constraintRange : tuple or None, (min, max) for quantitative constraint
     constraintIdx : int or str, index/operation for constraint
+    use_abs_value_constraint : bool, default False
+                    If True, use absolute value of the quantitative constraint
+                    property before applying constraints or combining values. 
+                    Useful for signed angles (relative orientation, bending).    
     
     Returns
     -------
@@ -213,8 +182,10 @@ def apply_behavior_constraints(dataset, behavior_A,
                 constraint_data = dataset[constraintKey]
                 
                 # Apply keyIdx operation to get the relevant constraint values
-                constraint_values = get_values_subset(constraint_data, constraintIdx)
-                
+                constraint_values = get_values_subset(constraint_data, 
+                                                      constraintIdx, 
+                                                      use_abs_value = use_abs_value_constraint)
+                    
                 if len(constraint_values) == 0:
                     print(f'   Warning: Constraint data {constraintKey} is empty')
                     bA_start_frames = np.array([])
@@ -261,7 +232,8 @@ def apply_behavior_constraints(dataset, behavior_A,
 def calcDeltaFramesEvents(datasets, behavior_key_list, max_delta_frame = None,
                           min_duration_behavior = None, min_duration_fr=0, 
                          behavior_C=None, C_delta_f=(0, 1), constraintKey=None, 
-                         constraintRange=None, constraintIdx=0):
+                         constraintRange=None, constraintIdx=0, 
+                         use_abs_value = False):
     """
     Calculate the delay between behavior "events" with optional constraints.
 
@@ -296,6 +268,10 @@ def calcDeltaFramesEvents(datasets, behavior_key_list, max_delta_frame = None,
     constraintKey : string or None, key for quantitative constraint
     constraintRange : tuple or None, (min, max) values for quantitative constraint
     constraintIdx : integer or string, index/operation for multi-dimensional constraint
+    use_abs_value : bool, default False
+                    If True, use absolute value of the quantitative constraint
+                    property before applying constraints or combining values. 
+                    Useful for signed angles (relative orientation, bending).    
 
     Returns
     -------
@@ -341,7 +317,8 @@ def calcDeltaFramesEvents(datasets, behavior_key_list, max_delta_frame = None,
                 C_delta_f=C_delta_f,
                 constraintKey=constraintKey,
                 constraintRange=constraintRange,
-                constraintIdx=constraintIdx
+                constraintIdx=constraintIdx,
+                use_abs_value = use_abs_value
             )
             
             # Marginal probability based on filtered events
@@ -819,7 +796,7 @@ def plot_behaviorCorrelation(behav_corr_dict, binCenters,
     
     # line styles
     lines = ["-","--","-.",":"]
-    linecycler = cycle(lines)
+    linecycler = cycle(lines) 
 
     # All behavior pairs
     
@@ -1182,12 +1159,14 @@ def pool_quant_property_from_behavior_1dataset(dataset,
                                                qproperty = 'relative_orientation',
                                                duration_s = (-0.2, 0.6),
                                                fishID = (0,1),
+                                               use_abs_value = False,
                                                min_duration_fr = 0,
                                                behavior_C = None,
                                                C_delta_f = (0, 1), 
                                                constraintKey = None,
                                                constraintRange = None,
-                                               constraintIdx = 0):
+                                               constraintIdx = 0,
+                                               use_abs_value_constraint = False):
     """
     Tabulate all values of a quantitative property in the vicinity of the start
     of a particular behavior event, for some time duration before and after.
@@ -1206,14 +1185,18 @@ def pool_quant_property_from_behavior_1dataset(dataset,
                  - tuple (start_offset, end_offset) where start_offset is typically negative
                    to include time before behavior start, end_offset is positive for time after
                  - scalar: treated as (0, duration_s)
-    fishID = fishID to consider for each output axis==2 coordinates, 
+    fishID : fishID to consider for each output axis==2 coordinates, 
              or instructions for this. Ignored if the quantity
              isn't individual specific (e.g. head-head distance)
              If fish-specific, should be a tuple. Each element
              can be 0 or 1, keeping usual id assignment,
              or a string 'phi_low' or 'phi_high' for low and
-             high relative orientation, probably indicating 
+             high absolute value of relative orientation, probably indicating 
              approaching or fleeing fish.
+    use_abs_value : bool, default False
+                    If True, use absolute value of the quantitative 
+                    property before applying constraints or combining values. 
+                    Useful for signed angles (relative orientation, bending).    
     min_duration_fr : int, minimum duration constraint in frames for behavior events
                      (default 0 = no constraint)
     behavior_C : str or None, co-occurrence constraint behavior name
@@ -1225,6 +1208,10 @@ def pool_quant_property_from_behavior_1dataset(dataset,
     constraintRange : tuple or None, (min, max) values for quantitative constraint
     constraintIdx : int or str, index/operation for multi-dimensional constraint
                    (0 for first column, 'min'/'max'/'mean' for operations)
+    use_abs_value_constraint : bool, default False
+                    If True, use absolute value of the quantitative constraint
+                    property before applying constraints or combining values. 
+                    Useful for signed angles (relative orientation, bending).    
 
     Returns
     -------
@@ -1298,8 +1285,10 @@ def pool_quant_property_from_behavior_1dataset(dataset,
                 constraint_data = dataset[constraintKey]
                 
                 # Apply keyIdx operation to get the relevant constraint values
-                constraint_values = get_values_subset(constraint_data, constraintIdx)
-                
+                constraint_values = get_values_subset(constraint_data, 
+                                                      constraintIdx,
+                                                      use_abs_value = use_abs_value_constraint)
+                    
                 if len(constraint_values) == 0:
                     print(f'   Warning: Constraint data {constraintKey} is empty')
                     b_start_frames = np.array([])
@@ -1390,13 +1379,19 @@ def pool_quant_property_from_behavior_1dataset(dataset,
                 idx_array = np.array([0, 1]) # use fish IDs
             elif fishID == ('phi_low','phi_high') :
                 rel_orient = dataset['relative_orientation'][b_start_frames[j]-1,:]
-                idx_array = np.argsort(rel_orient)
+                idx_array = np.argsort(np.abs(rel_orient))
             else:
                 raise ValueError('fishID value not recognized')
             for k in range(Nval):
-                all_qprop[j, :, k] = dataset[qproperty][actual_start_idx : 
-                                                        actual_end_idx, 
-                                                        idx_array[k]]
+                if use_abs_value:
+                    all_qprop[j, :, k] = np.abs(
+                        dataset[qproperty][actual_start_idx : 
+                                                            actual_end_idx, 
+                                                            idx_array[k]])
+                else:                        
+                    all_qprop[j, :, k] = dataset[qproperty][actual_start_idx : 
+                                                            actual_end_idx, 
+                                                            idx_array[k]]
                 # Replace values with NaN for bad tracking frames
                 if bad_frames is not None:
                     bad_mask = np.isin(frame_numbers, bad_frames)
@@ -1427,12 +1422,14 @@ def pool_quant_property_from_behavior_all_datasets(datasets,
                                                qproperty = 'relative_orientation',
                                                duration_s = (-0.2, 0.6),
                                                fishID = (0,1),
+                                               use_abs_value = False, 
                                                min_duration_fr = 0,
                                                behavior_C = None,
                                                C_delta_f = (0, 1),
                                                constraintKey = None,
                                                constraintRange = None,
-                                               constraintIdx = 0):
+                                               constraintIdx = 0,
+                                               use_abs_value_constraint = False):
     """
     Tabulate all values of a quantitative property following the initiation
     of a particular behavior event, for some time duration.
@@ -1453,14 +1450,18 @@ def pool_quant_property_from_behavior_all_datasets(datasets,
                  - tuple (start_offset, end_offset) where start_offset is typically negative
                    to include time before behavior start, end_offset is positive for time after
                  - scalar: treated as (0, duration_s)
-    fishID = fishID to consider for each output axis==2 coordinates, 
+    fishID : fishID to consider for each output axis==2 coordinates, 
              or instructions for this. Ignored if the quantity
              isn't individual specific (e.g. head-head distance)
              If fish-specific, should be a tuple. Each element
              can be 0 or 1, keeping usual id assignment,
              or a string 'phi_low' or 'phi_high' for low and
-             high relative orientation, probably indicating 
+             high absolute value of relative orientation, probably indicating 
              approaching or fleeing fish.
+    use_abs_value : bool, default False
+                    If True, use absolute value of the quantitative 
+                    property before applying constraints or combining values. 
+                    Useful for signed angles (relative orientation, bending).    
     min_duration_fr : int, minimum duration constraint in frames for behavior events
                      (default 0 = no constraint)
     behavior_C : str or None, co-occurrence constraint behavior name
@@ -1471,6 +1472,10 @@ def pool_quant_property_from_behavior_all_datasets(datasets,
     constraintRange : tuple or None, (min, max) values for quantitative constraint
     constraintIdx : int or str, index/operation for multi-dimensional constraint
                    (0 for first column, 'min'/'max'/'mean' for operations)
+    use_abs_value_constraint : bool, default False
+                    If True, use absolute value of the quantitative constraint
+                    property before applying constraints or combining values. 
+                    Useful for signed angles (relative orientation, bending).    
                    
     Returns
     -------
@@ -1522,7 +1527,8 @@ def pool_quant_property_from_behavior_all_datasets(datasets,
                                 C_delta_f = C_delta_f,
                                 constraintKey = constraintKey,
                                 constraintRange = constraintRange,
-                                constraintIdx = constraintIdx)
+                                constraintIdx = constraintIdx, 
+                                use_abs_value = use_abs_value)
         if qprop_stats1 is not None:
             all_qprop_list.append(all_qprop1)
             all_qprop_means_list.append(np.expand_dims(qprop_stats1["mean"], 

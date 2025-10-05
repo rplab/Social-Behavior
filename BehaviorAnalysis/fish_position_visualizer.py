@@ -296,7 +296,7 @@ class FishVisualizer:
         print("  i: +10 frames  r: -10 frames") 
         print("  o: +100 frames e: -100 frames")
         print("  p: +1000 frames w: -1000 frames")
-        print("  v: toggle angle display")
+        print("  v: toggle angle display (none / heading / additional info)")
         print("  z: toggle autoscaling (on/off)")
         print("")
         print("Alternative programmatic controls:")

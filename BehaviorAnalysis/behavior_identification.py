@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified Sept. 11, 2025 -- Raghu Parthasarathy
+Last modified October 4, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -1191,6 +1191,7 @@ def get_relative_orientation(position_data, dataset, CSVcolumns):
     Output : 
         relative_orientation : numpy array Nframes x Nfish==2 of 
             relative orientation (phi), radians, for fish 0 and fish 1
+            Returns signed angles in range [-π, π] (Oct. 4, 2025 modification).
         rel_orient_rankIdx : Fish indexes in each frame ordered by 
             relative orientation angle, low to high. If, for example, 
             this is [1, 0] for a given frame, fish 1 has the lower 
@@ -1208,24 +1209,37 @@ def get_relative_orientation(position_data, dataset, CSVcolumns):
 
     dh_vec_px = calc_head_head_vector(position_data, CSVcolumns)
     
+    # Unit vectors for heading directions
     v0 = np.stack((np.cos(angle_data[:, 0]), 
                    np.sin(angle_data[:, 0])), axis=1)
     v1 = np.stack((np.cos(angle_data[:, 1]), 
                    np.sin(angle_data[:, 1])), axis=1)
+
+    # Normalize dh_vec_px
+    dh_norm = np.linalg.norm(dh_vec_px, axis=1, keepdims=True)
+    dh_unit = dh_vec_px / dh_norm
+
+    # Calculate dot products for magnitude
+    dot_product_0 = np.sum(v0 * dh_unit, axis=1)
+    dot_product_1 = np.sum(v1 * -dh_unit, axis=1)
+
+    # Calculate unsigned angles
+    phi0_unsigned = np.arccos(dot_product_0)
+    phi1_unsigned = np.arccos(dot_product_1)
     
-    dot_product_0 = np.sum(v0 * dh_vec_px, axis=1)
-    magnitude_product_0 = np.linalg.norm(v0, axis=1) * np.linalg.norm(dh_vec_px, axis=1)
-    phi0 = np.arccos(dot_product_0 / magnitude_product_0)
+    # Calculate cross products to determine sign (z-component for 2D)
+    # cross_z = v_x * dh_y - v_y * dh_x
+    cross_z_0 = v0[:, 0] * dh_unit[:, 1] - v0[:, 1] * dh_unit[:, 0]
+    cross_z_1 = v1[:, 0] * (-dh_unit[:, 1]) - v1[:, 1] * (-dh_unit[:, 0])
     
-    dot_product_1 = np.sum(v1 * -dh_vec_px, axis=1)
-    magnitude_product_1 = np.linalg.norm(v1, axis=1) * np.linalg.norm(dh_vec_px, axis=1)
-    phi1 = np.arccos(dot_product_1 / magnitude_product_1)
+    # Apply sign: positive if cross product in +z, negative if in -z
+    phi0 = np.where(cross_z_0 >= 0, phi0_unsigned, -phi0_unsigned)
+    phi1 = np.where(cross_z_1 >= 0, phi1_unsigned, -phi1_unsigned)
     
-    relative_orientation = np.stack((phi0, phi1), axis=1)  
-    
-    # Rand order the Fish (indices) by relative orientation angle, low to
-    # high, for each frame
-    rel_orient_rankIdx = np.argsort(relative_orientation, axis=1)
+    relative_orientation = np.stack((phi0, phi1), axis=1)
+
+    # Rank by absolute value of relative orientation
+    rel_orient_rankIdx = np.argsort(np.abs(relative_orientation), axis=1)
     
     return relative_orientation, rel_orient_rankIdx
 
@@ -1547,7 +1561,7 @@ def make_rel_orient_rank_key(dataset, behavior_key_string):
     if "rel_orient_rankIdx" not in dataset:
         print(f"Key 'rel_orient_rankIdx' not found in dataset {dataset['dataset_name']}")
         print('   Calculating this now...')
-        dataset['rel_orient_rankIdx'] = np.argsort(dataset['relative_orientation'], 
+        dataset['rel_orient_rankIdx'] = np.argsort(np.abs(dataset['relative_orientation']), 
                                                    axis=1)
     rel_orient_rankIdx = dataset["rel_orient_rankIdx"]
     
@@ -1617,11 +1631,12 @@ def make_rel_orient_rank_key(dataset, behavior_key_string):
 def make_rel_orient_rank_keys_allDatasets(datasets, behavior_key_string, 
                               keep_all_frames = False):
     """
-    Create new behavior keys based on relative orientation rank ordering.
+    Create new behavior keys based on abs. value of relative orientation 
+    rank ordering.
     NOTE: This function is to be used if behaviors have already been analyzed,
     and dataset keys already exist. For new datasets, these relative orientation
     keys are already calculated.
-    See notes Sept. 2025
+    See notes Sept. 2025; keeping sign of relative orientation Oct. 2025
     
     For each dataset, creates new keys like "behavior_key_string_lowRelOrient{m}" 
     where m is the rank index (0 = lowest relative orientation, 1 = highest).
@@ -1655,7 +1670,7 @@ def make_rel_orient_rank_keys_allDatasets(datasets, behavior_key_string,
         if "rel_orient_rankIdx" not in dataset:
             print(f"Key 'rel_orient_rankIdx' not found in dataset {dataset_name}")
             print('   Calculating this now...')
-            dataset['rel_orient_rankIdx'] = np.argsort(dataset['relative_orientation'], 
+            dataset['rel_orient_rankIdx'] = np.argsort(np.abs(dataset['relative_orientation']), 
                                                        axis=1)
         
         rel_orient_rankIdx = dataset["rel_orient_rankIdx"]

@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Split from behavior_identification.py on July 22, 2024
-Last modified June 12, 2025 -- Raghu Parthasarathy
+Last modified Oct. 4, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -709,7 +709,9 @@ def calc_bend_angle(position_data, CSVcolumns, M=None):
         M : the index of the midpoint; will use N/2 if not input
      
     output
-        bend_angle : in range [0, pi]; shape (Nframes, Nfish)
+        bend_angle : in range [-π, π]; shape (Nframes, Nfish)
+        As of Oct. 2025: signed angles in range [-π, π], with sign indicating
+        left/right bend relative to heading direction.
     """
     
     x = position_data[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
@@ -720,11 +722,11 @@ def calc_bend_angle(position_data, CSVcolumns, M=None):
         M = round(N/2)
     
     # Prepare output array
-    angle = np.zeros((Nframes, Nfish))
+    bend_angle = np.zeros((Nframes, Nfish))
     
     # Calculate the opening angle
     for j in range(Nframes):
-        # Calculate best-fit line for first segment, for each fish
+        # Calculate best-fit line for first segment (front half), for each fish
         x1 = x[j, M::-1, :] # shape (N/2, Nfish)
         y1 = -1.0*y[j, M::-1, :] # shape (N/2, Nfish); -1 since increasing down
         slope1 = fit_y_eq_Bx_simple(x1-x1[0,:], y1-y1[0,:])
@@ -749,7 +751,7 @@ def calc_bend_angle(position_data, CSVcolumns, M=None):
             np.divide(numerator_y, denominator, out=np.zeros_like(numerator_y), where=denominator != 0)
         ])
                      
-        # Calculate best-fit line for second segment
+        # Calculate best-fit line for second segment (back half)
         x2 = x[j, M:, :] # shape (N/2, Nfish)
         y2 = -1.0*y[j, M:, :] # shape (N/2, Nfish); -1 since increasing down
         slope2 = fit_y_eq_Bx_simple(x2-x2[0,:], y2-y2[0,:])
@@ -771,11 +773,18 @@ def calc_bend_angle(position_data, CSVcolumns, M=None):
             np.divide(numerator_y, denominator, out=np.zeros_like(numerator_y), where=denominator != 0)
         ])
 
-        # Calculate angle between lines
-        # note that arccos is in range [0, pi]
-        angle[j, :] = np.arccos(np.sum(vector1 * vector2, axis=0))
-    
-    bend_angle = np.pi - angle
+        # Calculate unsigned opening angle
+        # Clip to be safe, but this shouldn't be necessary
+        opening_angle = np.arccos(np.clip(np.sum(vector1 * vector2, axis=0), 
+                                          -1.0, 1.0))
+        unsigned_bend = np.pi - opening_angle
+        
+        # Calculate cross product to determine sign
+        # Positive cross product = back half points right of heading
+        cross_z = vector1[0, :] * vector2[1, :] - vector1[1, :] * vector2[0, :]
+        
+        # Apply sign
+        bend_angle[j, :] = np.where(cross_z >= 0, unsigned_bend, -unsigned_bend)
     
     return bend_angle
 
@@ -797,7 +806,7 @@ def get_isBending_frames(dataset, bend_angle_threshold_deg = 10.0):
     
     bend_angle = dataset["bend_angle"] # Nframes x Nfish array of bend angles
     Nfish = dataset["Nfish"]
-    isBending = bend_angle > (np.pi/180)*bend_angle_threshold_deg
+    isBending = np.abs(bend_angle) > (np.pi/180)*bend_angle_threshold_deg
 
     # Dictionary containing "is Bending" frames for each fish
     isBending_frames_each = {}
@@ -835,9 +844,6 @@ def get_bend_behavior_frames(dataset, params):
                        identified bend frames for each fish
     
     """
-    # Convert bend angles from radians to degrees
-    # bend_angles_deg = np.rad2deg(dataset['bend_angle'])
-    
     # Extract parameters
     bend_min_rad = params['bend_min_deg']*np.pi/180.0
     bend_Cmin_rad = params['bend_Cmin_deg']*np.pi/180.0
@@ -860,7 +866,7 @@ def get_bend_behavior_frames(dataset, params):
         isCbend = np.zeros(Nframes, dtype=bool)
         
         # Find contiguous blocks of frames above bend_min
-        above_min = dataset['bend_angle'][:, fish] > bend_min_rad
+        above_min = np.abs(dataset['bend_angle'][:, fish]) > bend_min_rad
         above_min_int = above_min.astype(int)
         transitions = np.diff(above_min_int)
         
@@ -882,7 +888,9 @@ def get_bend_behavior_frames(dataset, params):
         # Analyze each contiguous block
         for start, end in zip(block_starts, block_ends):
             # Handle single-frame blocks and multi-frame blocks
-            block_max = np.max(dataset['bend_angle'][start:end+1, fish]) if start < end else dataset['bend_angle'][start, fish]
+            block_max = np.max(np.abs(
+                dataset['bend_angle'][start:end+1, fish]))\
+                if start < end else np.abs(dataset['bend_angle'][start, fish])
             if block_max > bend_Cmin_rad:
                 # C-bend
                 isCbend[start:end+1] = True
@@ -904,10 +912,12 @@ def get_bend_behavior_frames(dataset, params):
                       
 def average_bout_trajectory_oneSet(dataset, keyName = "speed_array_mm_s", 
                                    keyIdx = None, t_range_s=(-0.5, 2.0), 
+                                   use_abs_value = False,
                                    makePlot=False, 
                                    constraintKey=None,
                                    constraintRange=None,
-                                   constraintIdx = None):
+                                   constraintIdx = None,
+                                   use_abs_value_constraint = False):
     """
     Tabulates some quantity from a dataset, typically speed
     dataset["speed_array_mm_s"], around each onset of a bout 
@@ -938,6 +948,10 @@ def average_bout_trajectory_oneSet(dataset, keyName = "speed_array_mm_s",
                        for the *other* fish, i.e. fish 1 for fish0 bouts
                        and fish 0 for fish1 bouts. 
         t_range_s : time interval, seconds, around bout offset around which to tabulate data
+        use_abs_value : bool, default False
+                    If True, use absolute value of the quantitative 
+                    property before applying constraints or combining values. 
+                    Useful for signed angles (relative orientation, bending).
         makePlot : if True, plot for each fish speed vs. time relative to bout start
         constraintKey (str): Key name for the constraint, 
             or None to use no constraint. Apply the same constraint to both keys.
@@ -951,7 +965,11 @@ def average_bout_trajectory_oneSet(dataset, keyName = "speed_array_mm_s",
                         a string: use the operation "min", "max",
                            or "mean", along axis==1 (e.g. for fastest fish)
                         see combine_all_values_constrained()
-
+        use_abs_value_constraint : bool, default False
+                    If True, use absolute value of the quantitative constraint
+                    property before applying constraints or combining values. 
+                    Useful for signed angles (relative orientation, bending).    
+    
     Returns:
         avg_values : list of length Nfish, each of which contains
             mean (column 0) and sem (column 1) of the values (typically
@@ -1004,12 +1022,14 @@ def average_bout_trajectory_oneSet(dataset, keyName = "speed_array_mm_s",
             thisKeyIdx = tempFish[tempFish != k][0]
         else:
             thisKeyIdx = keyIdx
-        values_fullRange = get_values_subset(dataset[keyName], thisKeyIdx)
+        values_fullRange = get_values_subset(dataset[keyName], thisKeyIdx,
+                                             use_abs_value = use_abs_value)
         
         if constraintKey is not None:
             # constraint key may be multidimensional
             constraint_array = get_values_subset(dataset[constraintKey], 
-                                                 constraintIdx)
+                                                 constraintIdx,
+                                                 use_abs_value = use_abs_value_constraint)
         
         for j in range(N_events):
             start_frame = moving_frameInfo[0,j] + start_offset
@@ -1065,9 +1085,12 @@ def average_bout_trajectory_oneSet(dataset, keyName = "speed_array_mm_s",
 
 def average_bout_trajectory_allSets(datasets, t_range_s=(-0.5, 2.0), 
                                     keyName = "speed_array_mm_s", 
-                                    keyIdx = None, constraintKey=None,
+                                    keyIdx = None, 
+                                    use_abs_value = False,
+                                    constraintKey=None,
                                     constraintRange=None,
                                     constraintIdx = None,
+                                    use_abs_value_constraint = False,
                                     makePlot=False, 
                                     ylim = None, titleStr = None,
                                     outputFileName = None):
@@ -1102,6 +1125,10 @@ def average_bout_trajectory_allSets(datasets, t_range_s=(-0.5, 2.0),
                     the string "other": If Nfish == 2, extract the value
                        for the *other* fish, i.e. fish 1 for fish0 bouts
                        and fish 0 for fish1 bouts. 
+        use_abs_value : bool, default False
+                    If True, use absolute value of the quantitative 
+                    property before applying constraints or combining values. 
+                    Useful for signed angles (relative orientation, bending).
         t_range_s : time interval, seconds, around bout offset around which to tabulate data
         constraintKey (str): Key name for the constraint, 
             or None to use no constraint. Apply the same constraint to both keys.
@@ -1115,7 +1142,10 @@ def average_bout_trajectory_allSets(datasets, t_range_s=(-0.5, 2.0),
                         a string: use the operation "min", "max",
                            or "mean", along axis==1 (e.g. for fastest fish)
                         see combine_all_values_constrained()
-        makePlot : if True, plot avg speed vs. time relative to bout start
+        use_abs_value_constraint : bool, default False
+                    If True, use absolute value of the quantitative constraint
+                    property before applying constraints or combining values. 
+                    Useful for signed angles (relative orientation, bending)        makePlot : if True, plot avg speed vs. time relative to bout start
         ylim : Optional ymin, ymax for plot
         titleStr : title string for plot
         outputFileName : if not None, and makePlot is True,
@@ -1133,10 +1163,12 @@ def average_bout_trajectory_allSets(datasets, t_range_s=(-0.5, 2.0),
         avg_value_dataset = average_bout_trajectory_oneSet(dataset, 
                                                         keyName = keyName, 
                                                         keyIdx = keyIdx,
+                                                        use_abs_value = use_abs_value,
                                                         t_range_s = t_range_s,
                                                         makePlot=False, 
                                                         constraintKey=constraintKey, 
-                                                        constraintRange=constraintRange)
+                                                        constraintRange=constraintRange,
+                                                        use_abs_value_constraint = use_abs_value_constraint)
         all_fps.append(dataset["fps"])
         
         for fish_values in avg_value_dataset:

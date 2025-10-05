@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Raghuveer Parthasarathy, Sept. 25, 2025
+Last modified by Raghuveer Parthasarathy, Oct. 4, 2025
 
 Description
 -----------
@@ -950,10 +950,81 @@ def repair_double_length_fish(all_position_data, datasets, CSVcolumns,
     return all_position_data, datasets
  
 
+def get_values_subset(data_array, keyIdx, use_abs_value = False):
+    """
+    Helper function to extract subset of data based on keyIdx parameter.
+    Returns value of 'column' (or fish) keyIdx, or value of the operation
+    keyIdx along axis==1, applying abs val first if use_abs_value == True
+    Used by constraint checking functions.
+    
+    Parameters
+    ----------
+    data_array : numpy array
+    keyIdx : integer, string, or None
+        If None: return full array
+        If integer: return column keyIdx
+        If string ('min', 'max', 'mean'): 
+            apply operation along axis=1. 
+            'min' returns the min along axis=1, i.e. the value of the lowest
+                    fish.  Similar for other operations.
+            'val_absmin' returns the value (positive or negative) 
+                    for which the absolute value is min along axis=1.
+                    (E.g. if used for angles -0.1, -0.3, will return -0.1)
+                    Similar for 'val_absmax'. Ignores "use_abs_value"
+    use_abs_value : bool, default False
+                    If True, use absolute value of the quantitative constraint
+                    property before applying any of the string constraints. 
+                    Useful for signed angles (relative orientation, bending).    
+        
+    Returns
+    -------
+    subset : numpy array
+    """
+    if keyIdx is None:
+        # Return the input array
+        return data_array
+    elif isinstance(keyIdx, int):
+        # Selecting some column (i.e. axis==1 index)
+        if (keyIdx+1) > data_array.shape[1]:
+            raise ValueError(f"subset index {keyIdx} is too large for the size" + 
+                             f"of the array, {data_array.shape[1]}")
+        if data_array.ndim > 1:
+            return data_array[:, keyIdx:keyIdx+1]  # Keep 2D shape
+        else:
+            return data_array
+    elif isinstance(keyIdx, str):
+        if keyIdx.lower() == 'min':
+            if use_abs_value:
+                return np.min(np.abs(data_array), axis=1, keepdims=True)
+            else:
+                return np.min(data_array, axis=1, keepdims=True)
+        elif keyIdx.lower() == 'max':
+            if use_abs_value:
+                return np.max(np.abs(data_array), axis=1, keepdims=True)
+            else:
+                return np.max(data_array, axis=1, keepdims=True)
+        elif keyIdx.lower() == 'mean':
+            if use_abs_value:
+                return np.mean(np.abs(data_array), axis=1, keepdims=True)
+            else:
+                return np.mean(data_array, axis=1, keepdims=True)
+        elif keyIdx.lower() == 'val_absmin':
+            return data_array[np.arange(data_array.shape[0]), 
+                              np.argmin(np.abs(data_array), axis=1)]
+        elif keyIdx.lower() == 'val_absmax':
+            return data_array[np.arange(data_array.shape[0]), 
+                              np.argmax(np.abs(data_array), axis=1)]
+        else:
+            raise ValueError(f"Invalid keyIdx string: {keyIdx}")
+    else:
+        raise ValueError(f"keyIdx must be None, int, or string, got {type(keyIdx)}")
+
+
 def combine_all_values_constrained(datasets, keyName='speed_array_mm_s', 
-                                   keyIdx = None,
+                                   keyIdx = None, use_abs_value = False,
                                    constraintKey=None, constraintRange=None,
-                                   constraintIdx = 0, dilate_minus1=True):
+                                   constraintIdx = 0, dilate_minus1=True,
+                                   use_abs_value_constraint = False):
     """
     Loop through each dataset, get values of some numerical property
     in datasets[j][keyName], and collect all these in a list of 
@@ -996,6 +1067,10 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
                        (e.g. datasets[12]["speed_array_mm_s"][:,keyIdx])
                     a string , use the operation "min", "max",
                        or "mean", along axis==1 (e.g. for fastest fish)
+    use_abs_value : bool, default False
+                    If True, use absolute value of the quantitative 
+                    property before applying constraints or combining values. 
+                    Useful for signed angles (relative orientation, bending).
     constraintKey : the key to use for the constraint (e.g. "interfish_distance_mm")
                     datasets[j][constraintKey] should be a single, 1D numpy array
                     or should be a (N, Nfish) numpy array with the column
@@ -1012,7 +1087,10 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
                      if constraintIdx is "max")
                     If None, won't apply constraint
     dilate_minus1 : If True, dilate the bad frames -1; see above.
-    
+    use_abs_value_constraint : bool, default False
+                    If True, use absolute value of the quantitative 
+                    property before applying constraints or combining values. 
+                    Useful for signed angles (relative orientation, bending).    
     Returns
     -------
     values_all_constrained : list of numpy arrays of all values in all 
@@ -1040,7 +1118,10 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
                 
             good_frames_mask = np.isin(frames-idx_offset, 
                                        bad_frames-idx_offset, invert=True)
-            values = get_values_subset(datasets[j][keyName], keyIdx)
+            values = get_values_subset(datasets[j][keyName], keyIdx = keyIdx, 
+                                       use_abs_value = use_abs_value)
+            if use_abs_value:
+                values = np.abs(values)
             values_this_set = values[good_frames_mask, ...]
             values_all_constrained.append(values_this_set)
         
@@ -1061,72 +1142,19 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
         good_frames_mask = np.isin(frames-idx_offset, 
                                    bad_frames-idx_offset, invert=True)
         constraint_array = get_values_subset(datasets[j][constraintKey], 
-                                             constraintIdx)
+                                             keyIdx = constraintIdx, 
+                                             use_abs_value = use_abs_value_constraint)
         constrained_mask = (constraint_array >= constraintRange[0]) \
                             & (constraint_array <= constraintRange[1])
         constrained_mask = constrained_mask.flatten()
-        values = get_values_subset(datasets[j][keyName], keyIdx)
+        values = get_values_subset(datasets[j][keyName], keyIdx = keyIdx, 
+                                   use_abs_value = use_abs_value)
+        if use_abs_value:
+            values = np.abs(values)
         values_this_set = values[good_frames_mask & constrained_mask, ...]
         values_all_constrained.append(values_this_set)
     
     return values_all_constrained
-
-
-def get_values_subset(values_all, idx):
-    """
-    Extract subset of a values array, e.g. datasets[j][constraintKey]
-    to use later, e.g. as a constraint array, specifying which column to
-    use, or min or max values.
-
-    Parameters
-    ----------
-    values_all : numpy array, probably from datasets[j][constraintKey]
-                 if using this to extract an array to use as a constraint,
-                 of shape (N,) or shape (N,1), or (N, Nfish)
-                 If shape[1]=1, output values_all_constrained = values_all
-                 
-    idx : either an integer or a string, probably from keyIdx or constraintIdx.
-          If idx is:
-             None: ignore idx; don't apply constraint; return values_all
-             an integer: the column of values_all to use as the 
-                constraint array
-             a string, use the operation "min", "max", or "mean", 
-                along axis==1 (e.g. for fastest fish), or or "all" to use 
-                "all" (same as idx==None)
-          if None, ignore idx; don't apply constraint
-
-    Returns
-    -------
-    values_all_constrained : numpy array, the subset of values_all,
-                or min or max, etc. Same axis=0 shape as values_all
-
-    """
-    if values_all.ndim == 1:
-        # Only one array, so output = input; ignore idx
-        values_all_constrained = values_all
-    elif idx is None:
-        # No constraint
-        values_all_constrained = values_all    
-    else: 
-        if type(idx)==str:
-            if idx == 'min':
-                values_all_constrained = np.min(values_all, axis=1)
-            elif idx == 'max':
-                values_all_constrained = np.max(values_all, axis=1)
-            elif idx == 'mean':
-                values_all_constrained = np.mean(values_all, axis=1)
-            elif idx == 'all':
-                values_all_constrained = values_all
-            else:
-                raise ValueError(f"Invalid index string {idx}")
-        else:
-            if (idx+1) > values_all.shape[1]:
-                raise ValueError(f"subset index {idx} is too large for the size" + 
-                                 f"of the array, {values_all.shape[1]}")
-            values_all_constrained =  values_all[:,idx]
-
-    return values_all_constrained
-    
 
 def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None], 
                            xlabelStr='x', titleStr='Probability density',
