@@ -1255,7 +1255,78 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
     plt.show()
     if outputFileName != None:
         plt.savefig(outputFileName, bbox_inches='tight')
+
+
+
+def plot_behavior_property_histogram(bin_centers, counts, 
+                                    behavior_key_for_title, property_key_for_label,
+                                    xlabelStr=None, ylabelStr='Number of events',
+                                    titleStr=None, normalize=True,
+                                    xlim = None, ylim = None, 
+                                    outputFileName=None):
+    """
+    Plot histogram of behavior events binned by quantitative property.
     
+    Parameters
+    ----------
+    bin_centers : array of bin centers
+    counts : array of counts in each bin
+    behavior_key_for_title : str, behavior name (for title)
+    property_key_for_label : str, property name (for labels)
+    xlabelStr : str or None, x-axis label (default based on property_key)
+    ylabelStr : str, y-axis label
+    titleStr : str or None, title (default based on behavior and property)
+    normalize : bool, if True normalize to probability density
+    xlim : (optional) tuple of min, max x-axis limits
+    ylim : (optional) tuple of min, max y-axis limits
+    outputFileName : str or None, filename to save figure
+    """
+    
+    if bin_centers is None or counts is None:
+        print("No data to plot")
+        return
+    
+    # Default labels
+    if xlabelStr is None:
+        xlabelStr = property_key_for_label.replace('_', ' ')
+    
+    if titleStr is None:
+        titleStr = f'{behavior_key_for_title}: Distribution by {property_key_for_label}'
+    
+    # Normalize if requested
+    if normalize:
+        bin_width = bin_centers[1] - bin_centers[0] if len(bin_centers) > 1 else 1.0
+        total_area = np.sum(counts) * bin_width
+        plot_counts = counts / total_area if total_area > 0 else counts
+        ylabelStr = 'Probability density'
+    else:
+        plot_counts = counts
+    
+    # Create figure
+    plt.figure(figsize=(10, 6))
+    
+    # Plot as bar chart
+    bin_width = bin_centers[1] - bin_centers[0] if len(bin_centers) > 1 else 1.0
+    plt.plot(bin_centers, plot_counts, linestyle='--', linewidth=2.0, 
+            color='steelblue', marker='o', markersize=12)
+    
+    if xlim is not None:
+        plt.xlim(xlim)
+    if ylim is not None:
+        plt.ylim(ylim)
+    plt.xlabel(xlabelStr, fontsize=16)
+    plt.ylabel(ylabelStr, fontsize=16)
+    plt.title(titleStr, fontsize=18)
+    plt.grid(True, linestyle='--', alpha=0.3)
+    plt.tick_params(axis='both', which='major', labelsize=12)
+    plt.tight_layout()
+    
+    if outputFileName is not None:
+        plt.savefig(outputFileName, bbox_inches='tight')
+    
+    plt.show()
+
+
 
 def calculate_autocorr_NaN_zero(data, n_lags):
     """
@@ -1443,7 +1514,7 @@ def calculate_value_corr_oneSet(dataset, keyName='speed_array_mm_s',
         for frame in bad_frames_set:
             frame_idx = frame - idx_offset  # Convert to 0-based indexing
             # Replace with NaN
-            fish_value[frame_idx, fish] = np.NaN
+            fish_value[frame_idx, fish] = np.nan
 
     if corr_type == 'auto':
         for fish in range(Nfish):
@@ -2022,12 +2093,18 @@ def plot_function_allSets(y_list, x_array = None,
 
 def make_2D_histogram(datasets, keyNames = ('speed_array_mm_s', 'head_head_distance_mm'), 
                       keyIdx = (None, None), 
+                      keyNameC = None, keyIdxC = None,
                       constraintKey=None, constraintRange=None, constraintIdx = 0,
                       dilate_minus1=True, bin_ranges=None, Nbins=(20,20),
-                      titleStr = None, colorRange = None, outputFileName = None):
+                      titleStr = None, colorRange = None, 
+                      cmap = 'RdYlGn', outputFileName = None):
     """
     Create a 2D histogram plot of the values from two keys in the 
     given datasets. Combine all the values across datasets.
+
+    If keyNameC is None: plots a normalized 2D histogram (occurrence count)
+    If keyNameC is provided: plots mean value of keyC in each (keyA, keyB) bin
+
     Uses combine_all_values_constrained() to pick a subset of the keys or to 
     apply a constraint to the values to plot (optional)
     
@@ -2043,6 +2120,9 @@ def make_2D_histogram(datasets, keyNames = ('speed_array_mm_s', 'head_head_dista
                    (e.g. datasets[12]["speed_array_mm_s"][:,keyIdx])
                 a string , use the operation "min", "max",
                    or "mean", along axis==1 (e.g. for fastest fish)
+    keyNameC (str or None): Key name for the third variable whose mean will be
+                           plotted as a heatmap. If None, plots occurrence histogram.
+    keyIdxC : integer or string or None, same indexing as keyIdx but for keyNameC
     constraintKey (str): Key name for the constraint, 
         or None to use no constraint. Apply the same constraint to both keys.
         see combine_all_values_constrained()
@@ -2059,6 +2139,7 @@ def make_2D_histogram(datasets, keyNames = ('speed_array_mm_s', 'head_head_dista
     Nbins (tuple): Optional tuple of two integers, number of bins for value1 and value2
     titleStr : title string; if None use Key names
     colorRange : Optional tuple of (vmin, vmax) for the histogram "v axis" range
+    cmap : string, colormap. Default 'RdYlGn' (rather than usual Python viridis)
     outputFileName : if not None, save the figure with this filename 
                      (include extension)    
     Returns:
@@ -2079,38 +2160,69 @@ def make_2D_histogram(datasets, keyNames = ('speed_array_mm_s', 'head_head_dista
                                              constraintIdx=constraintIdx,
                                              dilate_minus1 = dilate_minus1)
     
+    # Get values for keyC if provided
+    if keyNameC is not None:
+        valuesC = combine_all_values_constrained(datasets, keyNameC, keyIdx=keyIdxC,
+                                                 constraintKey=constraintKey, 
+                                                 constraintRange=constraintRange, 
+                                                 constraintIdx=constraintIdx,
+                                                 dilate_minus1=dilate_minus1)
+    
     # Flatten the values and handle different dimensions
     values1_all = []
     values2_all = []
-    for v1, v2 in zip(values1, values2):
+    valuesC_all = [] if keyNameC is not None else None
+    
+    for idx, (v1, v2) in enumerate(zip(values1, values2)):
         M1 = 1 if v1.ndim == 1 else v1.shape[1] if v1.ndim > 1 else 1 if v1.ndim == 2 and v1.shape[1] == 1 else None
         M2 = 1 if v2.ndim == 1 else v2.shape[1] if v2.ndim > 1 else 1 if v2.ndim == 2 and v2.shape[1] == 1 else None
+        
+        if keyNameC is not None:
+            vC = valuesC[idx]
+            MC = 1 if vC.ndim == 1 else vC.shape[1] if vC.ndim > 1 else 1 if vC.ndim == 2 and vC.shape[1] == 1 else None
         
         if M1 is None or M2 is None or ((M1 != M2) and min(M1, M2) > 1):
             print(f'M values: {M1}, {M2}')
             raise ValueError("Values for the two keys are not commensurate. 2D histogram cannot be created.")
         
+        if keyNameC is not None and (MC is None or (MC != M1 and MC != M2 and MC != 1)):
+            print(f'M values: {M1}, {M2}, {MC}')
+            raise ValueError("Values for keyC are not commensurate with keyA and keyB.")
+        
         if M1 > 1 and M2 == 1:
             Nfish = M1
             values2_all.append(np.repeat(v2.flatten(), Nfish))
             values1_all.append(v1.flatten())
+            if keyNameC is not None:
+                if MC > 1:
+                    valuesC_all.append(vC.flatten())
+                else:
+                    valuesC_all.append(np.repeat(vC.flatten(), Nfish))
         elif M2 > 1 and M1 == 1:
             Nfish = M2
             values1_all.append(np.repeat(v1.flatten(), Nfish))
             values2_all.append(v2.flatten())
+            if keyNameC is not None:
+                if MC > 1:
+                    valuesC_all.append(vC.flatten())
+                else:
+                    valuesC_all.append(np.repeat(vC.flatten(), Nfish))
         else:
             values1_all.append(v1.flatten())
             values2_all.append(v2.flatten())
+            if keyNameC is not None:
+                valuesC_all.append(vC.flatten())
     
     # Concatenate the flattened values
     values1_all = np.concatenate(values1_all)
     values2_all = np.concatenate(values2_all)
+    if keyNameC is not None:
+        valuesC_all = np.concatenate(valuesC_all)
     
     # Determine the bin ranges
     if bin_ranges is None:
         value1_min, value1_max = np.nanmin(values1_all), np.nanmax(values1_all)
         value2_min, value2_max = np.nanmin(values2_all), np.nanmax(values2_all)
-        # print('Values: ', value1_min, value1_max, value2_min, value2_max)
         # Expand a bit!
         d1 = (value1_max - value1_min)/Nbins[0]
         d2 = (value2_max - value2_min)/Nbins[1]
@@ -2125,30 +2237,50 @@ def make_2D_histogram(datasets, keyNames = ('speed_array_mm_s', 'head_head_dista
     # Create the 2D histogram
     fig, ax = plt.subplots(figsize=(8, 6))
 
-    hist, xedges, yedges = np.histogram2d(values1_all, values2_all, 
-                                          bins=Nbins, 
-                                          range=[(value1_min, value1_max), 
-                                                 (value2_min, value2_max)])
-    # Normalize the histogram
-    hist = hist / hist.sum()
+    if keyNameC is None:
+        # Original behavior: plot normalized occurrence histogram
+        hist, xedges, yedges = np.histogram2d(values1_all, values2_all, 
+                                              bins=Nbins, 
+                                              range=[(value1_min, value1_max), 
+                                                     (value2_min, value2_max)])
+        # Normalize the histogram
+        hist = hist / hist.sum()
+        cbar_label = 'Normalized Count'
+    else:
+        # New behavior: plot mean of keyC in each bin
+        # Use binned_statistic_2d to compute mean
+        from scipy.stats import binned_statistic_2d
+        
+        hist, xedges, yedges, _ = binned_statistic_2d(
+            values1_all, values2_all, valuesC_all,
+            statistic='mean',
+            bins=Nbins,
+            range=[(value1_min, value1_max), (value2_min, value2_max)]
+        )
+        cbar_label = f'Mean {keyNameC}'
     
     # Plot the 2D histogram
-    # X, Y = np.meshgrid(xedges[:-1], yedges[:-1], indexing='ij')
     X, Y = np.meshgrid(0.5*(xedges[1:] + xedges[:-1]), 
                        0.5*(yedges[1:] + yedges[:-1]), indexing='ij')
+    
     # Create the 2D histogram and the colorbar
     if colorRange is None:
-        cbar = fig.colorbar(ax.pcolormesh(X, Y, hist, shading='nearest'), ax=ax)
+        cbar = fig.colorbar(ax.pcolormesh(X, Y, hist, shading='nearest',
+                                          cmap = cmap), ax=ax)
     else:
         cbar = fig.colorbar(ax.pcolormesh(X, Y, hist, shading='nearest',
-                               vmin=colorRange[0], vmax = colorRange[1]), ax=ax)
+                               vmin=colorRange[0], vmax = colorRange[1],
+                               cmap = cmap), ax=ax)
             
     ax.set_xlabel(keyNames[0], fontsize=16)
     ax.set_ylabel(keyNames[1], fontsize=16)
     if titleStr is None:
-        titleStr = f'2D Histogram of {keyNames[0]} vs {keyNames[1]}'
+        if keyNameC is None:
+            titleStr = f'2D Histogram of {keyNames[0]} vs {keyNames[1]}'
+        else:
+            titleStr = f'Mean {keyNameC} vs {keyNames[0]} and {keyNames[1]}'
     ax.set_title(titleStr, fontsize=18)
-    cbar.set_label('Normalized Count')
+    cbar.set_label(cbar_label)
     plt.show()
     if outputFileName != None:
         plt.savefig(outputFileName, bbox_inches='tight')

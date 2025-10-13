@@ -593,7 +593,7 @@ def get_bout_statistics(dataset):
     Note that "isActive" already disregards bad tracking frames
     Calculates:
         # Number of bouts for each fish
-		# Mean Duration of bouts for each fishk, seconds
+		# Mean Duration of bouts for each fish k, seconds
 		# bout rate (bouts per minute) for each fish
 		# Mean inter-bout-interval (s) for each fish
 
@@ -636,7 +636,6 @@ def get_bout_statistics(dataset):
 
     return bouts_N, bout_duration_s, bout_rate_bpm, bout_ibi_s
     
-
 def get_polar_coords(position_data, CSVcolumns, arena_center, image_scale):
     """
     Get the fish head position in polar coordinates relative to the

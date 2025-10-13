@@ -13,7 +13,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Raghuveer Parthasarathy, August 25, 2025
+Last modified by Raghuveer Parthasarathy, October 5, 2025
 
 Module containing functions for handling data files, configuration
 files, and output files -- reading and writing.
@@ -1259,7 +1259,7 @@ def write_output_files(params, output_path, datasets):
             print(f"Path length: {len(str(excel_file_path))} characters")
             
             # Fallback: try with a very short filename
-            fallback_name = "output_data.xlsx"
+            fallback_name = "behav_frame.xlsx"
             excel_file_path = output_path / fallback_name
             print(f"Trying fallback filename: {fallback_name}")
             writer = pd.ExcelWriter(excel_file_path, engine='xlsxwriter')

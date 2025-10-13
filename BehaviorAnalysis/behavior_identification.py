@@ -26,7 +26,7 @@ from toolkit import wrap_to_pi, combine_all_values_constrained, \
     plot_probability_distr, make_2D_histogram,calculate_value_corr_all, \
     plot_function_allSets, behaviorFrameCount_all, make_frames_dictionary, \
     remove_frames, combine_events, calculate_value_corr_all_binned, \
-    plot_waterfall_binned_crosscorr
+    plot_waterfall_binned_crosscorr, dilate_frames
 from behavior_identification_single import average_bout_trajectory_allSets
 from scipy.stats import skew
 import itertools
@@ -1232,9 +1232,9 @@ def get_relative_orientation(position_data, dataset, CSVcolumns):
     cross_z_0 = v0[:, 0] * dh_unit[:, 1] - v0[:, 1] * dh_unit[:, 0]
     cross_z_1 = v1[:, 0] * (-dh_unit[:, 1]) - v1[:, 1] * (-dh_unit[:, 0])
     
-    # Apply sign: positive if cross product in +z, negative if in -z
-    phi0 = np.where(cross_z_0 >= 0, phi0_unsigned, -phi0_unsigned)
-    phi1 = np.where(cross_z_1 >= 0, phi1_unsigned, -phi1_unsigned)
+    # Apply sign: positive if cross product in -z, negative if in +z
+    phi0 = np.where(cross_z_0 >= 0, -phi0_unsigned, phi0_unsigned)
+    phi1 = np.where(cross_z_1 >= 0, -phi1_unsigned, phi1_unsigned)
     
     relative_orientation = np.stack((phi0, phi1), axis=1)
 
@@ -1308,6 +1308,164 @@ def get_relative_heading_angle(dataset, CSVcolumns):
     
     return relative_heading_angle
 
+
+def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm',
+                                     bin_distance_min=0, bin_distance_max=50.0, 
+                                     bin_width=5.0, dilate_minus1=False):
+    """
+    Calculate mean inter-bout interval (IBI) binned by mean inter-fish distance
+    during the interval.
+    (Could be used to bin IBI by any other quantitative property also, as long
+     as it has one value per frame, like Nfish==2 inter-fish distance)
+    
+    Requires Nfish==2
+    
+    Parameters
+    ----------
+    datasets : list of dataset dictionaries
+    distance_key : str, either 'head_head_distance_mm' or 'closest_distance_mm'
+    bin_distance_min, bin_distance_max : float, distance range for binning (mm)
+    bin_width : float, width of distance bins (mm)
+    dilate_minus1 : bool, if True dilate bad frames by -1
+    
+    Returns
+    -------
+    binned_IBI : dict with keys for each fish, values are (n_bins, 3) arrays
+                 containing [mean_IBI, sem_IBI, n_samples] for each bin
+    bin_centers : array of bin center distances (mm)
+    """
+
+    # Set up distance bins
+    bins = np.arange(bin_distance_min, bin_distance_max + bin_width, bin_width)
+    bin_centers = bins[:-1] + bin_width / 2
+    n_bins = len(bin_centers)
+    binned_IBI = np.zeros((n_bins,))
+    
+    # Initialize lists to collect IBIs for each bin
+    # Each element will be a list of cross-correlation arrays for that bin
+    bin_IBI_lists = [[] for _ in range(n_bins)]
+    
+    print('\nBinning inter-bout intervals by distance.... ', end='')
+    for j in range(len(datasets)):
+        print(f' {j}... ', end='')
+        dataset = datasets[j]    
+        Nfish = dataset["Nfish"]
+        if Nfish != 2:
+            raise ValueError("IBI and distance binning is only supported for Nfish==2")
+        # Lowest frame number (should be 1)   
+        idx_offset = min(dataset["frameArray"])
+                 
+        # Handle bad tracking frames
+        badTrackFrames = dataset["bad_bodyTrack_frames"]["raw_frames"]
+        if dilate_minus1:
+            dilate_badTrackFrames = dilate_frames(badTrackFrames, 
+                                                  dilate_frames=np.array([-1]))
+            bad_frames_set = set(dilate_badTrackFrames)
+        else:
+            bad_frames_set = set(badTrackFrames)
+
+        for k in range(Nfish):
+            # Start frames and durations for bouts (i.e. motion)
+            moving_frameInfo = dataset[f"isActive_Fish{k}"]["combine_frames"]
+    
+            # number of inter-bout intervals for this fish 
+            n_ibi = moving_frameInfo.shape[1]-1 
+            for jj in range(n_ibi):
+                all_ibi_frames = np.arange(moving_frameInfo[0,jj] + moving_frameInfo[1,jj],
+                                           moving_frameInfo[0,jj+1])
+                ibi_s = (len(all_ibi_frames)+1) / dataset["fps"]
+                all_ibi_distances = dataset[distance_key][(all_ibi_frames-idx_offset)]
+                # Replace bad frames with NaN
+                for i in range(len(all_ibi_frames)):
+                    if (all_ibi_frames[i]) in bad_frames_set:
+                        all_ibi_distances[i] = np.nan
+
+                distance_mm = np.nanmean(all_ibi_distances)
+
+                # Find which distance bin this window belongs to
+                bin_idx = np.digitize(distance_mm, bins) - 1
+                # Make sure bin index is valid, and store the IBI value
+                if 0 <= bin_idx < n_bins:
+                    bin_IBI_lists[bin_idx].append(ibi_s)
+    print('... done')
+    # Calculate averages for each bin using nanmean
+    binned_IBI = np.zeros((n_bins, 3))
+    bin_counts = np.zeros(n_bins, dtype=int)
+                    
+    # Calculate averages for each bin
+    for bin_idx in range(n_bins):
+        if len(bin_IBI_lists[bin_idx]) > 0:
+            # Stack all IBIs for this bin and take nanmean
+            bin_IBI_array = np.stack(bin_IBI_lists[bin_idx], axis=0)
+            bin_counts[bin_idx] = len(bin_IBI_lists[bin_idx])
+            binned_IBI[bin_idx, 0] = np.nanmean(bin_IBI_array, axis=0)
+            binned_IBI[bin_idx, 2] = len(bin_IBI_lists[bin_idx])
+            binned_IBI[bin_idx, 1] = np.nanstd(bin_IBI_array, axis=0) / \
+                np.sqrt(len(bin_IBI_lists[bin_idx]))
+        else:
+            print(f'No data for {bin_idx}')
+            binned_IBI[bin_idx,:] = np.nan  # No data for this bin
+
+    return binned_IBI, bin_centers
+    
+
+
+def calculate_interfish_bout_lags(datasets):
+    """
+    Calculate the delays between the start of a bout for one fish and
+    the start of a bout for the other fish. 
+    For each fish i, the time between the start of a bout and the start of the
+        next bout of fish j that occurs at the same or a later time.
+    Tabulate all of these, across fish; return a list, one set of delays per
+    dataset
+    
+    Requires Nfish==2
+    
+    Parameters
+    ----------
+    datasets : list of dataset dictionaries
+    distance_key : str, either 'head_head_distance_mm' or 'closest_distance_mm'
+    bin_distance_min, bin_distance_max : float, distance range for binning (mm)
+    bin_width : float, width of distance bins (mm)
+    dilate_minus1 : bool, if True dilate bad frames by -1
+    
+    Returns
+    -------
+    interfish_bout_lags_s : list of arrays of inter-fish bout lags (s)
+        in each dataset (plot using plot_probability_distr)
+    """
+
+    interfish_bout_lags_s = []
+    
+    print('\nDetermining inter-fish bout delays... ', end='')
+    for j in range(len(datasets)):
+        print(f' {j}... ', end='')
+        dataset = datasets[j]    
+        Nfish = dataset["Nfish"]
+        if Nfish != 2:
+            raise ValueError("IBI and distance binning is only supported for Nfish==2")
+        
+        # list of bout start frames for each fish
+        startFrames0 = dataset["isActive_Fish0"]["combine_frames"][0,:]
+        startFrames1 = dataset["isActive_Fish1"]["combine_frames"][0,:]
+        
+        lags_list = []
+        for s0 in startFrames0:
+            later_s1 = startFrames1[startFrames1 >= s0]
+            if len(later_s1)> 0:
+                min_diff_later_s1 = np.min(later_s1 - s0)
+                lags_list.append(min_diff_later_s1)
+        for s1 in startFrames1:
+            later_s0 = startFrames0[startFrames0 >= s1]
+            if len(later_s0)> 0:
+                min_diff_later_s0 = np.min(later_s0 - s1)
+                lags_list.append(min_diff_later_s0)
+            
+        interfish_bout_lags_s.append(np.array(lags_list)/dataset["fps"])
+    print(' Done')
+    
+    return interfish_bout_lags_s
+    
 
 def make_pair_fish_plots(datasets, outputFileNameBase = 'pair_fish',
                            outputFileNameExt = 'png'):
