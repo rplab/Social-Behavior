@@ -4,7 +4,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Aug 25 20:59:37 2025
-Last modified Sept. 9, 2025 -- Raghuveer Parthasarathy
+Last modified Oct. 29, 2025 -- Raghuveer Parthasarathy
 
 Description
 -----------
@@ -32,6 +32,8 @@ import tkinter as tk
 import tkinter.filedialog as filedialog
 from time import perf_counter
 import re
+import tifffile
+import imageio.v3 as iio
 
 from toolkit import get_Nfish
 
@@ -878,14 +880,15 @@ def write_pickle_file(dict_for_pickle, dataPath, outputFolderName, pickleFileNam
         raise
 
 
-def load_and_assign_from_pickle():
+def load_and_assign_from_pickle(pickleFileName1 = None, pickleFileName2 = None):
     """
     Calls load_dict_from_pickle() and assign_variables_from_dict()
     to load *two* pickle files and assign variables.
     Asks users for filenames.
     
     Inputs:
-        None
+        pickleFileName1, pickleFileName2 : Full pickle file paths + names,
+            see code. Leave as None for user input or dialog box
         
     Outputs
         all_position_data : all position data, from first pickle file
@@ -896,15 +899,23 @@ def load_and_assign_from_pickle():
     print('\n   Note that this requires *two* pickle files:')
     print('     (1) position data, probably in the CSV folder')
     print('     (2) "datasets" and other information, probably in Analysis folder')
-    print('For each, enter the full path or just the filename; leave empty for a dialog box.')
-    print('\n')
-    pickleFileName1 = input('(1) Pickle file name for position data; blank for dialog box: ')
-    if pickleFileName1 == '': pickleFileName1 = None
+    
+    if (pickleFileName1 is None) or (pickleFileName2 is None):
+        print('For each, enter the full path or just the filename; leave empty for a dialog box.')
+        print('\n')
+
+    if pickleFileName1 is None:
+        pickleFileName1 = input('(1) Pickle file name for position data; blank for dialog box: ')
+        if pickleFileName1 == '': pickleFileName1 = None
     pos_dict = load_dict_from_pickle(pickleFileName=pickleFileName1)
+    print("Loaded pickle file 1")
     all_position_data = assign_variables_from_dict(pos_dict, inputSet = 'positions')
-    pickleFileName2 = input('(2) Pickle file name for datasets etc.; blank for dialog box: ')
-    if pickleFileName2 == '': pickleFileName2 = None
+
+    if pickleFileName2 is None:
+        pickleFileName2 = input('(2) Pickle file name for datasets etc.; blank for dialog box: ')
+        if pickleFileName2 == '': pickleFileName2 = None
     data_dict = load_dict_from_pickle(pickleFileName=pickleFileName2)
+    print("Loaded pickle file 2")
     variable_tuple = assign_variables_from_dict(data_dict, inputSet = 'datasets')
     
     return all_position_data, variable_tuple
@@ -1869,4 +1880,169 @@ def add_statistics_to_excel(file_path='behaviorCounts.xlsx'):
         if temp_file.exists():
             temp_file.unlink()
         raise
+
+
+def combine_images_to_tiff(filenamestring, path, ext="png", exclude_string=None):
+    """
+    Load all images containing a given string in their filename and save as 
+    multipage TIFF.
+    Orders pages by the datestamp of the image files, oldest-newest
+    
+    Parameters:
+    -----------
+    filenamestring : str
+        String to search for in filenames
+    path : str or Path
+        Directory path to search for images
+    ext : str, optional
+        File extension to filter by (default: "png")
+    exclude_string : str, optional
+        String to exclude from filenames (default: None)
+    
+    Returns:
+    --------
+    str
+        Path to the created multipage TIFF file, or None if no matching files found
+    """
+    # Convert path to Path object
+    search_path = Path(path)
+    
+    # Ensure extension starts with a dot
+    if not ext.startswith('.'):
+        ext = f'.{ext}'
+    
+    # Find all matching files
+    matching_files = [
+        f for f in search_path.glob(f'*{ext}')
+        if filenamestring in f.stem
+    ]
+    
+    # Filter out files containing exclude_string
+    if exclude_string is not None:
+        matching_files = [
+            f for f in matching_files
+            if exclude_string not in f.stem
+        ]
+    
+    # Sort files by modification time (oldest to newest)
+    matching_files = sorted(matching_files, key=lambda f: f.stat().st_mtime)
+        
+    if not matching_files:
+        exclude_msg = f" (excluding '{exclude_string}')" if exclude_string else ""
+        print(f"No files found with '{filenamestring}' in filename{exclude_msg} and extension '{ext}'")
+        return None
+    
+    print(f"Found {len(matching_files)} matching files:")
+    for f in matching_files:
+        print(f"  - {f.name}")
+    
+    # Load all images as numpy arrays
+    image_arrays = []
+    for file_path in matching_files:
+        try:
+            img_array = iio.imread(file_path)
+            image_arrays.append(img_array)
+        except Exception as e:
+            print(f"Warning: Could not load {file_path.name}: {e}")
+    
+    if not image_arrays:
+        print("No images could be loaded successfully")
+        return None
+    
+    # Check if all images have the same shape
+    shapes = [img.shape for img in image_arrays]
+    unique_shapes = set(shapes)
+    
+    if len(unique_shapes) > 1:
+        print(f"\nWarning: Images have different shapes: {unique_shapes}")
+        print("Padding smaller images with black pixels to match largest dimensions...")
+        
+        # Find maximum dimensions
+        max_height = max(img.shape[0] for img in image_arrays)
+        max_width = max(img.shape[1] for img in image_arrays)
+        
+        # Check if images are grayscale or color
+        has_channels = len(image_arrays[0].shape) == 3
+        if has_channels:
+            n_channels = image_arrays[0].shape[2]
+        
+        # Pad each image to match max dimensions
+        padded_arrays = []
+        for img in image_arrays:
+            height, width = img.shape[0], img.shape[1]
+            
+            if height == max_height and width == max_width:
+                padded_arrays.append(img)
+            else:
+                # Calculate padding (top=0, bottom=pad_h, left=0, right=pad_w)
+                pad_height = max_height - height
+                pad_width = max_width - width
+                
+                if has_channels:
+                    # For color images: pad each channel
+                    padded = np.pad(
+                        img,
+                        ((0, pad_height), (0, pad_width), (0, 0)),
+                        mode='constant',
+                        constant_values=0
+                    )
+                else:
+                    # For grayscale images
+                    padded = np.pad(
+                        img,
+                        ((0, pad_height), (0, pad_width)),
+                        mode='constant',
+                        constant_values=0
+                    )
+                
+                padded_arrays.append(padded)
+                print(f"  Padded {height}x{width} -> {max_height}x{max_width}")
+        
+        image_arrays = padded_arrays
+        print(f"All images now have shape: {image_arrays[0].shape}")
+    
+    # Stack images along first axis (Z-axis for ImageJ)
+    image_stack = np.stack(image_arrays, axis=0)
+    
+    n_images = len(image_arrays)
+    
+    # Create output filename
+    output_path = search_path / f'{filenamestring}_combined.tiff'
+    
+    # Prepare metadata for ImageJ
+    metadata = {
+        'slices': n_images
+    }
+    
+    # Determine axes based on image dimensions
+    if image_stack.ndim == 3:
+        # Grayscale images: (slices, height, width)
+        axes = 'ZYX'
+    elif image_stack.ndim == 4:
+        # Color images: (slices, height, width, channels)
+        axes = 'ZYXC'
+    else:
+        axes = None
+    
+    # Save as ImageJ-compatible TIFF
+    tifffile.imwrite(
+        output_path,
+        image_stack,
+        imagej=True,
+        metadata=metadata,
+        compression='deflate'
+    )
+    
+    print(f"\nSuccessfully created ImageJ-compatible multipage TIFF: {output_path}")
+    print(f"Total slices: {n_images}")
+    print(f"Metadata: {metadata}")
+    
+    return str(output_path)
+
+
+# Example usage:
+if __name__ == "__main__":
+    # Example: combine_images_to_tiff("sunset", "/path/to/images", "png", exclude_string="thumbnail")
+    # This would find all .png files with "sunset" in the name (but not "thumbnail") and combine them
+    pass
 

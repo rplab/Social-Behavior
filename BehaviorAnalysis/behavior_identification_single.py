@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Split from behavior_identification.py on July 22, 2024
-Last modified Oct. 4, 2025 -- Raghu Parthasarathy
+Last modified Oct. 29, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -1018,7 +1018,7 @@ def average_bout_trajectory_oneSet(dataset, keyName = "speed_array_mm_s",
             # already checked that Nfish = 2.
             # Choose the other fish
             tempFish = np.arange(0, Nfish)
-            thisKeyIdx = tempFish[tempFish != k][0]
+            thisKeyIdx = int(tempFish[tempFish != k][0])
         else:
             thisKeyIdx = keyIdx
         values_fullRange = get_values_subset(dataset[keyName], thisKeyIdx,
@@ -1039,7 +1039,7 @@ def average_bout_trajectory_oneSet(dataset, keyName = "speed_array_mm_s",
                 constraint_value = constraint_array[moving_frameInfo[0,j]]
                 if not (constraintRange[0] <= constraint_value <= constraintRange[1]):
                     continue
-            if values_fullRange.ndim > 1:
+            if (values_fullRange.ndim > 1) and (values_fullRange.shape[1]>1):
                 # Not recommended; probably won't happen
                 values = values_fullRange[start_frame:end_frame, thisKeyIdx]
             else:
@@ -1090,9 +1090,10 @@ def average_bout_trajectory_allSets(datasets, t_range_s=(-0.5, 2.0),
                                     constraintRange=None,
                                     constraintIdx = None,
                                     use_abs_value_constraint = False,
-                                    makePlot=False, 
+                                    makePlot=False, color = 'black',
                                     ylim = None, titleStr = None,
-                                    outputFileName = None):
+                                    outputFileName = None,
+                                    closeFigure = False):
     """
     For all datasets, call average_bout_trajectory_oneSet() 
     to tabulate some quantity, typically speed
@@ -1145,11 +1146,15 @@ def average_bout_trajectory_allSets(datasets, t_range_s=(-0.5, 2.0),
                     If True, use absolute value of the quantitative constraint
                     property before applying constraints or combining values. 
                     Useful for signed angles (relative orientation, bending)        makePlot : if True, plot avg speed vs. time relative to bout start
+        makePlot : if True, make a plot
+        color : plot color (string)
         ylim : Optional ymin, ymax for plot
         titleStr : title string for plot
         outputFileName : if not None, and makePlot is True,
                         save the figure with this filename (include extension)
-    
+        closeFigure : (bool) if True, if makePlot is True, close the figure
+                        after creating it.
+        
     Returns:
         avg_values : numpy array with mean, standard deviation, 
             and s.e.m. as columns.
@@ -1204,8 +1209,8 @@ def average_bout_trajectory_allSets(datasets, t_range_s=(-0.5, 2.0),
         t_min_s, t_max_s = t_range_s
         frames_to_plot = int((t_max_s - t_min_s) * fps + 1)
         time_array = np.linspace(t_min_s, t_max_s, frames_to_plot) #array of time points to consider
-        plt.figure(figsize=(10, 6))
-        plt.plot(time_array, mean_values, 'k-')
+        fig = plt.figure(figsize=(10, 6))
+        plt.plot(time_array, mean_values, '-', color = color)
         plt.fill_between(time_array, mean_values - std_dev, mean_values + std_dev, alpha=0.2)
         plt.fill_between(time_array, mean_values - sem, mean_values + sem, alpha=0.4)
         plt.xlabel('Time from bout start (s)', fontsize=18)
@@ -1216,13 +1221,17 @@ def average_bout_trajectory_allSets(datasets, t_range_s=(-0.5, 2.0),
         plt.show()
         if outputFileName != None:
             plt.savefig(outputFileName, bbox_inches='tight')
+        if closeFigure:
+            plt.close(fig)
             
     return avg_values
 
 
 
-def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
-                           outputFileNameExt = 'png'):
+def make_single_fish_plots(datasets, exptName = '', color = 'black',
+                           outputFileNameBase = 'single_fish',
+                           outputFileNameExt = 'png',
+                           closeFigures = False):
     """
     makes several useful "single fish" plots -- i.e. 
     plots of characteristics of individual fish, which may be in multi-fish 
@@ -1233,9 +1242,12 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
     
     Inputs:
         datasets : dictionaries for each dataset
+        exptName : (string) Experiment name, to append to titles.
+        color: plot color (uses alpha for indiv. dataset colors)
         outputFileNameBase : base file name for figure output; if None,
                              won't save a figure file
         outputFileNameExt : extension for figure output (e.g. 'eps' or 'png')
+        closeFigures : (bool) if True, close a figure after creating it.
 
     Outputs:
 
@@ -1249,11 +1261,15 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
         outputFileName = outputFileNameBase + '_speed' + '.' + outputFileNameExt
     else:
         outputFileName = None
-    plot_probability_distr(speeds_mm_s_all, bin_width = 1.0, 
+    _, _ = plot_probability_distr(speeds_mm_s_all, bin_width = 1.0, 
                            bin_range = [0, None], 
-                           ylim = (1e-4, 0.5), xlim = (0.0, 150.0),                           xlabelStr = 'Speed (mm/s)', 
-                           titleStr = 'Probability distribution: Speed',
-                           outputFileName = outputFileName)
+                           ylim = (0.001, 0.5), xlim = (0.0, 70.0),
+                           color = color,
+                           yScaleType = 'log',
+                           xlabelStr = 'Speed (mm/s)', 
+                           titleStr = f'{exptName}: Probability Distr.: Speed',
+                           outputFileName = outputFileName,
+                           closeFigure=closeFigures)
 
     # Angular_speed histogram
     angular_speeds_rad_s_all = combine_all_values_constrained(datasets, 
@@ -1263,11 +1279,15 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
         outputFileName = outputFileNameBase + '_angularSpeed' + '.' + outputFileNameExt
     else:
         outputFileName = None
-    plot_probability_distr(angular_speeds_rad_s_all, bin_width = 1.0, 
+    _, _ = plot_probability_distr(angular_speeds_rad_s_all, bin_width = 1.0, 
                            bin_range = [0, None], 
+                           color = color, 
+                           yScaleType = 'log',
+                           ylim = (0.001, 0.5), xlim = (0.0, 40.0),
                            xlabelStr = 'Angular Speed (rad/s)', 
-                           titleStr = 'Probability distribution: Angular Speed',
-                           outputFileName = outputFileName)
+                           titleStr = f'{exptName}: Probability Distr.: Angular Speed',
+                           outputFileName = outputFileName,
+                           closeFigure=closeFigures)
 
 
     # Radial position histogram
@@ -1278,11 +1298,15 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
         outputFileName = outputFileNameBase + '_radialpos' + '.' + outputFileNameExt
     else:
         outputFileName = None
-    plot_probability_distr(radial_position_mm_all, bin_width = 0.5, 
-                           bin_range = [0, None], yScaleType = 'linear',
+    _, _ = plot_probability_distr(radial_position_mm_all, bin_width = 0.5, 
+                           bin_range = [0, None],
+                           color = color,
+                           yScaleType = 'linear',
+                           ylim = (-0.025, 0.5),
                            xlabelStr = 'Radial position (mm)', 
-                           titleStr = 'Probability distribution: r (not normalized!)',
-                           outputFileName = outputFileName)
+                           titleStr = f'{exptName}: Probability Distr.: r (not normalized!)',
+                           outputFileName = outputFileName,
+                           closeFigure=closeFigures)
     
     # Heading angle histogram
     heading_angle_all = combine_all_values_constrained(datasets, 
@@ -1293,12 +1317,14 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
     else:
         outputFileName = None
     bin_width = np.pi/30
-    plot_probability_distr(heading_angle_all, bin_width = bin_width,
+    _, _ = plot_probability_distr(heading_angle_all, bin_width = bin_width,
                            bin_range=[None, None], yScaleType = 'linear',
                            polarPlot = True,
-                           titleStr = 'Heading Angle',
+                           color = color,
+                           titleStr = f'{exptName}: Heading Angle',
                            ylim = (0, 0.3),
-                           outputFileName = outputFileName)
+                           outputFileName = outputFileName,
+                           closeFigure=closeFigures)
     
     # Radial alignment angle
     radial_alignment_all = combine_all_values_constrained(datasets, 
@@ -1309,12 +1335,14 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
     else:
         outputFileName = None
     bin_width = np.pi/30
-    plot_probability_distr(radial_alignment_all, bin_width = bin_width,
+    _, _ = plot_probability_distr(radial_alignment_all, bin_width = bin_width,
                            bin_range=[None, None], yScaleType = 'linear',
                            polarPlot = True,
-                           titleStr = 'Radial alignment angle (rad)',
+                           color = color,
+                           titleStr = f'{exptName}: Radial alignment angle (rad)',
                            ylim = (0, 0.6),
-                           outputFileName = outputFileName)
+                           outputFileName = outputFileName,
+                           closeFigure=closeFigures)
 
     # Speed vs. time for bouts
     if outputFileNameBase is not None:
@@ -1323,8 +1351,11 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
         outputFileName = None
     average_bout_trajectory_allSets(datasets, keyName = "speed_array_mm_s", 
                                     keyIdx = None, t_range_s=(-1.0, 2.0), 
-                                    titleStr = 'Bout Speed', makePlot=True,
-                                    outputFileName = outputFileName)
+                                    titleStr = f'{exptName}: Bout Speed', 
+                                    makePlot=True,
+                                    color = color,
+                                    outputFileName = outputFileName,
+                                    closeFigure=closeFigures)
 
     # speed autocorrelation function
     if outputFileNameBase is not None:
@@ -1337,9 +1368,11 @@ def make_single_fish_plots(datasets, outputFileNameBase = 'single_fish',
                                  t_max = 3.0, t_window = 10.0, fpstol = 1e-6)
     plot_function_allSets(speed_ac_all, t_lag, xlabelStr='time (s)', 
                           ylabelStr='Speed autocorrelation', 
-                          titleStr='Speed autocorrelation', 
+                          titleStr = f'{exptName}: Speed autocorrelation', 
+                          color = color,
                           xlim = (-0.1, 2.0),
                           average_in_dataset = True,
-                          outputFileName = outputFileName)
+                          outputFileName = outputFileName,
+                          closeFigure=closeFigures)
 
     

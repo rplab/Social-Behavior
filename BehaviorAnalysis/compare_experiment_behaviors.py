@@ -1098,7 +1098,7 @@ def main():
     
     # Get behaviors or properties to include in the ratio plot and the log-log plot
     default_keys_Plot = ['perp_noneSee', 'perp_oneSees', 'perp_bothSee',
-                         'contact_any', 'contact_head_body',
+                         'contact_any', 
                          'tail_rubbing', 'maintain_proximity', 
                          'anyPairBehavior', 'Cbend_any',
                          'Rbend_any', 'Jbend_any', 'approaching_any',
@@ -1106,7 +1106,9 @@ def main():
                          'close_to_edge_any']
     default_keys_ratioPlot = default_keys_Plot + \
                              ['Fraction of time in proximity', 
-                              'Mean bout rate (/min)',	'Mean head-head dist (mm)']
+                              'Mean bout rate (/min)',	
+                              'Mean inter-bout interval (s)',
+                              'Mean head-head dist (mm)']
     print('Select behaviors for log-log plot. (May need to enlarge dialog box)')
     behavior_key_list_loglog = select_items_dialog(columns_all, 
                                             default_keys = default_keys_Plot)

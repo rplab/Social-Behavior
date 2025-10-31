@@ -310,15 +310,14 @@ def calcDeltaFramesEvents(datasets, behavior_key_list, max_delta_frame = None,
         for behavior_A in behavior_key_list:
             # Apply all constraints to get filtered behavior A events
             bA_frames_filtered = apply_behavior_constraints(
-                datasets[j], behavior_A, 
+                dataset = datasets[j], behavior_A = behavior_A, 
                 min_duration_behavior = min_duration_behavior, 
                 min_duration_fr=min_duration_fr,
                 behavior_C=behavior_C, 
                 C_delta_f=C_delta_f,
                 constraintKey=constraintKey,
                 constraintRange=constraintRange,
-                constraintIdx=constraintIdx,
-                use_abs_value = use_abs_value
+                constraintIdx=constraintIdx
             )
             
             # Marginal probability based on filtered events

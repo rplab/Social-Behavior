@@ -69,7 +69,7 @@ class FishVisualizer:
         self.autoscale = True  # New: toggle for autoscaling
         
         # Generate distinct colors for each fish
-        self.colors = plt.cm.tab10(np.linspace(0, 1, self.Nfish))
+        self.colors = plt.cm.tab20b(np.linspace(0, 1, self.Nfish))
         
         # Set up the plot with focus capability
         self.fig, self.ax = plt.subplots(figsize=(12, 8))
