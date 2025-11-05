@@ -7,7 +7,7 @@
 # First version  : Estelle Trieu 9/19/2022
 # Re-written by : Raghuveer Parthasarathy (2023)
 # version ='2.0' Raghuveer Parthasarathy -- begun May 2023; see notes.
-# last modified: Raghuveer Parthasarathy, August 26, 2025
+# last modified: Raghuveer Parthasarathy, Nov. 3, 2025
 # ---------------------------------------------------1------------------------
 """
 
@@ -155,6 +155,16 @@ def main():
         all_position_data, variable_tuple = load_and_assign_from_pickle()
         (datasets, CSVcolumns, expt_config, params, N_datasets, Nfish,
          basePath, dataPath, subGroupName) = variable_tuple
+        
+        # allow revision of base path
+        print(f'Base Path loaded: {basePath}')
+        new_basePath = input(f'Enter the new base path; default {basePath}: ')
+        if new_basePath != '':
+            basePath = new_basePath
+            if subGroupName is not None:
+                dataPath = os.path.join(basePath, subGroupName)
+            else:
+                dataPath = basePath
         
         # allow revision of experiment name
         new_expt_name = input(f'Enter the experiment name; default {expt_config["expt_name"]} (unchanged): ')

@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Split from behavior_identification.py on July 22, 2024
-Last modified Oct. 29, 2025 -- Raghu Parthasarathy
+Last modified Nov. 4, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -1302,9 +1302,10 @@ def make_single_fish_plots(datasets, exptName = '', color = 'black',
                            bin_range = [0, None],
                            color = color,
                            yScaleType = 'linear',
+                           normalize_by_inv_bincenter = True,
                            ylim = (-0.025, 0.5),
                            xlabelStr = 'Radial position (mm)', 
-                           titleStr = f'{exptName}: Probability Distr.: r (not normalized!)',
+                           titleStr = f'{exptName}: Probability Distr.: r',
                            outputFileName = outputFileName,
                            closeFigure=closeFigures)
     

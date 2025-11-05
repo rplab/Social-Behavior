@@ -2039,10 +2039,76 @@ def combine_images_to_tiff(filenamestring, path, ext="png", exclude_string=None)
     
     return str(output_path)
 
+def modify_params(pickleFilePath, pickleFileName, dict_to_modify = 'params',
+                  keys_to_update = ['contact_distance_threshold_mm', 
+                                    'contact_inferred_distance_threshold_mm', 
+                                    'contact_inferred_window'],
+                  vals_to_update = [2.5, 3.5, 3],
+                  keys_to_add = ['max_motion_gap_s', 
+                                 'min_proximity_duration_s'],
+                  vals_to_add = [0.5, 0.0]
+                  ):
+    """
+    Load pickle file and modify the analysis parameters, adding keys
+        or changing key values.
+    The dict to update is likely 'params' (analysis parameters) but
+        could be expt_config (e.g. image scale)
+    Useful if we want to modify analysis without re-reading all CSVs
+    
+    Parameters:
+    -----------
+    pickleFilePath : str or Path
+        Path of pickle file
+    pickleFileName : str or Path
+        File name of pickle file
+        Note that the params and expt_config dictionaries are stored 
+        in the “datasets” pickle file, not “positionData”.
+        e.g. pickleFileName = r'old_Behavior_atah_1_pair_Group_1_datasets.pickle'
+    keys_to_update : list 
+        keys to update; can be None
+    vals_to_update : list
+        corresponding values to update (list)
+    keys_to_add : list
+        keys to add; can be None
+    vals_to_add : list 
+        corresponding values to add (list )
+    
+    Returns:
+    --------
+    None (overwrites original pickle file)
+    
+    """    
 
-# Example usage:
-if __name__ == "__main__":
-    # Example: combine_images_to_tiff("sunset", "/path/to/images", "png", exclude_string="thumbnail")
-    # This would find all .png files with "sunset" in the name (but not "thumbnail") and combine them
-    pass
+    # Step 1: Load all objects from the pickle file
+    pickleCompletePath = os.path.join(pickleFilePath, pickleFileName)
+    objects = []
+    with open(pickleCompletePath, "rb") as f:
+        while True:
+            try:
+                obj = pickle.load(f)
+                objects.append(obj)
+            except EOFError:
+                break
+    
+    print('\nOriginal values:')
+    print(objects[0][dict_to_modify])
+    # Step 2: Find and modify the 'params' dictionary
+    for obj in objects:
+        if isinstance(obj, dict) and dict_to_modify in obj:
+            # Update keys
+            if keys_to_update is not None:
+                for k, v in zip(keys_to_update, vals_to_update):
+                    obj[dict_to_modify][k] = v  # Update key1
+            # Add keys
+            if keys_to_add is not None:
+                for k, v in zip(keys_to_add, vals_to_add):
+                    obj[dict_to_modify][k] = v  # Add new key
+            break  # Assuming only one 'params' dict exists
+    
+    print('\nNew values:')
+    print(objects[0][dict_to_modify])
 
+    # Step 3: Write all objects back to the pickle file
+    with open(pickleCompletePath, "wb") as f:
+        for obj in objects:
+            pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)

@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Raghuveer Parthasarathy, Oct. 29, 2025
+Last modified by Raghuveer Parthasarathy, Nov. 4, 2025
 
 Description
 -----------
@@ -1178,7 +1178,9 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
 
 def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None], 
                            xlabelStr='x', titleStr='Probability density',
-                           yScaleType = 'log', flatten_dataset = False,
+                           yScaleType = 'log', 
+                           normalize_by_inv_bincenter = False, 
+                           flatten_dataset = False,
                            plot_each_dataset = True,
                            xlim = None, ylim = None, polarPlot = False,
                            color = 'black', 
@@ -1199,6 +1201,9 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
        xlabelStr : string for x axis label
        titleStr : string for title
        yScaleType : either "log" or "linear"
+       normalize_by_inv_bincenter : if True, normalize counts by 
+                   1 / bin centers -- i.e. if we're plotting p(r)
+                   and need to normalize by 1/r for disk density.
        flatten_dataset : if true, flatten each dataset's array for 
                            individual dataset plots. If false, plot each
                            array column (fish, probably) separately
@@ -1266,7 +1271,10 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
     
     # Plot concatenated distribution
     counts_all, _ = np.histogram(x_all, bins=bin_edges)
+    if normalize_by_inv_bincenter:
+        counts_all = counts_all / bin_centers
     prob_dist_all = counts_all / np.sum(counts_all) / bin_width
+    
     plt.plot(bin_centers, prob_dist_all, color=color, linewidth=2, 
              label='All Datasets')
     if not polarPlot:
