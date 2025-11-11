@@ -964,6 +964,8 @@ def get_values_subset(data_array, keyIdx, use_abs_value = False):
     keyIdx : integer, string, or None
         If None: return full array
         If integer: return column keyIdx
+        If numpy array of integers: return a 1D array of the data_array values
+            for each row from column keyIdx (i.e. data_array[j, keyIdx[j]])
         If string ('min', 'max', 'mean'): 
             apply operation along axis=1. 
             'min' returns the min along axis=1, i.e. the value of the lowest
@@ -993,6 +995,12 @@ def get_values_subset(data_array, keyIdx, use_abs_value = False):
             return data_array[:, keyIdx:keyIdx+1]  # Keep 2D shape
         else:
             return data_array
+    elif isinstance(keyIdx, np.ndarray):
+        if np.issubdtype(keyIdx.dtype, np.integer):
+            return data_array[np.arange(len(keyIdx)),keyIdx]
+        else:
+            raise ValueError(f"subset index {keyIdx} is a numpy array that " + 
+                             f"is not integer; shape {keyIdx.shape}")
     elif isinstance(keyIdx, str):
         if keyIdx.lower() == 'min':
             if use_abs_value:
@@ -1042,6 +1050,8 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
         (index or instructions given by constraintIdx) are within 
         the 'constraintRange'. For example: get all speed values for frames
         in which inter-fish-distance is below 5 mm.
+        For example: get all bending angle values for fish with the lowest
+        relative orientation (keyIdx = 'phi_low')
         If 'constraintRange' is empty or None, do not apply the constraint.
     
     Return a list of numpy arrays containing all values.
@@ -1065,8 +1075,11 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
                        return the full array (minus bad frames, constraints)
                     an integer: extract that column
                        (e.g. datasets[12]["speed_array_mm_s"][:,keyIdx])
-                    a string , use the operation "min", "max",
-                       or "mean", along axis==1 (e.g. for fastest fish)
+                    the string "phi_low" or "phi_high", call get_keyIdx_array()
+                       to get an array of integers corresponding to the index
+                       of the low or high relative orientation fish
+                    a string "min", "max", or "mean", apply this
+                       operation along axis==1 (e.g. for fastest fish)
     use_abs_value : bool, default False
                     If True, use absolute value of the quantitative 
                     property before applying constraints or combining values. 
@@ -1077,14 +1090,8 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
                     to use specified by constraintIdx (see below)
                     If None, don't apply constraint. (Still remove bad Tracking)
     constraintRange : a numpy array with two numerical elements specifying the range to filter on
-    constraintIdx : integer or string.
-                    If the constraint is a multidimensional array, will use
-                    dimension constraintIdx if constraintIdx is an integer 
-                    (e.g. datasets[12]["speed_array_mm_s"][:,constraintIdx])
-                    or the "operation" if constraintIdx is a string,
-                    "min", "max", or "mean",
-                    (e.g. max of datasets[12]["speed_array_mm_s"] along axis==1
-                     if constraintIdx is "max")
+    constraintIdx : integer or string, or None, used by get_values_subset().
+                    See keyIdx for valid options.
                     If None, won't apply constraint
     dilate_minus1 : If True, dilate the bad frames -1; see above.
     use_abs_value_constraint : bool, default False
@@ -1095,11 +1102,28 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
     -------
     values_all_constrained : list of numpy arrays of all values in all 
        datasets that satisfy the constraint; can concatenate.
+       
+    To do
+    -------
+    I don't like the redundant code, which separately calcualtes and returns
+    things for constraintKey = None or constraint exists. Clean this up, 
+    with just one loop through datasets and applying the constraint to 
+    each dataset as needed.
 
     """
     Ndatasets = len(datasets)
     # print(f'\nCombining values of {keyName} for {Ndatasets} datasets...')
-    
+
+    # If we need to make an array of keyIdx values
+    if ((keyIdx == 'phi_low') or (keyIdx == 'phi_high')):
+        keyIdxString = keyIdx
+    else:
+        keyIdxString = None
+    if ((constraintIdx == 'phi_low') or (constraintIdx == 'phi_high')):
+        constraintIdxString = constraintIdx
+    else:
+        constraintIdxString = None
+            
     values_all_constrained = []
     
     if constraintKey is None or constraintRange is None \
@@ -1109,6 +1133,11 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
         for j in range(Ndatasets):
             frames = datasets[j]["frameArray"]
             idx_offset = min(frames) # should be 1, but ensure
+
+            # for low and high relative orientation, key index must be an array
+            if keyIdxString is not None:
+                keyIdx = get_keyIdx_array(datasets[j], keyIdxString = keyIdxString)
+
             badTrackFrames = datasets[j]["bad_bodyTrack_frames"]["raw_frames"]
             if dilate_minus1:
                 dilate_badTrackFrames = np.concatenate((badTrackFrames, badTrackFrames - 1))
@@ -1131,9 +1160,18 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
     for j in range(Ndatasets):
         frames = datasets[j]["frameArray"]
         idx_offset = min(frames) # should be 1, but ensure
+        
+        # for low and high relative orientation, key index must be an array
+        if keyIdxString is not None:
+            keyIdx = get_keyIdx_array(datasets[j], keyIdxString = keyIdxString)
+        if constraintIdxString is not None:
+            constraintIdx = get_keyIdx_array(datasets[j], 
+                                             keyIdxString = constraintIdxString)
+        
         badTrackFrames = datasets[j]["bad_bodyTrack_frames"]["raw_frames"]
         if dilate_minus1:
-            dilate_badTrackFrames = np.concatenate((badTrackFrames, badTrackFrames - 1))
+            dilate_badTrackFrames = np.concatenate((badTrackFrames, 
+                                                    badTrackFrames - 1))
             bad_frames = np.unique(dilate_badTrackFrames)
         else:
             bad_frames = badTrackFrames
@@ -1153,6 +1191,9 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
             values = np.abs(values)
 
         Ndim_constrained = get_effective_dims(constraint_array)
+        
+        # if (Ndim_constrained == 1) and (values.shape[1]>1):
+            
         if (Ndim_constrained > 1) and (values.ndim == 1 or values.shape[1]==1):
             # Tile to make the values array match the constraint
             if values.ndim == 1:
@@ -1167,30 +1208,57 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
             # Tile to make the good frames array match the values array
             good_frames_mask = np.tile(good_frames_mask[:, np.newaxis], 
                                        (1, values.ndim))
+
+        if (Ndim_constrained == 1) and (good_frames_mask.ndim >1):
+            # Tile to make the constraint mask  array match the good frames array
+            constrained_mask = np.tile(constrained_mask[:, np.newaxis], 
+                                       (1, good_frames_mask.ndim))
         
         values = values.flatten()
         good_frames_mask = good_frames_mask.flatten()
+        constrained_mask = constrained_mask.flatten()
         
         values_this_set = values[good_frames_mask & constrained_mask, ...]
         values_all_constrained.append(values_this_set)
     
     return values_all_constrained
 
+
+def get_keyIdx_array(dataset, keyIdxString):
+    # Find the index numbers of the fish with low or high relative orientation
+    if (keyIdxString == 'phi_low') or (keyIdxString == 'phi_high'):
+        rel_orient = dataset['relative_orientation']
+        idx_array = np.argsort(np.abs(rel_orient))
+        if (keyIdxString == 'phi_low'):
+            keyIdx = idx_array[:,0]
+        else:
+            keyIdx = idx_array[:,-1]
+    else:
+        raise ValueError('get_keyIdx_array: keyIdxString is invalid')
+    return keyIdx
+                
 def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None], 
                            xlabelStr='x', titleStr='Probability density',
                            yScaleType = 'log', 
                            normalize_by_inv_bincenter = False, 
                            flatten_dataset = False,
                            plot_each_dataset = True,
+                           plot_sem_band = False,
                            xlim = None, ylim = None, polarPlot = False,
+                           unit_scaling_for_plot = 1.0,
                            color = 'black', 
                            outputFileName = None,
                            closeFigure = False):
     """
-    Plot the probability distribution (normalized histogram) 
-    for each array in x_list (semi-transparent) (optional)
-    and for the concatenated array of all items in x_list (black)
+    Calculate and plot the probability distribution (normalized histogram) 
+    for the concatenated array of all items in input x_list. 
+    Can also plot the probability distribution for each array in x_list 
+    (semi-transparent) and plot the uncertainty in the concatenated 
+    probability distribution (semi-transparent). 
+    Can also output the concatenated probability distribution.
     Can plot in polar coordinates – useful for angle distributions.
+    Typically use this with the output of combine_all_values_constrained() .  
+    
     Inputs:
        x_list : list of numpy arrays
        bin_width : bin width
@@ -1208,11 +1276,18 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
                            individual dataset plots. If false, plot each
                            array column (fish, probably) separately
        plot_each_dataset : (bool) if True, plot the prob. distr. for each array               
+       plot_sem_band : (bool) if True, plot the +/- sem from each dataset
+           considered individually as a shaded band around the pooled value
        xlim : (optional) tuple of min, max x-axis limits
        ylim : (optional) tuple of min, max y-axis limits
        polarPlot : if True, use polar coordinates for the histogram.
                    Will not plot x and y labels.
                    Strongly reommended to set y limit (which will set r limit)
+       unit_scaling_for_plot : float for x; 
+                   for plots only, multiply values by unit_scaling_for_plot,  
+                   for example to convert radians to degrees.
+                   Note that xlim should *not* incorporate this; the code takes
+                   care of changing the limits
        color: plot color (uses alpha for indiv. dataset colors)
        outputFileName : if not None, save the figure with this filename 
                        (include extension)
@@ -1221,16 +1296,17 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
     Returns:
         prob_dist_all, bin_centers : concatenated probability distribution
             and bin centers
+        prob_dist_each_std, prob_dist_each_sem : standard deviation and
+            s.e.m. of the probability distribution of each dataset separately.
+        Nsets_total : total number of individual datasets (= number of
+                            datasets x number of fish)
     """ 
-    
-    fig = plt.figure(figsize=(12, 6))
-    ax = fig.add_subplot(polar=polarPlot)
-    
+
     # Concatenate all arrays for the overall, combined plot
     x_all = np.concatenate([arr.flatten() for arr in x_list])
     
-    slight_theta_shift = 0.01 # for axis range of polar plots
     # Determine bin range if not provided
+    slight_theta_shift = 0.01 # for axis range of polar plots
     if bin_range[0] is None:
         if polarPlot==True:
             bin_range[0] = (np.nanmin(x_all) // np.pi)*np.pi # floor * pi
@@ -1245,46 +1321,73 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
     Nbins = np.round((bin_range[1] - bin_range[0])/bin_width + 1).astype(int)
     bin_edges = np.linspace(bin_range[0], bin_range[1], num=Nbins)
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-    
-    # Plot individual distributions
-    if plot_each_dataset:
-        alpha_each = np.max((0.7/len(x_list), 0.05))
-        for i, x in enumerate(x_list):
-            if flatten_dataset:
-                x = x.flatten()
-            if x.ndim==1:
-                Nsets = 1
-                counts, _ = np.histogram(x.flatten(), bins=bin_edges)
-                prob_dist = counts / np.sum(counts) / bin_width
-                datasetLabel = f'Dataset {i+1}'
-                ax.plot(bin_centers, prob_dist, color=color, 
-                        alpha=alpha_each, label=datasetLabel)
-            else:
-                Nsets = x.shape[1] # number of measures per dataset, e.g. number of fish
-                for j in range(Nsets):
-                    counts, _ = np.histogram(x[:,j].flatten(), bins=bin_edges)
-                    prob_dist = counts / np.sum(counts) / bin_width
-                    datasetLabel = f'Dataset {i+1}: {j+1}'
-                    ax.plot(bin_centers, prob_dist, color=color, 
-                            alpha=alpha_each, label=datasetLabel)
 
-    
-    # Plot concatenated distribution
+    # Calculate concatenated distribution
     counts_all, _ = np.histogram(x_all, bins=bin_edges)
     if normalize_by_inv_bincenter:
         counts_all = counts_all / bin_centers
     prob_dist_all = counts_all / np.sum(counts_all) / bin_width
     
-    plt.plot(bin_centers, prob_dist_all, color=color, linewidth=2, 
+    
+    # Calculate individual distributions and their variance
+    prob_dist_each = []
+    datasetLabel_each = []
+    for i, x in enumerate(x_list):
+        if flatten_dataset:
+            x = x.flatten()
+        if x.ndim==1:
+            Nsets = 1
+            counts, _ = np.histogram(x.flatten(), bins=bin_edges)
+            if normalize_by_inv_bincenter:
+                counts = counts / bin_centers
+            datasetLabel_each.append(f'Dataset {i+1}')
+            prob_dist_each.append(counts / np.sum(counts) / bin_width)
+        else:
+            Nsets = x.shape[1] # number of measures per dataset, e.g. number of fish
+            for j in range(Nsets):
+                counts, _ = np.histogram(x[:,j].flatten(), bins=bin_edges)
+                if normalize_by_inv_bincenter:
+                    counts = counts / bin_centers
+                datasetLabel_each.append(f'Dataset {i+1}: {j+1}')
+                prob_dist_each.append(counts / np.sum(counts) / bin_width)
+    Nsets_total = len(prob_dist_each)
+    print(f'Calculating variance from {Nsets_total} datasets x fish')
+    prob_dist_each_std = np.std(prob_dist_each, axis=0)
+    prob_dist_each_sem = prob_dist_each_std / np.sqrt(Nsets_total)
+
+    # Plot the concatenated distribution, etc.
+    fig = plt.figure(figsize=(12, 6))
+    ax = fig.add_subplot(polar=polarPlot)
+    plt.plot(bin_centers*unit_scaling_for_plot, prob_dist_all, 
+             color=color, linewidth=2, 
              label='All Datasets')
+    
+    # Plot sem as shaded bands
+    alpha_sem = 0.4
+    if plot_sem_band:
+        plt.fill_between(bin_centers*unit_scaling_for_plot, 
+                         prob_dist_all - prob_dist_each_sem, 
+                         prob_dist_all + prob_dist_each_sem, color=color, 
+                         alpha=alpha_sem, label='s.e.m.')
+        
+    # Plot individual distributions
+    if plot_each_dataset:
+        alpha_each = np.max((0.7/len(x_list), 0.05))
+        for i in range(len(x_list)):
+            ax.plot(bin_centers*unit_scaling_for_plot, prob_dist_each[i], color=color, 
+                        alpha=alpha_each, label=datasetLabel_each[i])
+
+    # Labels, etc.
     if not polarPlot:
         plt.xlabel(xlabelStr, fontsize=16)
         plt.ylabel('Probability density', fontsize=16)
     plt.title(titleStr, fontsize=18)
     if polarPlot:
-        ax.set_thetalim(bin_range[0], bin_range[1])
+        ax.set_thetalim(bin_range[0]*unit_scaling_for_plot, 
+                        bin_range[1]*unit_scaling_for_plot)
     if xlim is not None:
-        plt.xlim(xlim)
+        plt.xlim(tuple([item * unit_scaling_for_plot for item in xlim]))
+
     if ylim is not None:
         plt.ylim(ylim)
     plt.grid(True, linestyle='--', alpha=0.7)
@@ -1299,7 +1402,8 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
         print(f'Closing figure {titleStr}')
         plt.close(fig)
         
-    return prob_dist_all, bin_centers
+    return prob_dist_all, bin_centers, prob_dist_each_std, \
+           prob_dist_each_sem, Nsets_total
 
 def plot_behavior_property_histogram(bin_centers, counts, 
                                     behavior_key_for_title, property_key_for_label,
@@ -1309,6 +1413,8 @@ def plot_behavior_property_histogram(bin_centers, counts,
                                     outputFileName=None):
     """
     Plot histogram of behavior events binned by quantitative property.
+    *Unfinished* -- doesn't normalize by the number of occurrences of that 
+    property overall
     
     Parameters
     ----------
@@ -1324,6 +1430,9 @@ def plot_behavior_property_histogram(bin_centers, counts,
     ylim : (optional) tuple of min, max y-axis limits
     outputFileName : str or None, filename to save figure
     """
+    
+    print('\n\n*Unfinished* -- does not normalize by the number of occurrences of that property overall!')
+    _ = input('Press enter to continue; recommend abort.')
     
     if bin_centers is None or counts is None:
         print("No data to plot")
@@ -2170,10 +2279,14 @@ def make_2D_histogram(datasets,
                       keyIdx = (None, None), 
                       use_abs_value = (False, False),
                       keyNameC = None, keyIdxC = None,
-                      constraintKey=None, constraintRange=None, constraintIdx = 0,
+                      constraintKey=None, constraintRange=None, 
+                      constraintIdx = 0,
                       use_abs_value_constraint = False, 
                       dilate_minus1=True, bin_ranges=None, Nbins=(20,20),
-                      titleStr = None, colorRange = None, 
+                      titleStr = None, clabelStr = None,
+                      xlabelStr = None, ylabelStr = None,
+                      colorRange = None, 
+                      unit_scaling_for_plot = [1.0, 1.0, 1.0],
                       cmap = 'RdYlBu', outputFileName = None,
                       closeFigure = False):
     """
@@ -2196,8 +2309,11 @@ def make_2D_histogram(datasets,
                    return the full array (minus bad frames, constraints)
                 an integer: extract that column
                    (e.g. datasets[12]["speed_array_mm_s"][:,keyIdx])
-                a string , use the operation "min", "max",
-                   or "mean", along axis==1 (e.g. for fastest fish)
+                    the string "phi_low" or "phi_high", call get_keyIdx_array()
+                       to get an array of integers corresponding to the index
+                       of the low or high relative orientation fish
+                    a string "min", "max", or "mean", apply this
+                       operation along axis==1 (e.g. for fastest fish)
     use_abs_value : (bool, bool) default False, False (for each property)
                     If True, use absolute value of the quantitative 
                     property before applying constraints or combining values. 
@@ -2224,7 +2340,14 @@ def make_2D_histogram(datasets,
     bin_ranges (tuple): Optional tuple of two lists, specifying the (min, max) range for the bins of value1 and value2.
     Nbins (tuple): Optional tuple of two integers, number of bins for value1 and value2
     titleStr : title string; if None use Key names
+    clabelStr : string for color bar label. If None use 'Normalized Count' 
+                or Mean {keyNameC} 
+    xlabelStr, ylabelStr : x and y axis labels. If None, use key names
     colorRange : Optional tuple of (vmin, vmax) for the histogram "v axis" range
+    unit_scaling_for_plot : List of None or float for x, y, optional "C"; 
+                   for plots only, multiply values by unit_scaling_for_plot,  
+                   for example to convert radians to degrees.
+                   if keyNameC is None, ignore 3rd item
     cmap : string, colormap. Default 'RdYlBu' (rather than usual Python viridis)
     outputFileName : if not None, save the figure with this filename 
                      (include extension)    
@@ -2239,6 +2362,14 @@ def make_2D_histogram(datasets,
     """
     if len(keyNames) != 2:
         raise ValueError("There must be two keys for the 2D histogram!") 
+        
+    # For scaling values for plot only, e.g. radians to degrees.
+    if len(unit_scaling_for_plot) == 2:
+        unit_scaling_for_plot.append(1.0)
+    if (keyNameC is None) and (abs(unit_scaling_for_plot[2]-1.0)<1e-6):
+        print('No keyNameC and unit_scaling_for_plot[2] ' + \
+              f'is {unit_scaling_for_plot[2]:.6e} is not 1; forcing equal to 1.0')
+        unit_scaling_for_plot[2] = 1.0
         
     # Get the values for each key with the constraint applied
     values1 = combine_all_values_constrained(datasets, keyNames[0], 
@@ -2336,17 +2467,18 @@ def make_2D_histogram(datasets,
     fig, ax = plt.subplots(figsize=(8, 6))
 
     if keyNameC is None:
-        # Original behavior: plot normalized occurrence histogram
+        # calculate the normalized occurrence histogram
         hist, xedges, yedges = np.histogram2d(values1_all, values2_all, 
                                               bins=Nbins, 
                                               range=[(value1_min, value1_max), 
                                                      (value2_min, value2_max)])
         # Normalize the histogram
         hist = hist / hist.sum()
-        cbar_label = 'Normalized Count'
+        if clabelStr is None:
+            clabelStr = 'Normalized Count'
         hist_std = None
     else:
-        # New behavior: plot mean of keyC in each bin
+        # plot mean of keyC in each bin
         # Use binned_statistic_2d to compute mean
         
         hist, xedges, yedges, _ = binned_statistic_2d(
@@ -2361,30 +2493,46 @@ def make_2D_histogram(datasets,
             bins=Nbins,
             range=[(value1_min, value1_max), (value2_min, value2_max)]
         )
-        cbar_label = f'Mean {keyNameC}'
+        if clabelStr is None:
+            clabelStr = f'Mean {keyNameC}'
     
     # Plot the 2D histogram
+    # X and Y values
     X, Y = np.meshgrid(0.5*(xedges[1:] + xedges[:-1]), 
                        0.5*(yedges[1:] + yedges[:-1]), indexing='ij')
     
     # Create the 2D histogram and the colorbar
     if colorRange is None:
-        cbar = fig.colorbar(ax.pcolormesh(X, Y, hist, shading='nearest',
+        cbar = fig.colorbar(ax.pcolormesh(X*unit_scaling_for_plot[0], 
+                                          Y*unit_scaling_for_plot[1], 
+                                          hist*unit_scaling_for_plot[2], 
+                                          shading='nearest',
                                           cmap = cmap), ax=ax)
     else:
-        cbar = fig.colorbar(ax.pcolormesh(X, Y, hist, shading='nearest',
-                               vmin=colorRange[0], vmax = colorRange[1],
-                               cmap = cmap), ax=ax)
+        cbar = fig.colorbar(ax.pcolormesh(X*unit_scaling_for_plot[0], 
+                                          Y*unit_scaling_for_plot[1], 
+                                          hist*unit_scaling_for_plot[2], 
+                                          shading='nearest',
+                                          vmin=colorRange[0]*unit_scaling_for_plot[2], 
+                                          vmax = colorRange[1]*unit_scaling_for_plot[2],
+                                          cmap = cmap), ax=ax)
             
-    ax.set_xlabel(keyNames[0], fontsize=16)
-    ax.set_ylabel(keyNames[1], fontsize=16)
+    if xlabelStr is None:
+        ax.set_xlabel(keyNames[0], fontsize=16)
+    else:
+        ax.set_xlabel(xlabelStr, fontsize=16)
+    if ylabelStr is None:
+        ax.set_ylabel(keyNames[1], fontsize=16)
+    else:
+        ax.set_ylabel(ylabelStr, fontsize=16)
+            
     if titleStr is None:
         if keyNameC is None:
             titleStr = f'2D Histogram of {keyNames[0]} vs {keyNames[1]}'
         else:
             titleStr = f'Mean {keyNameC} vs {keyNames[0]} and {keyNames[1]}'
     ax.set_title(titleStr, fontsize=18)
-    cbar.set_label(cbar_label)
+    cbar.set_label(clabelStr)
     plt.show()
     if outputFileName != None:
         plt.savefig(outputFileName, bbox_inches='tight')
@@ -2396,6 +2544,208 @@ def make_2D_histogram(datasets,
     return hist, X, Y, hist_std
 
 
+
+def slice_2D_histogram(z_mean, X, Y, z_unc, slice_axis='x', other_range=None, 
+                       titleStr = None, 
+                       xlabelStr = 'x', ylabelStr = 'y', zlabelStr = 'z',
+                       xlim = None, ylim = None, zlim = None,
+                       plot_z_zero_line = False, plot_vert_zero_line = False,
+                       unit_scaling_for_plot = [1.0, 1.0, 1.0],
+                       color = 'black', 
+                       outputFileName = None,
+                       closeFigure = False):
+    """
+    Perform weighted average of 2D data "z" along one axis 
+    (either x or y), possibly limited to some range along the other axis,
+    and make an errorbar plot.
+    Ignores NaNs in sums, averages; treats std. dev. = 0 as NaN
+    
+    Parameters:
+    -----------
+    z_mean : 2D numpy array
+        Mean values at each (x, y) position
+    X : 2D numpy array
+        X-coordinates from meshgrid
+    Y : 2D numpy array
+        Y-coordinates from meshgrid
+    z_unc : 2D numpy array
+        Uncertainty values at each (x, y) position
+        Note that if these are mean values, should use s.e.m. for proper weighting
+    slice_axis : str, either 'x' or 'y'
+        Axis along which to plot the slice
+    other_range : tuple or None
+        If not None, (min, max) range for the axis being averaged over
+    titleStr : string or None
+        If not None, title string; If None, "Slice along {whatever} axis"
+    xlabelStr, ylabelStr, zlabelStr : string for x axis label, y, z.
+        Note that only two of these will be used on the axis, the other in
+        the title (if slicing)
+    plot_z_zero_line : bool . if true, dotted line at z = 0
+    plot_vert_zero_line : bool . if true, dotted line at (x or y) = 0
+    unit_scaling_for_plot : List of None or float for x, y, z; 
+                   for plots only, multiply values by unit_scaling_for_plot,  
+                   for example to convert radians to degrees.
+                   Note that one of x or y will be irrelevant, but I include 
+                   all three anyway
+    color: plot color
+    xlim, ylim, zlim : (optional) tuple of min, max {x,y,z}-axis limits
+        Note that only two of these will be used.
+        Note that this should not incorporate unit_scaling_for_plot -- 
+        if angles are in radians, for example, leave the limits in radians 
+        and unit_scaling_for_plot will convert values *and* axis limits
+        to degrees
+    outputFileName : if not None, save the figure with this filename 
+                     (include extension)
+    closeFigure : (bool) if True, close a figure after creating it.
+    
+    Returns:
+    --------
+    axis_values : 1D numpy array
+        Values along the slice axis (x or y values)
+    weighted_mean : 1D numpy array
+        Weighted mean at each position along slice axis
+    weighted_std : 1D numpy array
+        Weighted standard deviation at each position along slice axis
+    """
+    
+    # Calculate weights (inverse variance weighting)
+    weights = 1.0 / (z_unc ** 2)
+    
+    # Handle inf values (where z_unc= 0)
+    weights = np.where(np.isfinite(weights), weights, np.nan)
+
+    # For the plot    
+    if zlabelStr is None:
+        for_plot_ylabelStr = 'z (weighted mean)'
+    else:
+        for_plot_ylabelStr = zlabelStr
+
+    if slice_axis == 'x':
+        # Average over y, plot along x
+        axis_values = X[:, 0]  # x values
+        
+        # Determine which y indices to include
+        if other_range is not None:
+            y_values = Y[0, :]
+            mask = (y_values >= other_range[0]) & (y_values <= other_range[1])
+        else:
+            mask = np.ones(Y.shape[1], dtype=bool)
+        
+        # Apply mask to data
+        z_mean_masked = z_mean[:, mask]
+        weights_masked = weights[:, mask]
+        
+        # Calculate weighted mean along y-axis (axis=1)
+        sum_weights = np.nansum(weights_masked, axis=1)
+        weighted_mean = np.nansum(weights_masked * z_mean_masked, axis=1) / sum_weights
+        
+        # Calculate weighted standard deviation
+        # Formula: sqrt(sum(w_i * (x_i - mu)^2) / sum(w_i))
+        weighted_variance = np.nansum(weights_masked * (z_mean_masked - weighted_mean[:, np.newaxis])**2, axis=1) / sum_weights
+        weighted_std = np.sqrt(weighted_variance)
+        
+        # For labels
+        if xlabelStr is None:
+            for_plot_xlabelStr = 'x'
+        else:
+            for_plot_xlabelStr = xlabelStr
+        if ylabelStr is None:
+            slice_label = 'y'
+        else:
+            slice_label = 'ylabelStr'
+        if titleStr is None:
+            titleStr = f'Slice along {for_plot_xlabelStr}-axis' + \
+                     (f' ({slice_label} ∈ [{other_range[0]}, {other_range[1]}])' \
+                      if other_range else '')
+        # For plot limits
+        if xlim is None:
+            for_plot_xlim = None
+        else:
+            for_plot_xlim = xlim
+            
+        # for scaling x or y scale (converting units)
+        unit_scaling_for_plot_xy = unit_scaling_for_plot[0]
+        
+    elif slice_axis == 'y':
+        # Average over x, plot along y
+        axis_values = Y[0, :]  # y values
+        
+        # Determine which x indices to include
+        if other_range is not None:
+            x_values = X[:, 0]
+            mask = (x_values >= other_range[0]) & (x_values <= other_range[1])
+        else:
+            mask = np.ones(X.shape[0], dtype=bool)
+        
+        # Apply mask to data
+        z_mean_masked = z_mean[mask, :]
+        weights_masked = weights[mask, :]
+        
+        # Calculate weighted mean along x-axis (axis=0)
+        sum_weights = np.sum(weights_masked, axis=0)
+        weighted_mean = np.sum(weights_masked * z_mean_masked, axis=0) / sum_weights
+        
+        # Calculate weighted standard deviation
+        weighted_variance = np.sum(weights_masked * (z_mean_masked - weighted_mean[np.newaxis, :])**2, axis=0) / sum_weights
+        weighted_std = np.sqrt(weighted_variance)
+        
+        # For labels
+        if xlabelStr is None:
+            for_plot_xlabelStr = 'y'
+        else:
+            for_plot_xlabelStr = ylabelStr
+        if ylabelStr is None:
+            slice_label = 'x'
+        else:
+            slice_label = 'xlabelStr'
+        if titleStr is None:
+            titleStr = f'Slice along {for_plot_xlabelStr}-axis' + \
+                     (f' ({slice_label} ∈ [{other_range[0]}, {other_range[1]}])' \
+                      if other_range else '')
+
+        # For plot limits
+        if ylim is None:
+            for_plot_xlim = None
+        else:
+            for_plot_xlim = ylim
+        # for scaling x or y scale (converting units)
+        unit_scaling_for_plot_xy = unit_scaling_for_plot[1]
+        
+    else:
+        raise ValueError("slice_axis must be either 'x' or 'y'")
+
+    # Plot
+    fig = plt.figure(figsize=(10, 6))
+    plt.errorbar(axis_values*unit_scaling_for_plot_xy, 
+                 weighted_mean*unit_scaling_for_plot[2], 
+                 yerr=weighted_std*unit_scaling_for_plot[2], 
+                 fmt='o-', capsize=5, capthick=2, markersize=12,
+                 linewidth = 2, color = color)
+    plt.xlabel(for_plot_xlabelStr, fontsize=14)
+    plt.ylabel(for_plot_ylabelStr, fontsize=14)
+    plt.title(titleStr, fontsize=16)
+    plt.xticks(fontsize = 14)
+    plt.yticks(fontsize = 14)
+    if xlim is not None:
+        plt.xlim(tuple([item * unit_scaling_for_plot_xy for item in for_plot_xlim]))
+    if zlim is not None:
+        plt.ylim(tuple([item * unit_scaling_for_plot[2] for item in zlim]))
+    if plot_z_zero_line:
+        plt.axhline(y=0.0, color='black', alpha = 0.7, linestyle=':')
+    if plot_vert_zero_line:
+        plt.axvline(x=0.0, color='black', alpha = 0.7, linestyle=':')
+
+    if outputFileName != None:
+        plt.savefig(outputFileName, bbox_inches='tight')
+
+    plt.show()
+    if closeFigure:
+        print(f'Closing figure {titleStr}')
+        plt.close(fig)
+    
+    return axis_values, weighted_mean, weighted_std
+
+ 
 def behaviorFrameCount_one(dataset, keyList, normalizeCounts = False):
     """
     Count behaviors at each frame for one dataset.

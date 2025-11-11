@@ -4,21 +4,22 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Wed Oct 15 08:59:05 2025
-Last modified Wed Oct 15 08:59:05 2025 -- Raghuveer Parthasarathy
+Last modified Nov. 5, 2025 -- Raghuveer Parthasarathy
 
 Description
 -----------
 
 Load pickle files of two week old zebrafish behavior data. 
-
-Pairs, Light (color darkorange)
-Pairs, Light, Time-shifted Fish0 (color saddlebrown)
-Pairs, Dark (color cornflowerblue)
-Pairs, Dark, Time-shifted Fish0 (color darkblue)
-Single, Light (gold)
-Single, Dark (slategrey)
-
 Make plots, for comparison.
+
+Datasets and colors:
+    Pairs, Light (color darkorange)
+    Pairs, Light, Time-shifted Fish0 (color saddlebrown)
+    Pairs, Dark (color cornflowerblue)
+    Pairs, Dark, Time-shifted Fish0 (color darkblue)
+    Single, Light (gold)
+    Single, Dark (slategrey)
+
 
 Instructions:
 
@@ -190,7 +191,7 @@ all_expts = load_expt_data(pickleFileName1, pickleFileName2, exptName,
 
 
 #%% Make single fish plots (a lot!)
-"""
+
 closeFigures = True
 if closeFigures:
     print('Single fish plots: Closing Figure Windows.')
@@ -202,7 +203,6 @@ for exptName in all_expts.keys():
                        outputFileNameBase = f'{exptName} single_properties',
                        outputFileNameExt = 'png',
                        closeFigures = closeFigures)
-"""
 
 #%% Make all pair plots (a lot!)
 # Only for Nfish ==2
@@ -222,7 +222,7 @@ for exptName in all_expts.keys():
                              outputFileNameExt = 'png',
                              closeFigures = closeFigures)
         all_expts[exptName]["bend_2Dhist_mean"] = saved_pair_outputs[0]
-        all_expts[exptName]["bend_2Dhist_std"] = saved_pair_outputs[1]
+        all_expts[exptName]["bend_2Dhist_sem"] = saved_pair_outputs[1]
         all_expts[exptName]["bend_2Dhist_X"] = saved_pair_outputs[2]
         all_expts[exptName]["bend_2Dhist_Y"] = saved_pair_outputs[3]
     
@@ -239,30 +239,32 @@ make_pair_fish_plots(all_expts[exptName]['datasets'],
 
 #%% Differences of bending angle
 
+calcDifferences = False
 
-# Differences
-X = all_expts['TwoWk_Light']["bend_2Dhist_X"]
-Y = all_expts['TwoWk_Light']["bend_2Dhist_Y"]
-dLight = all_expts['TwoWk_Light']["bend_2Dhist_mean"] - \
-    all_expts['TwoWk_Light_TIMESHIFT0']["bend_2Dhist_mean"]
-fig, ax = plt.subplots(figsize=(8, 6))
-cbar = fig.colorbar(ax.pcolormesh(X, Y, dLight, shading='nearest', 
-                                  cmap = 'RdYlBu', vmin=-0.05, vmax=0.05), ax=ax)
-plt.title('Light - Light_TS0')
-plt.savefig('Delta_bending_Light - Light_TS0.png', bbox_inches='tight')
+if calcDifferences:
+    # Differences
+    X = all_expts['TwoWk_Light']["bend_2Dhist_X"]
+    Y = all_expts['TwoWk_Light']["bend_2Dhist_Y"]
+    dLight = all_expts['TwoWk_Light']["bend_2Dhist_mean"] - \
+        all_expts['TwoWk_Light_TIMESHIFT0']["bend_2Dhist_mean"]
+    fig, ax = plt.subplots(figsize=(8, 6))
+    cbar = fig.colorbar(ax.pcolormesh(X, Y, dLight, shading='nearest', 
+                                      cmap = 'RdYlBu', vmin=-0.05, vmax=0.05), ax=ax)
+    plt.title('Light - Light_TS0')
+    plt.savefig('Delta_bending_Light - Light_TS0.png', bbox_inches='tight')
+    
+    dLightDark = all_expts['TwoWk_Light']["bend_2Dhist_mean"] - \
+        all_expts['TwoWk_Dark']["bend_2Dhist_mean"]
+    fig, ax = plt.subplots(figsize=(8, 6))
+    cbar = fig.colorbar(ax.pcolormesh(X, Y, dLightDark, shading='nearest', 
+                                      cmap = 'RdYlBu', vmin=-0.05, vmax=0.05), ax=ax)
+    plt.title('Light - Dark')
+    plt.savefig('Delta_bending_Light - Dark.png', bbox_inches='tight')
+    
 
-dLightDark = all_expts['TwoWk_Light']["bend_2Dhist_mean"] - \
-    all_expts['TwoWk_Dark']["bend_2Dhist_mean"]
-fig, ax = plt.subplots(figsize=(8, 6))
-cbar = fig.colorbar(ax.pcolormesh(X, Y, dLightDark, shading='nearest', 
-                                  cmap = 'RdYlBu', vmin=-0.05, vmax=0.05), ax=ax)
-plt.title('Light - Dark')
-plt.savefig('Delta_bending_Light - Dark.png', bbox_inches='tight')
 
 
-
-
-#%% Correlations of behaviors
+#%% Correlations of pair behaviors
 # Note that this is slow!
 
 calculateCorrelations = False
@@ -289,57 +291,58 @@ if calculateCorrelations:
     halfFrameRange = 50 # max frame delay to consider
     
     for exptName in all_expts.keys():
-        print(f'\n -- {exptName} -- ')
-        this_datasets = datasets=all_expts[exptName]['datasets']
-        fps = get_fps(this_datasets, fpstol = 1e-6)
-        # behavior_key_list = get_behavior_key_list(datasets=all_expts[exptName]['datasets'])
-        min_duration_behavior = 'maintain_proximity'
-        min_duration_fr = 13
-        behav_corr = calcDeltaFramesEvents(datasets = this_datasets, 
-                                           behavior_key_list = behavior_key_list, 
-                                           max_delta_frame = 150, 
-                                           min_duration_behavior = min_duration_behavior , 
-                                           min_duration_fr = min_duration_fr)
-        behav_corr, binCenters = bin_deltaFrames(behav_corr, behavior_key_list, 
-                                                 binWidthFrames = binWidthFrames, halfFrameRange = halfFrameRange, deleteDeltaFrames = True)
-        behav_corr = calc_pAB(behav_corr, behavior_key_list, binCenters)
-        behav_corr_allSets = calcBehavCorrAllSets(behav_corr, behavior_key_list, 
-                                                  binCenters)
-        exType = 'Light '  # e.g. 'Light ' include space at the end 
-        behaviorA = 'maintain_proximity'
-        behaviorB = ''
-        plot_behaviorCorrelation(behav_corr_allSets['DeltaCorr'], binCenters, 
-                                 behavior_key_list_subset1, behaviorA, behaviorB, 
-                                 titleString = f'{exptName}' + r'$\Delta$P', 
-                                 fps = fps, 
-                                 plotShadedUnc = True, 
-                                 outputFileName = f'{exptName}_behav_after_{behaviorA}_1.png')
-        plot_behaviorCorrelation(behav_corr_allSets['DeltaCorr'], binCenters, 
-                                 behavior_key_list_subset2, behaviorA, behaviorB, 
-                                 titleString = f'{exptName}' + r'$\Delta$P', 
-                                 fps = fps, 
-                                 plotShadedUnc = True, 
-                                 outputFileName = f'{exptName}_behav_after_{behaviorA}_2.png')
-        behaviorA = 'contact_any'
-        behaviorB = ''
-        plot_behaviorCorrelation(behav_corr_allSets['DeltaCorr'], binCenters, 
-                                 behavior_key_list_subset1, behaviorA, behaviorB, 
-                                 titleString = f'{exptName}' + r'$\Delta$P', 
-                                 fps = fps, 
-                                 plotShadedUnc = True, 
-                                 outputFileName = f'{exptName}_behav_after_{behaviorA}_1.png')
-        plot_behaviorCorrelation(behav_corr_allSets['DeltaCorr'], binCenters, 
-                                 behavior_key_list_subset2, behaviorA, behaviorB, 
-                                 titleString = f'{exptName}' + r'$\Delta$P', 
-                                 fps = fps, 
-                                 plotShadedUnc = True, 
-                                 outputFileName = f'{exptName}_behav_after_{behaviorA}_2.png')
-        corr_asymm = calc_corr_asymm(behav_corr_allSets['DeltaCorr'], 
-                                     behavior_key_list_subset, binCenters, 
-                                     maxFrameDelay = None, normalization = 'none')
-        plot_corr_asymm(corr_asymm, crange=None, 
-                        titleString = f'{exptName}' + r'corr_asymm_$\Delta$P', 
-                        outputFileName = f'{exptName}_corr_asymm.png')
+        if all_expts[exptName]['Nfish'] == 2:
 
+            print(f'\n\n -- {exptName} -- \n')
+            this_datasets = datasets=all_expts[exptName]['datasets']
+            fps = get_fps(this_datasets, fpstol = 1e-6)
+            # behavior_key_list = get_behavior_key_list(datasets=all_expts[exptName]['datasets'])
+            min_duration_behavior = 'maintain_proximity'
+            min_duration_fr = 13
+            behav_corr = calcDeltaFramesEvents(datasets = this_datasets, 
+                                               behavior_key_list = behavior_key_list, 
+                                               max_delta_frame = 150, 
+                                               min_duration_behavior = min_duration_behavior , 
+                                               min_duration_fr = min_duration_fr)
+            behav_corr, binCenters = bin_deltaFrames(behav_corr, behavior_key_list, 
+                                                     binWidthFrames = binWidthFrames, halfFrameRange = halfFrameRange, deleteDeltaFrames = True)
+            behav_corr = calc_pAB(behav_corr, behavior_key_list, binCenters)
+            behav_corr_allSets = calcBehavCorrAllSets(behav_corr, behavior_key_list, 
+                                                      binCenters)
+            exType = 'Light '  # e.g. 'Light ' include space at the end 
+            behaviorA = 'maintain_proximity'
+            behaviorB = ''
+            plot_behaviorCorrelation(behav_corr_allSets['DeltaCorr'], binCenters, 
+                                     behavior_key_list_subset1, behaviorA, behaviorB, 
+                                     titleString = f'{exptName}' + r'$\Delta$P', 
+                                     fps = fps, 
+                                     plotShadedUnc = True, 
+                                     outputFileName = f'{exptName}_behav_after_{behaviorA}_1.png')
+            plot_behaviorCorrelation(behav_corr_allSets['DeltaCorr'], binCenters, 
+                                     behavior_key_list_subset2, behaviorA, behaviorB, 
+                                     titleString = f'{exptName}' + r'$\Delta$P', 
+                                     fps = fps, 
+                                     plotShadedUnc = True, 
+                                     outputFileName = f'{exptName}_behav_after_{behaviorA}_2.png')
+            behaviorA = 'contact_any'
+            behaviorB = ''
+            plot_behaviorCorrelation(behav_corr_allSets['DeltaCorr'], binCenters, 
+                                     behavior_key_list_subset1, behaviorA, behaviorB, 
+                                     titleString = f'{exptName}' + r'$\Delta$P', 
+                                     fps = fps, 
+                                     plotShadedUnc = True, 
+                                     outputFileName = f'{exptName}_behav_after_{behaviorA}_1.png')
+            plot_behaviorCorrelation(behav_corr_allSets['DeltaCorr'], binCenters, 
+                                     behavior_key_list_subset2, behaviorA, behaviorB, 
+                                     titleString = f'{exptName}' + r'$\Delta$P', 
+                                     fps = fps, 
+                                     plotShadedUnc = True, 
+                                     outputFileName = f'{exptName}_behav_after_{behaviorA}_2.png')
+            corr_asymm = calc_corr_asymm(behav_corr_allSets['DeltaCorr'], 
+                                         behavior_key_list_subset, binCenters, 
+                                         maxFrameDelay = None, normalization = 'none')
+            plot_corr_asymm(corr_asymm, crange=None, 
+                            titleString = f'{exptName}' + r'corr_asymm_$\Delta$P', 
+                            outputFileName = f'{exptName}_corr_asymm.png')
 else:
     print('\n\nNot calculating correlations.')
