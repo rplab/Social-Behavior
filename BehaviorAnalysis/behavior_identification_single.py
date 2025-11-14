@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Split from behavior_identification.py on July 22, 2024
-Last modified Nov. 4, 2025 -- Raghu Parthasarathy
+Last modified Nov. 12, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -1261,7 +1261,7 @@ def make_single_fish_plots(datasets, exptName = '', color = 'black',
         outputFileName = outputFileNameBase + '_speed' + '.' + outputFileNameExt
     else:
         outputFileName = None
-    _, _ = plot_probability_distr(speeds_mm_s_all, bin_width = 1.0, 
+    plot_probability_distr(speeds_mm_s_all, bin_width = 1.0, 
                            bin_range = [0, None], 
                            ylim = (0.001, 0.5), xlim = (0.0, 70.0),
                            color = color,
@@ -1281,7 +1281,7 @@ def make_single_fish_plots(datasets, exptName = '', color = 'black',
         outputFileName = outputFileNameBase + '_angularSpeed' + '.' + outputFileNameExt
     else:
         outputFileName = None
-    _, _ = plot_probability_distr(angular_speeds_rad_s_all, bin_width = 1.0, 
+    plot_probability_distr(angular_speeds_rad_s_all, bin_width = 1.0, 
                            bin_range = [0, None], 
                            color = color, 
                            yScaleType = 'log',
@@ -1302,7 +1302,7 @@ def make_single_fish_plots(datasets, exptName = '', color = 'black',
         outputFileName = outputFileNameBase + '_radialpos' + '.' + outputFileNameExt
     else:
         outputFileName = None
-    _, _ = plot_probability_distr(radial_position_mm_all, bin_width = 0.5, 
+    plot_probability_distr(radial_position_mm_all, bin_width = 0.5, 
                            bin_range = [0, None],
                            color = color,
                            yScaleType = 'linear',
@@ -1324,7 +1324,7 @@ def make_single_fish_plots(datasets, exptName = '', color = 'black',
     else:
         outputFileName = None
     bin_width = np.pi/30
-    _, _ = plot_probability_distr(heading_angle_all, bin_width = bin_width,
+    plot_probability_distr(heading_angle_all, bin_width = bin_width,
                            bin_range=[None, None], yScaleType = 'linear',
                            polarPlot = True,
                            color = color,
@@ -1332,6 +1332,7 @@ def make_single_fish_plots(datasets, exptName = '', color = 'black',
                            plot_sem_band = True,
                            titleStr = f'{exptName}: Heading Angle',
                            ylim = (0, 0.3),
+                           unit_scaling_for_plot = 1.0,
                            outputFileName = outputFileName,
                            closeFigure=closeFigures)
     
@@ -1344,7 +1345,7 @@ def make_single_fish_plots(datasets, exptName = '', color = 'black',
     else:
         outputFileName = None
     bin_width = np.pi/30
-    _, _ = plot_probability_distr(radial_alignment_all, bin_width = bin_width,
+    plot_probability_distr(radial_alignment_all, bin_width = bin_width,
                            bin_range=[None, None], yScaleType = 'linear',
                            plot_each_dataset = False,
                            plot_sem_band = True,

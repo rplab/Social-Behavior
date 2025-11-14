@@ -1283,11 +1283,14 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
        polarPlot : if True, use polar coordinates for the histogram.
                    Will not plot x and y labels.
                    Strongly reommended to set y limit (which will set r limit)
+                   NOTE: for polar plot, labels will be in degrees automatically
+                   Can't use unit_scaling_for_plot to rescale
        unit_scaling_for_plot : float for x; 
                    for plots only, multiply values by unit_scaling_for_plot,  
                    for example to convert radians to degrees.
                    Note that xlim should *not* incorporate this; the code takes
                    care of changing the limits
+                   Not applicable for for polar plots.
        color: plot color (uses alpha for indiv. dataset colors)
        outputFileName : if not None, save the figure with this filename 
                        (include extension)
@@ -1301,7 +1304,12 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
         Nsets_total : total number of individual datasets (= number of
                             datasets x number of fish)
     """ 
-
+    if polarPlot:
+        if np.abs(unit_scaling_for_plot - 1.0) > 1e-6:
+            print('For polar plot, cannot rescale axes to degrees; forcing')
+            print(f' unit_scaling_for_plot to be 1.0, not {unit_scaling_for_plot:.3f}')
+            unit_scaling_for_plot = 1.0
+            
     # Concatenate all arrays for the overall, combined plot
     x_all = np.concatenate([arr.flatten() for arr in x_list])
     
@@ -2287,6 +2295,7 @@ def make_2D_histogram(datasets,
                       xlabelStr = None, ylabelStr = None,
                       colorRange = None, 
                       unit_scaling_for_plot = [1.0, 1.0, 1.0],
+                      mask_by_sem_limit = None,
                       cmap = 'RdYlBu', outputFileName = None,
                       closeFigure = False):
     """
@@ -2349,6 +2358,10 @@ def make_2D_histogram(datasets,
                    for example to convert radians to degrees.
                    if keyNameC is None, ignore 3rd item
     cmap : string, colormap. Default 'RdYlBu' (rather than usual Python viridis)
+    mask_by_sem_limit : float or None. 
+                   If not None, and if keyNameC is not None, only plot 
+                   the 2D mesh at points whose s.e.m. of the third variable
+                   is less than this value, to ignore noisy points. 
     outputFileName : if not None, save the figure with this filename 
                      (include extension)    
     closeFigure : (bool) if True, close figure after creating it.
@@ -2357,7 +2370,8 @@ def make_2D_histogram(datasets,
         hist : 2D array, normalized histogram if keyNameC is None; mean values
                 in each bin if keyNameC is used
         X, Y : 2D array of X, Y values from meshgrid
-        hist_std : 2D array, std dev in each bin if keyNameC is used; else None
+        hist_sem : 2D array, std error of the mean in each bin if keyNameC 
+                   is used; else None
     None
     """
     if len(keyNames) != 2:
@@ -2467,7 +2481,7 @@ def make_2D_histogram(datasets,
     fig, ax = plt.subplots(figsize=(8, 6))
 
     if keyNameC is None:
-        # calculate the normalized occurrence histogram
+        # calculate the normalized occurrence histogram values
         hist, xedges, yedges = np.histogram2d(values1_all, values2_all, 
                                               bins=Nbins, 
                                               range=[(value1_min, value1_max), 
@@ -2493,6 +2507,13 @@ def make_2D_histogram(datasets,
             bins=Nbins,
             range=[(value1_min, value1_max), (value2_min, value2_max)]
         )
+        hist_count, _, _, _ = binned_statistic_2d(
+            values1_all, values2_all, valuesC_all,
+            statistic='count',
+            bins=Nbins,
+            range=[(value1_min, value1_max), (value2_min, value2_max)]
+        )
+        hist_sem = hist_std / np.sqrt(hist_count)
         if clabelStr is None:
             clabelStr = f'Mean {keyNameC}'
     
@@ -2501,17 +2522,24 @@ def make_2D_histogram(datasets,
     X, Y = np.meshgrid(0.5*(xedges[1:] + xedges[:-1]), 
                        0.5*(yedges[1:] + yedges[:-1]), indexing='ij')
     
+    # mask to plot only points with low s.e.m. (optional)
+    if (mask_by_sem_limit is not None) and (keyNameC is not None):
+        mask = hist_sem > mask_by_sem_limit
+        hist_mask = np.ma.masked_array(hist*unit_scaling_for_plot[2], mask=mask)
+    else:
+        hist_mask = hist*unit_scaling_for_plot[2]
+    
     # Create the 2D histogram and the colorbar
     if colorRange is None:
         cbar = fig.colorbar(ax.pcolormesh(X*unit_scaling_for_plot[0], 
                                           Y*unit_scaling_for_plot[1], 
-                                          hist*unit_scaling_for_plot[2], 
+                                          hist_mask, 
                                           shading='nearest',
                                           cmap = cmap), ax=ax)
     else:
         cbar = fig.colorbar(ax.pcolormesh(X*unit_scaling_for_plot[0], 
                                           Y*unit_scaling_for_plot[1], 
-                                          hist*unit_scaling_for_plot[2], 
+                                          hist_mask, 
                                           shading='nearest',
                                           vmin=colorRange[0]*unit_scaling_for_plot[2], 
                                           vmax = colorRange[1]*unit_scaling_for_plot[2],
@@ -2541,7 +2569,7 @@ def make_2D_histogram(datasets,
         print(f'Closing figure {titleStr}')
         plt.close(fig)
         
-    return hist, X, Y, hist_std
+    return hist, X, Y, hist_sem
 
 
 

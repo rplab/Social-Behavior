@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified October 4, 2025 -- Raghu Parthasarathy
+Last modified November 12, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -1753,9 +1753,8 @@ def make_pair_fish_plots(datasets, exptName = '',
         outputFileName = outputFileNameBase + '_distance_head_head' + '.' + outputFileNameExt
     else:
         outputFileName = None
-    _, _ = plot_probability_distr(head_head_mm_all, bin_width = 0.5, 
+    plot_probability_distr(head_head_mm_all, bin_width = 0.5, 
                            bin_range = [0, None], 
-                           plot_each_dataset = plot_each_dataset, 
                            color = color,
                            yScaleType = 'linear',
                            plot_each_dataset = False,
@@ -1774,7 +1773,7 @@ def make_pair_fish_plots(datasets, exptName = '',
         outputFileName = outputFileNameBase + '_distance_closest' + '.' + outputFileNameExt
     else:
         outputFileName = None
-    _, _ = plot_probability_distr(closest_distance_mm_all, bin_width = 0.5, 
+    plot_probability_distr(closest_distance_mm_all, bin_width = 0.5, 
                            bin_range = [0, None], 
                            plot_each_dataset = plot_each_dataset, 
                            color = color,
@@ -1796,9 +1795,8 @@ def make_pair_fish_plots(datasets, exptName = '',
     else:
         outputFileName = None
     bin_width = np.pi/30
-    _, _ = plot_probability_distr(relative_heading_angle_all, bin_width = bin_width,
+    plot_probability_distr(relative_heading_angle_all, bin_width = bin_width,
                            bin_range=[None, None], 
-                           plot_each_dataset = plot_each_dataset, 
                            color = color,
                            yScaleType = 'linear',
                            plot_each_dataset = False,
@@ -1818,7 +1816,7 @@ def make_pair_fish_plots(datasets, exptName = '',
     else:
         outputFileName = None
     bin_width = np.pi/30
-    _, _ = plot_probability_distr(relative_orientation_angle_all, 
+    plot_probability_distr(relative_orientation_angle_all, 
                                   bin_width = bin_width,
                                   bin_range=[None, None], 
                                   plot_each_dataset = plot_each_dataset, 
@@ -1841,7 +1839,7 @@ def make_pair_fish_plots(datasets, exptName = '',
     else:
         outputFileName = None
     bin_width = np.pi/60
-    _, _ = plot_probability_distr(relative_orientation_sum_all, bin_width = bin_width,
+    plot_probability_distr(relative_orientation_sum_all, bin_width = bin_width,
                            bin_range=[None, None], 
                            plot_each_dataset = plot_each_dataset, 
                            color = color,
@@ -2028,10 +2026,11 @@ def make_pair_fish_plots(datasets, exptName = '',
         outputFileName = None
     maxR = np.inf  # no radial posiiton constraint
     fishIdx = None # combine all fish
+    mask_by_sem_limit_degrees = 2.0 # show points with s.e.m. < this
     if maxR < np.inf:
-        titleStr = f'{exptName}: Bend Angle, r < {maxR}'
+        titleStr = f'{exptName}: Bend Angle, r < {maxR} unc. < {mask_by_sem_limit_degrees:.1f} deg'
     else:
-        titleStr = f'{exptName}: Bend Angle'
+        titleStr = f'{exptName}: Bend Angle; unc. < {mask_by_sem_limit_degrees:.1f} deg'
     # Save the output 2D histograms, for use later.
     bend_2Dhist_mean, X, Y, bend_2Dhist_sem = make_2D_histogram(
         datasets,
@@ -2044,9 +2043,11 @@ def make_pair_fish_plots(datasets, exptName = '',
         dilate_minus1= False, 
         bin_ranges = ((-np.pi, np.pi), (0.0, 50.0)), Nbins = (20,25), 
         titleStr = titleStr,
-        clabelStr= 'Mean Bending Angle (rad)',
-        xlabelStr = 'Relative Orientation (rad)',
+        clabelStr= 'Mean Bending Angle (degrees)',
+        xlabelStr = 'Relative Orientation (degrees)',
         ylabelStr = 'Closest Distance (mm)', 
+        mask_by_sem_limit = mask_by_sem_limit_degrees*np.pi/180.0,
+        unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
         cmap = 'RdYlBu', 
         outputFileName = outputFileName,
         closeFigure = closeFigures)
@@ -2151,7 +2152,7 @@ def make_pair_fish_plots(datasets, exptName = '',
         calculate_value_corr_all(datasets, keyName = 'speed_array_mm_s',
                                  corr_type='cross', dilate_minus1 = True, 
                                  t_max = 2.0, t_window = 5.0, fpstol = 1e-6)
-    _, _ = plot_function_allSets(speed_cc_all, t_lag, xlabelStr='time (s)', 
+    plot_function_allSets(speed_cc_all, t_lag, xlabelStr='time (s)', 
                           ylabelStr='Speed Cross-correlation', 
                           titleStr=f'{exptName}: Speed Cross-correlation', 
                           ylim = (-0.03, 0.2),
