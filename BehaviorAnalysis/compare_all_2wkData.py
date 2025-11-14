@@ -191,7 +191,7 @@ all_expts = load_expt_data(pickleFileName1, pickleFileName2, exptName,
 
 
 #%% Make single fish plots (a lot!)
-
+"""
 closeFigures = True
 if closeFigures:
     print('Single fish plots: Closing Figure Windows.')
@@ -203,6 +203,7 @@ for exptName in all_expts.keys():
                        outputFileNameBase = f'{exptName} single_properties',
                        outputFileNameExt = 'png',
                        closeFigures = closeFigures)
+"""
 
 #%% Make all pair plots (a lot!)
 # Only for Nfish ==2
@@ -221,10 +222,10 @@ for exptName in all_expts.keys():
                              outputFileNameBase = f'{exptName} pair_properties', 
                              outputFileNameExt = 'png',
                              closeFigures = closeFigures)
-        all_expts[exptName]["bend_2Dhist_mean"] = saved_pair_outputs[0]
-        all_expts[exptName]["bend_2Dhist_sem"] = saved_pair_outputs[1]
-        all_expts[exptName]["bend_2Dhist_X"] = saved_pair_outputs[2]
-        all_expts[exptName]["bend_2Dhist_Y"] = saved_pair_outputs[3]
+        #all_expts[exptName]["bend_2Dhist_mean"] = saved_pair_outputs[0]
+        #all_expts[exptName]["bend_2Dhist_sem"] = saved_pair_outputs[1]
+        #all_expts[exptName]["bend_2Dhist_X"] = saved_pair_outputs[2]
+        #all_expts[exptName]["bend_2Dhist_Y"] = saved_pair_outputs[3]
     
 """
 exptName = 'TwoWk_Light'

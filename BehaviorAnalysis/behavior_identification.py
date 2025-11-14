@@ -1745,6 +1745,73 @@ def make_pair_fish_plots(datasets, exptName = '',
     if verifyPairs==False:
         raise ValueError('Error in make_pair_fish_plots; Nfish must be 2 !')
     
+    
+    
+    
+    # Inter-bout interval (IBI) binned by inter-fish distance *and* 
+    # radial position
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_IBI_v_dist_and_radialpos' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    binned_IBI_mean, binned_IBI_sem, binned_IBI_count, X, Y = \
+        calculate_IBI_binned_by_2D_keys(datasets=datasets, 
+                                     key1='closest_distance_mm',
+                                     key2='radial_position_mm',
+                                     bin_ranges=((0.0, 50.0), (0.0, 25.0)), 
+                                     Nbins=(12, 12),
+                                     dilate_minus1=False,
+                                     makePlot=True, 
+                                     titleStr = f'{exptName}: IBI vs. closest distance, radial pos.', 
+                                     cmap='viridis_r',
+                                     colorRange = (0.0, 0.6),
+                                     outputFileName=outputFileName,
+                                     closeFigure=closeFigures)
+        
+    # Slice along IBI binned by distance and r, for r < 22 mm
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_IBI_v_dist_r_interior' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    r_range = (0.0, 22.0)
+    titleStr = f'{exptName}: Average IBI for r < {r_range[1]:.1f} mm'
+    xlabelStr = 'Closest Distance (mm)'
+    ylabelStr = 'Radial position (mm)'
+    zlabelStr = 'Average IBI (s)'
+    xlim = (0.0, 50.0)
+    zlim = (0.0, 0.6)
+    color = color
+    slice_2D_histogram(binned_IBI_mean, X, Y, binned_IBI_sem, 
+                       slice_axis = 'x', other_range = r_range, 
+                       titleStr = titleStr, xlabelStr = xlabelStr, 
+                       zlabelStr = zlabelStr,
+                       ylabelStr = ylabelStr, zlim = zlim, xlim = xlim, 
+                       color = color, outputFileName=outputFileName,
+                       closeFigure=closeFigures)
+
+    # Slice along IBI binned by distance and r, for r >= 22 mm
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_IBI_v_dist_r_edge' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    r_range = (22.0, np.inf)
+    titleStr = f'{exptName}: Average IBI for r >= {r_range[0]:.1f} mm'
+    xlabelStr = 'Closest Distance (mm)'
+    ylabelStr = 'Radial position (mm)'
+    zlabelStr = 'Average IBI (s)'
+    xlim = (0.0, 50.0)
+    zlim = (0.0, 0.6)
+    color = color
+    slice_2D_histogram(binned_IBI_mean, X, Y, binned_IBI_sem, 
+                       slice_axis = 'x', other_range = r_range, 
+                       titleStr = titleStr, xlabelStr = xlabelStr, 
+                       zlabelStr = zlabelStr,
+                       ylabelStr = ylabelStr, zlim = zlim, xlim = xlim, 
+                       color = color, outputFileName=outputFileName,
+                       closeFigure=closeFigures)
+
+    return 
+    
     # head-head distance histogram
     head_head_mm_all = combine_all_values_constrained(datasets, 
                                                      keyName='head_head_distance_mm', 
@@ -1775,7 +1842,6 @@ def make_pair_fish_plots(datasets, exptName = '',
         outputFileName = None
     plot_probability_distr(closest_distance_mm_all, bin_width = 0.5, 
                            bin_range = [0, None], 
-                           plot_each_dataset = plot_each_dataset, 
                            color = color,
                            yScaleType = 'linear',
                            plot_each_dataset = False,
@@ -1819,7 +1885,6 @@ def make_pair_fish_plots(datasets, exptName = '',
     plot_probability_distr(relative_orientation_angle_all, 
                                   bin_width = bin_width,
                                   bin_range=[None, None], 
-                                  plot_each_dataset = plot_each_dataset, 
                                   color = color,
                                   yScaleType = 'linear',
                                   plot_each_dataset = False,
@@ -1841,7 +1906,6 @@ def make_pair_fish_plots(datasets, exptName = '',
     bin_width = np.pi/60
     plot_probability_distr(relative_orientation_sum_all, bin_width = bin_width,
                            bin_range=[None, None], 
-                           plot_each_dataset = plot_each_dataset, 
                            color = color,
                            yScaleType = 'linear',
                            plot_each_dataset = False,
@@ -2004,6 +2068,27 @@ def make_pair_fish_plots(datasets, exptName = '',
         outputFileName = None
     r_range = (0.0, 22.0)
     titleStr = f'{exptName}: Average IBI for r < {r_range[1]:.1f} mm'
+    xlabelStr = 'Closest Distance (mm)'
+    ylabelStr = 'Radial position (mm)'
+    zlabelStr = 'Average IBI (s)'
+    xlim = (0.0, 50.0)
+    zlim = (0.0, 0.6)
+    color = color
+    slice_2D_histogram(binned_IBI_mean, X, Y, binned_IBI_sem, 
+                       slice_axis = 'x', other_range = r_range, 
+                       titleStr = titleStr, xlabelStr = xlabelStr, 
+                       zlabelStr = zlabelStr,
+                       ylabelStr = ylabelStr, zlim = zlim, xlim = xlim, 
+                       color = color, outputFileName=outputFileName,
+                       closeFigure=closeFigures)
+
+    # Slice along IBI binned by distance and r, for r >= 22 mm
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_IBI_v_dist_r_edge' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    r_range = (22.0, np.inf)
+    titleStr = f'{exptName}: Average IBI for r >= {r_range[0]:.1f} mm'
     xlabelStr = 'Closest Distance (mm)'
     ylabelStr = 'Radial position (mm)'
     zlabelStr = 'Average IBI (s)'
