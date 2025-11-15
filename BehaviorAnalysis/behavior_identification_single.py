@@ -31,9 +31,9 @@ experiments
 import numpy as np
 import matplotlib.pyplot as plt
 from toolkit import make_frames_dictionary, dilate_frames, wrap_to_pi,\
-    combine_all_values_constrained, get_values_subset, plot_probability_distr, \
-    calculate_value_corr_all, plot_function_allSets, fit_gaussian_mixture
-
+    combine_all_values_constrained, get_values_subset, \
+    calculate_value_corr_all, fit_gaussian_mixture
+from IO_toolkit import plot_probability_distr, plot_function_allSets
 
 def get_coord_characterizations(all_position_data, datasets, 
                                 CSVcolumns, expt_config, params):

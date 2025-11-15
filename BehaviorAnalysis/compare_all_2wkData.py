@@ -4,7 +4,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Wed Oct 15 08:59:05 2025
-Last modified Nov. 5, 2025 -- Raghuveer Parthasarathy
+Last modified Nov. 15, 2025 -- Raghuveer Parthasarathy
 
 Description
 -----------
@@ -29,10 +29,10 @@ Modify the expBaseStrm et., for each dataset of interest.
 
 import os
 import numpy as np
-from IO_toolkit import load_and_assign_from_pickle
+from IO_toolkit import load_and_assign_from_pickle, make_2D_histogram
 from behavior_identification import make_pair_fish_plots
 from behavior_identification_single import make_single_fish_plots
-from toolkit import get_fps, make_2D_histogram
+from toolkit import get_fps 
 from behavior_correlations import plot_behaviorCorrelation,  \
     calc_corr_asymm, plot_corr_asymm, calcDeltaFramesEvents, bin_deltaFrames, calc_pAB, calcBehavCorrAllSets
 import matplotlib.pyplot as plt
@@ -191,7 +191,7 @@ all_expts = load_expt_data(pickleFileName1, pickleFileName2, exptName,
 
 
 #%% Make single fish plots (a lot!)
-"""
+
 closeFigures = True
 if closeFigures:
     print('Single fish plots: Closing Figure Windows.')
@@ -203,7 +203,6 @@ for exptName in all_expts.keys():
                        outputFileNameBase = f'{exptName} single_properties',
                        outputFileNameExt = 'png',
                        closeFigures = closeFigures)
-"""
 
 #%% Make all pair plots (a lot!)
 # Only for Nfish ==2
@@ -217,15 +216,14 @@ for exptName in all_expts.keys():
         saved_pair_outputs = make_pair_fish_plots(
                              all_expts[exptName]['datasets'], 
                              exptName = exptName,
-                             plot_each_dataset = True, 
                              color = all_expts[exptName]['plot_color'], 
                              outputFileNameBase = f'{exptName} pair_properties', 
                              outputFileNameExt = 'png',
                              closeFigures = closeFigures)
-        #all_expts[exptName]["bend_2Dhist_mean"] = saved_pair_outputs[0]
-        #all_expts[exptName]["bend_2Dhist_sem"] = saved_pair_outputs[1]
-        #all_expts[exptName]["bend_2Dhist_X"] = saved_pair_outputs[2]
-        #all_expts[exptName]["bend_2Dhist_Y"] = saved_pair_outputs[3]
+        all_expts[exptName]["bend_2Dhist_mean"] = saved_pair_outputs[0]
+        all_expts[exptName]["bend_2Dhist_sem"] = saved_pair_outputs[1]
+        all_expts[exptName]["bend_2Dhist_X"] = saved_pair_outputs[2]
+        all_expts[exptName]["bend_2Dhist_Y"] = saved_pair_outputs[3]
     
 """
 exptName = 'TwoWk_Light'

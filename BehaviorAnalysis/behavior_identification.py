@@ -23,10 +23,11 @@ import matplotlib.pyplot as plt
 from time import perf_counter
 import numpy as np
 from toolkit import wrap_to_pi, combine_all_values_constrained, \
-    plot_probability_distr, make_2D_histogram,calculate_value_corr_all, \
-    plot_function_allSets, behaviorFrameCount_all, make_frames_dictionary, \
+    calculate_value_corr_all,  make_frames_dictionary, \
     remove_frames, combine_events, calculate_value_corr_all_binned, \
-    plot_waterfall_binned_crosscorr, dilate_frames, slice_2D_histogram
+    dilate_frames
+from IO_toolkit import plot_probability_distr, make_2D_histogram, \
+    slice_2D_histogram, plot_function_allSets, plot_waterfall_binned_crosscorr 
 from behavior_identification_single import average_bout_trajectory_allSets
 from scipy.stats import skew
 import itertools
@@ -1705,11 +1706,25 @@ def calculate_interfish_bout_lags(datasets):
     return interfish_bout_lags_s
     
 
-def make_pair_fish_plots(datasets, exptName = '', 
-                         plot_each_dataset = True, color = 'black',
+def get_plot_and_CSV_filenames(s, outputFileNameBase, outputFileNameExt, 
+                               writeCSVs):
+    # simple function to make filenames for plot and CSV file; None if not used
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + s + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    if (writeCSVs is True) and (outputFileNameBase is not None):
+        outputCSVFileName = outputFileNameBase + s + '.csv'
+    else:
+        outputCSVFileName = None
+    return outputFileName, outputCSVFileName
+
+
+def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                          outputFileNameBase = 'pair_fish', 
                          outputFileNameExt = 'png',
-                         closeFigures = False):
+                         closeFigures = False,
+                         writeCSVs = False):
     """
     makes several useful "pair" plots -- i.e. plots of characteristics 
     of pairs of fish.
@@ -1745,81 +1760,15 @@ def make_pair_fish_plots(datasets, exptName = '',
     if verifyPairs==False:
         raise ValueError('Error in make_pair_fish_plots; Nfish must be 2 !')
     
-    
-    
-    
-    # Inter-bout interval (IBI) binned by inter-fish distance *and* 
-    # radial position
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_IBI_v_dist_and_radialpos' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
-    binned_IBI_mean, binned_IBI_sem, binned_IBI_count, X, Y = \
-        calculate_IBI_binned_by_2D_keys(datasets=datasets, 
-                                     key1='closest_distance_mm',
-                                     key2='radial_position_mm',
-                                     bin_ranges=((0.0, 50.0), (0.0, 25.0)), 
-                                     Nbins=(12, 12),
-                                     dilate_minus1=False,
-                                     makePlot=True, 
-                                     titleStr = f'{exptName}: IBI vs. closest distance, radial pos.', 
-                                     cmap='viridis_r',
-                                     colorRange = (0.0, 0.6),
-                                     outputFileName=outputFileName,
-                                     closeFigure=closeFigures)
-        
-    # Slice along IBI binned by distance and r, for r < 22 mm
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_IBI_v_dist_r_interior' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
-    r_range = (0.0, 22.0)
-    titleStr = f'{exptName}: Average IBI for r < {r_range[1]:.1f} mm'
-    xlabelStr = 'Closest Distance (mm)'
-    ylabelStr = 'Radial position (mm)'
-    zlabelStr = 'Average IBI (s)'
-    xlim = (0.0, 50.0)
-    zlim = (0.0, 0.6)
-    color = color
-    slice_2D_histogram(binned_IBI_mean, X, Y, binned_IBI_sem, 
-                       slice_axis = 'x', other_range = r_range, 
-                       titleStr = titleStr, xlabelStr = xlabelStr, 
-                       zlabelStr = zlabelStr,
-                       ylabelStr = ylabelStr, zlim = zlim, xlim = xlim, 
-                       color = color, outputFileName=outputFileName,
-                       closeFigure=closeFigures)
 
-    # Slice along IBI binned by distance and r, for r >= 22 mm
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_IBI_v_dist_r_edge' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
-    r_range = (22.0, np.inf)
-    titleStr = f'{exptName}: Average IBI for r >= {r_range[0]:.1f} mm'
-    xlabelStr = 'Closest Distance (mm)'
-    ylabelStr = 'Radial position (mm)'
-    zlabelStr = 'Average IBI (s)'
-    xlim = (0.0, 50.0)
-    zlim = (0.0, 0.6)
-    color = color
-    slice_2D_histogram(binned_IBI_mean, X, Y, binned_IBI_sem, 
-                       slice_axis = 'x', other_range = r_range, 
-                       titleStr = titleStr, xlabelStr = xlabelStr, 
-                       zlabelStr = zlabelStr,
-                       ylabelStr = ylabelStr, zlim = zlim, xlim = xlim, 
-                       color = color, outputFileName=outputFileName,
-                       closeFigure=closeFigures)
-
-    return 
     
     # head-head distance histogram
     head_head_mm_all = combine_all_values_constrained(datasets, 
                                                      keyName='head_head_distance_mm', 
                                                      dilate_minus1 = False)
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_distance_head_head' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_distance_head_head', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs)
     plot_probability_distr(head_head_mm_all, bin_width = 0.5, 
                            bin_range = [0, None], 
                            color = color,
@@ -1830,16 +1779,16 @@ def make_pair_fish_plots(datasets, exptName = '',
                            xlabelStr = 'Head-head distance (mm)', 
                            titleStr = f'{exptName}: head-head distance (mm)',
                            outputFileName = outputFileName,
-                           closeFigure = closeFigures)
+                           closeFigure = closeFigures,
+                           outputCSVFileName = outputCSVFileName)
 
     # closest distance histogram
     closest_distance_mm_all = combine_all_values_constrained(datasets, 
                                                      keyName='closest_distance_mm', 
                                                      dilate_minus1 = False)
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_distance_closest' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_distance_closest', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs)
     plot_probability_distr(closest_distance_mm_all, bin_width = 0.5, 
                            bin_range = [0, None], 
                            color = color,
@@ -1850,16 +1799,16 @@ def make_pair_fish_plots(datasets, exptName = '',
                            xlabelStr = 'Closest distance (mm)', 
                            titleStr = f'{exptName}: closest distance (mm)',
                            outputFileName = outputFileName,
-                           closeFigure = closeFigures)
+                           closeFigure = closeFigures,
+                           outputCSVFileName = outputCSVFileName)
 
     # Relative heading angle histogram
     relative_heading_angle_all = combine_all_values_constrained(datasets, 
                                                  keyName='relative_heading_angle', 
                                                  dilate_minus1 = False)
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_rel_heading_angle' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_rel_heading_angle', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs)
     bin_width = np.pi/30
     plot_probability_distr(relative_heading_angle_all, bin_width = bin_width,
                            bin_range=[None, None], 
@@ -1871,16 +1820,16 @@ def make_pair_fish_plots(datasets, exptName = '',
                            titleStr = f'{exptName}: Relative Heading Angle',
                            ylim = (0, 0.6),
                            outputFileName = outputFileName,
-                           closeFigure = closeFigures)
+                           closeFigure = closeFigures,
+                           outputCSVFileName = outputCSVFileName)
 
     # Relative orientation angle histogram
     relative_orientation_angle_all = combine_all_values_constrained(datasets, 
                                                  keyName='relative_orientation', 
                                                  dilate_minus1 = False)
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_rel_orientation' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_rel_orientation', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs)
     bin_width = np.pi/30
     plot_probability_distr(relative_orientation_angle_all, 
                                   bin_width = bin_width,
@@ -1893,16 +1842,16 @@ def make_pair_fish_plots(datasets, exptName = '',
                                   titleStr = f'{exptName}: Relative Orientation Angle',
                                   ylim = (0, 0.6),
                                   outputFileName = outputFileName,
-                                  closeFigure = closeFigures)
+                                  closeFigure = closeFigures,
+                                  outputCSVFileName = outputCSVFileName)
 
     # Sum of relative orientation angles histogram
     relative_orientation_sum_all = combine_all_values_constrained(datasets, 
                                                  keyName='relative_orientation_sum', 
                                                  dilate_minus1 = False)
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_rel_orientation_sum' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_rel_orientation_sum', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs)
     bin_width = np.pi/60
     plot_probability_distr(relative_orientation_sum_all, bin_width = bin_width,
                            bin_range=[None, None], 
@@ -1915,7 +1864,8 @@ def make_pair_fish_plots(datasets, exptName = '',
                            xlabelStr = 'Sum of Rel. Orient. Angles (rad)',
                            ylim = (0, 0.6), xlim = (-6.3, 6.3),
                            outputFileName = outputFileName,
-                           closeFigure = closeFigures)
+                           closeFigure = closeFigures,
+                           outputCSVFileName = outputCSVFileName)
 
     """
     # 2D histogram of speed and head-head distance
@@ -2112,8 +2062,9 @@ def make_pair_fish_plots(datasets, exptName = '',
     maxR = np.inf  # no radial posiiton constraint
     fishIdx = None # combine all fish
     mask_by_sem_limit_degrees = 2.0 # show points with s.e.m. < this
+    use_abs_value = (False, False)
     if maxR < np.inf:
-        titleStr = f'{exptName}: Bend Angle, r < {maxR} unc. < {mask_by_sem_limit_degrees:.1f} deg'
+        titleStr = f'{exptName}: Bend Angle, r < {maxR}; unc. < {mask_by_sem_limit_degrees:.1f} deg'
     else:
         titleStr = f'{exptName}: Bend Angle; unc. < {mask_by_sem_limit_degrees:.1f} deg'
     # Save the output 2D histograms, for use later.
@@ -2121,6 +2072,7 @@ def make_pair_fish_plots(datasets, exptName = '',
         datasets,
         keyNames = ('relative_orientation','closest_distance_mm'),
         keyIdx = (fishIdx, None), 
+        use_abs_value = use_abs_value,
         keyNameC = 'bend_angle', keyIdxC = fishIdx,
         colorRange = (-0.2, 0.2),
         constraintKey = 'radial_position_mm', constraintRange = (0.0, maxR), 
