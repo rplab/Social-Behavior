@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified November 12, 2025 -- Raghu Parthasarathy
+Last modified November 19, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -1313,6 +1313,7 @@ def get_relative_heading_angle(dataset, CSVcolumns):
 def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm',
                                      bin_distance_min=0, bin_distance_max=50.0, 
                                      bin_width=5.0, dilate_minus1=False,
+                                     outlier_std = 3.0,
                                      makePlot = True, ylim = None, 
                                      titleStr = None, plotColor = 'black',
                                      outputFileName = None,
@@ -1320,11 +1321,11 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
     """
     Calculate mean inter-bout interval (IBI) binned by mean inter-fish distance
     during the interval.
+    Requires Nfish = 2. Calculates IBI for each fish in each dataset; returns
+    average over all fish, and individual fish averages.
     (Could be used to bin IBI by any other quantitative property also, as long
      as it has one value per frame, like Nfish==2 inter-fish distance)
-    
-    Requires Nfish==2
-    
+        
     Parameters
     ----------
     datasets : list of dataset dictionaries
@@ -1332,6 +1333,9 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
     bin_distance_min, bin_distance_max : float, distance range for binning (mm)
     bin_width : float, width of distance bins (mm)
     dilate_minus1 : bool, if True dilate bad frames by -1
+    outlier_std : for each fish's list if IBIs, remove IBI values > outlier_std
+                  from the mean. (In rare cases, very high values, probably
+                  due to bad tracking.)
     makePlot : bool, make a plot if true
     ylim : tuple, ylimits for plot; None for auto
     titleStr : string, title for plot
@@ -1341,9 +1345,14 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
     
     Returns
     -------
-    binned_IBI : dict with keys for each fish, values are (n_bins, 3) arrays
-                 containing [mean_IBI, sem_IBI, n_samples] for each bin
+    binned_IBI : numpy array of shape (n_bins, 3) 
+                 containing [mean_IBI, std_IBI, sem_IBI] for each bin; 
+                 stats are calculated across fish (i.e. std. dev. is standard
+                                                   dev. of mean IBI across fish) 
     bin_centers : array of bin center distances (mm)
+    binned_IBI_each_fish : numpy array of shape (nfish_total, n_bins)
+             with the mean IBI for each fish, each bin
+
     """
 
     # Set up distance bins
@@ -1352,10 +1361,9 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
     n_bins = len(bin_centers)
     binned_IBI = np.zeros((n_bins,))
     
-    # Initialize lists to collect IBIs for each bin
-    # Each element will be a list of cross-correlation arrays for that bin
-    bin_IBI_lists = [[] for _ in range(n_bins)]
-    
+    nfish_total = len(datasets)*2 # 2 fish per dataset, checked later
+    binned_IBI_each_fish = np.zeros((nfish_total, n_bins)) # mean value
+                        
     print('\nBinning inter-bout intervals by distance.... ', end='')
     for j in range(len(datasets)):
         print(f' {j}... ', end='')
@@ -1376,6 +1384,10 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
             bad_frames_set = set(badTrackFrames)
 
         for k in range(Nfish):
+            # Initialize lists to collect IBIs for each bin
+            # Each element will be a list of IBI values for that bin
+            bin_IBI_lists = [[] for _ in range(n_bins)]
+    
             # Start frames and durations for bouts (i.e. motion)
             moving_frameInfo = dataset[f"isActive_Fish{k}"]["combine_frames"]
     
@@ -1398,28 +1410,33 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
                 # Make sure bin index is valid, and store the IBI value
                 if 0 <= bin_idx < n_bins:
                     bin_IBI_lists[bin_idx].append(ibi_s)
-    print('... done')
-    # Calculate averages for each bin using nanmean
-    binned_IBI = np.zeros((n_bins, 3))
-    bin_counts = np.zeros(n_bins, dtype=int)
-                    
-    # Calculate averages for each bin
-    for bin_idx in range(n_bins):
-        if len(bin_IBI_lists[bin_idx]) > 0:
-            # Stack all IBIs for this bin and take nanmean
-            bin_IBI_array = np.stack(bin_IBI_lists[bin_idx], axis=0)
-            bin_counts[bin_idx] = len(bin_IBI_lists[bin_idx])
-            binned_IBI[bin_idx, 0] = np.nanmean(bin_IBI_array, axis=0)
-            binned_IBI[bin_idx, 2] = len(bin_IBI_lists[bin_idx])
-            binned_IBI[bin_idx, 1] = np.nanstd(bin_IBI_array, axis=0) / \
-                np.sqrt(len(bin_IBI_lists[bin_idx]))
-        else:
-            print(f'No data for {bin_idx}')
-            binned_IBI[bin_idx,:] = np.nan  # No data for this bin
 
+            # Calculate weighted averages for each bin; neglect NaNs
+            for bin_idx in range(n_bins):
+                if len(bin_IBI_lists[bin_idx]) > 1:
+                    # require 2 points, for std. dev.
+                    bin_IBI_array = np.stack(bin_IBI_lists[bin_idx], axis=0)
+                    valid_pts = abs(bin_IBI_array - np.nanmean(bin_IBI_array)) \
+                        <= (outlier_std*np.nanstd(bin_IBI_array))
+                    binned_IBI_each_fish[j*Nfish + k, bin_idx] = \
+                        np.nanmean(bin_IBI_array[valid_pts])
+                else:
+                    # No data for this bin
+                    print(f'\n Insufficient IBI data for dataset {j} fish {k} bin {bin_idx}') 
+                    binned_IBI_each_fish[j*Nfish + k, bin_idx] = np.nan  
+           
+            
+    print('... done.\n')
+    
+    # Average across fish.
+    binned_IBI = np.zeros((n_bins, 3))
+    binned_IBI[:,0] = np.mean(binned_IBI_each_fish, axis=0)
+    binned_IBI[:,1] = np.std(binned_IBI_each_fish, axis=0)
+    binned_IBI[:,2] = np.std(binned_IBI_each_fish, axis=0) / np.sqrt(nfish_total)
+    
     if makePlot:
         fig = plt.figure()
-        plt.errorbar(bin_centers, binned_IBI[:,0], binned_IBI[:,1], 
+        plt.errorbar(bin_centers, binned_IBI[:,0], binned_IBI[:,2], 
                      fmt='o', capsize=7, markersize=12,
                      color = plotColor, ecolor = plotColor)
         plt.title(titleStr)
@@ -1434,8 +1451,12 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
 
         if closeFigure:
             plt.close(fig)
+            
+    # If only 1 bin, flatten
+    if binned_IBI.shape[0]==1:
+        binned_IBI = binned_IBI.flatten()
         
-    return binned_IBI, bin_centers
+    return binned_IBI, bin_centers, binned_IBI_each_fish
     
 
 def calculate_IBI_binned_by_2D_keys(datasets, 
@@ -1444,6 +1465,7 @@ def calculate_IBI_binned_by_2D_keys(datasets,
                                      bin_ranges=((0.0, 50.0), (0.0, 25.0)), 
                                      Nbins=(20, 20),
                                      dilate_minus1=False,
+                                     outlier_std=3.0,
                                      makePlot=True, 
                                      titleStr=None, 
                                      cmap='RdYlBu_r',
@@ -1455,7 +1477,8 @@ def calculate_IBI_binned_by_2D_keys(datasets,
     (e.g., inter-fish distance and radial position).
     Creates a 2D heatmap showing mean IBI in each bin.
     
-    Requires Nfish==2
+    Requires Nfish==2. Calculates IBI for each fish in each dataset; returns
+    average over all fish, and individual fish averages.
     
     Parameters
     ----------
@@ -1466,6 +1489,9 @@ def calculate_IBI_binned_by_2D_keys(datasets,
                  If None, will auto-determine from data
     Nbins : tuple of two ints, number of bins for (key1, key2)
     dilate_minus1 : bool, if True dilate bad frames by -1
+    outlier_std : for each fish's list of IBIs in each bin, remove IBI values 
+                  > outlier_std from the mean. (In rare cases, very high values,
+                  probably due to bad tracking.)
     makePlot : bool, make a plot if true
     titleStr : string, title for plot (if None, auto-generate)
     cmap : string, colormap for heatmap (default 'RdYlBu_r')
@@ -1475,17 +1501,31 @@ def calculate_IBI_binned_by_2D_keys(datasets,
     
     Returns
     -------
-    binned_IBI_mean : 2D array (Nbins[0] x Nbins[1]) of mean IBI values
-    binned_IBI_sem : 2D array (Nbins[0] x Nbins[1]) of std dev values
-        (Also calculates std dev, but not output)
-    binned_IBI_count : 2D array (Nbins[0] x Nbins[1]) of sample counts
+    binned_IBI : 3D array (Nbins[0] x Nbins[1] x 3) containing 
+                 [mean_IBI, std_IBI, sem_IBI] for each bin;
+                 stats are calculated across fish
     X, Y : 2D arrays from meshgrid for bin centers
+    binned_IBI_each_fish : 3D array (nfish_total x Nbins[0] x Nbins[1])
+                          with the mean IBI for each fish, each bin
     """
+    # Extract bin ranges
+    key1_min, key1_max = bin_ranges[0]
+    key2_min, key2_max = bin_ranges[1]
     
-    # Initialize lists to collect IBI values and their corresponding key values
-    ibi_values = []
-    key1_values = []
-    key2_values = []
+    # Calculate bin edges and centers
+    key1_edges = np.linspace(key1_min, key1_max, Nbins[0] + 1)
+    key2_edges = np.linspace(key2_min, key2_max, Nbins[1] + 1)
+    
+    key1_centers = 0.5 * (key1_edges[1:] + key1_edges[:-1])
+    key2_centers = 0.5 * (key2_edges[1:] + key2_edges[:-1])
+    
+    # Create meshgrid for bin centers
+    X, Y = np.meshgrid(key1_centers, key2_centers, indexing='ij')
+    
+    # Initialize array to store per-fish binned IBI values
+    nfish_total = len(datasets) * 2  # 2 fish per dataset, checked later
+    binned_IBI_each_fish = np.zeros((nfish_total, Nbins[0], Nbins[1]))
+    binned_IBI_each_fish[:] = np.nan  # Initialize with NaN
     
     print(f'\nBinning inter-bout intervals by {key1} and {key2}.... ', end='')
     
@@ -1509,6 +1549,10 @@ def calculate_IBI_binned_by_2D_keys(datasets,
             bad_frames_set = set(badTrackFrames)
         
         for k in range(Nfish):
+            # Initialize lists to collect IBIs for each 2D bin
+            # Each element will be a list of IBI values for that bin
+            bin_IBI_lists = [[[] for _ in range(Nbins[1])] for _ in range(Nbins[0])]
+            
             # Start frames and durations for bouts (i.e. motion)
             moving_frameInfo = dataset[f"isActive_Fish{k}"]["combine_frames"]
             
@@ -1550,81 +1594,47 @@ def calculate_IBI_binned_by_2D_keys(datasets,
                 
                 # Only include if both key values are valid
                 if not (np.isnan(mean_key1) or np.isnan(mean_key2)):
-                    ibi_values.append(ibi_s)
-                    key1_values.append(mean_key1)
-                    key2_values.append(mean_key2)
+                    # Find which bins this IBI belongs to
+                    bin_idx1 = np.digitize(mean_key1, key1_edges) - 1
+                    bin_idx2 = np.digitize(mean_key2, key2_edges) - 1
+                    
+                    # Make sure bin indices are valid
+                    if (0 <= bin_idx1 < Nbins[0]) and (0 <= bin_idx2 < Nbins[1]):
+                        bin_IBI_lists[bin_idx1][bin_idx2].append(ibi_s)
+                        
+            # Calculate weighted averages for each bin; neglect NaNs and outliers
+            for bin_idx1 in range(Nbins[0]):
+                for bin_idx2 in range(Nbins[1]):
+                    if len(bin_IBI_lists[bin_idx1][bin_idx2]) > 1:
+                        # Require 2 points for std. dev.
+                        bin_IBI_array = np.array(bin_IBI_lists[bin_idx1][bin_idx2])
+                        mean_val = np.nanmean(bin_IBI_array)
+                        std_val = np.nanstd(bin_IBI_array)
+                        valid_pts = np.abs(bin_IBI_array - mean_val) <= (outlier_std * std_val)
+                        binned_IBI_each_fish[j*Nfish + k, bin_idx1, bin_idx2] = \
+                            np.nanmean(bin_IBI_array[valid_pts])
+                    elif len(bin_IBI_lists[bin_idx1][bin_idx2]) == 1:
+                        # Only one data point, use it
+                        binned_IBI_each_fish[j*Nfish + k, bin_idx1, bin_idx2] = \
+                            bin_IBI_lists[bin_idx1][bin_idx2][0]
+                    # else: remains NaN (no data for this bin)
     
     print('... done')
-    
-    # Convert to numpy arrays
-    ibi_values = np.array(ibi_values)
-    key1_values = np.array(key1_values)
-    key2_values = np.array(key2_values)
-    
-    print(f'Total IBIs collected: {len(ibi_values)}')
-    
-    # Determine bin ranges
-    if bin_ranges is None:
-        key1_min, key1_max = np.nanmin(key1_values), np.nanmax(key1_values)
-        key2_min, key2_max = np.nanmin(key2_values), np.nanmax(key2_values)
-        # Expand slightly
-        d1 = (key1_max - key1_min) / Nbins[0]
-        d2 = (key2_max - key2_min) / Nbins[1]
-        key1_min -= d1 / 2.0
-        key1_max += d1 / 2.0
-        key2_min -= d2 / 2.0
-        key2_max += d2 / 2.0
-    else:
-        key1_min, key1_max = bin_ranges[0]
-        key2_min, key2_max = bin_ranges[1]
-    
-    # Use scipy's binned_statistic_2d to compute statistics
-    from scipy.stats import binned_statistic_2d
-    
-    # Calculate mean IBI in each bin
-    binned_IBI_mean, xedges, yedges, _ = binned_statistic_2d(
-        key1_values, key2_values, ibi_values,
-        statistic='mean',
-        bins=Nbins,
-        range=[(key1_min, key1_max), (key2_min, key2_max)]
-    )
-    
-    # Calculate SEM in each bin
-    binned_IBI_std, _, _, _ = binned_statistic_2d(
-        key1_values, key2_values, ibi_values,
-        statistic='std',
-        bins=Nbins,
-        range=[(key1_min, key1_max), (key2_min, key2_max)]
-    )
-    
-    # Calculate count in each bin
-    binned_IBI_count, _, _, _ = binned_statistic_2d(
-        key1_values, key2_values, ibi_values,
-        statistic='count',
-        bins=Nbins,
-        range=[(key1_min, key1_max), (key2_min, key2_max)]
-    )
-    
-    # Calculate SEM from std and count
-    binned_IBI_sem = binned_IBI_std / np.sqrt(binned_IBI_count)
-    binned_IBI_sem[binned_IBI_count == 0] = np.nan
-    
-    # Create meshgrid for bin centers
-    X, Y = np.meshgrid(
-        0.5 * (xedges[1:] + xedges[:-1]),
-        0.5 * (yedges[1:] + yedges[:-1]),
-        indexing='ij'
-    )
+
+    binned_IBI = np.zeros((Nbins[0], Nbins[1], 3))
+    binned_IBI[:, :, 0] = np.nanmean(binned_IBI_each_fish, axis=0)  # mean
+    binned_IBI[:, :, 1] = np.nanstd(binned_IBI_each_fish, axis=0)   # std
+    binned_IBI[:, :, 2] = np.nanstd(binned_IBI_each_fish, axis=0) / np.sqrt(nfish_total)  # sem
     
     if makePlot:
         fig, ax = plt.subplots(figsize=(10, 8))
         
-        # Plot the 2D heatmap
+        # Plot the 2D heatmap (mean IBI)
         if colorRange is None:
-            pcm = ax.pcolormesh(X, Y, binned_IBI_mean, shading='nearest', cmap=cmap)
+            pcm = ax.pcolormesh(X, Y, binned_IBI[:, :, 0], shading='nearest', cmap=cmap)
             cbar = fig.colorbar(pcm, ax=ax)
         else:
-            pcm = ax.pcolormesh(X, Y, binned_IBI_mean, shading='nearest', 
+            pcm = ax.pcolormesh(X, Y, binned_IBI[:, :, 0], shading='nearest', 
                                cmap=cmap, vmin=colorRange[0], vmax=colorRange[1])
             cbar = fig.colorbar(pcm, ax=ax, 
                                boundaries=np.linspace(colorRange[0], colorRange[1], 256),
@@ -1647,7 +1657,10 @@ def calculate_IBI_binned_by_2D_keys(datasets,
         if closeFigure:
             plt.close(fig)
     
-    return binned_IBI_mean, binned_IBI_sem, binned_IBI_count, X, Y
+    return binned_IBI, X, Y, binned_IBI_each_fish
+
+
+
 
 def calculate_interfish_bout_lags(datasets):
     """
@@ -1761,6 +1774,8 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
         raise ValueError('Error in make_pair_fish_plots; Nfish must be 2 !')
     
 
+
+    
     
     # head-head distance histogram
     head_head_mm_all = combine_all_values_constrained(datasets, 
@@ -1969,8 +1984,9 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
         outputFileName = None
     calculate_IBI_binned_by_distance(
         datasets=datasets, 
-        distance_key='closest_distance_mm',bin_distance_min=0, 
+        distance_key='head_head_distance_mm',bin_distance_min=0, 
         bin_distance_max=50.0, bin_width=5.0, dilate_minus1=False,
+        outlier_std = 3.0,
         makePlot = True, ylim = (0.2, 0.55), titleStr = exptName, 
         plotColor = color,
         outputFileName = outputFileName,
@@ -1997,15 +2013,16 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
         outputFileName = outputFileNameBase + '_IBI_v_dist_and_radialpos' + '.' + outputFileNameExt
     else:
         outputFileName = None
-    binned_IBI_mean, binned_IBI_sem, binned_IBI_count, X, Y = \
+    binned_IBI, X, Y, binned_IBI_each_fish = \
         calculate_IBI_binned_by_2D_keys(datasets=datasets, 
-                                     key1='closest_distance_mm',
+                                     key1='head_head_distance_mm',
                                      key2='radial_position_mm',
                                      bin_ranges=((0.0, 50.0), (0.0, 25.0)), 
                                      Nbins=(12, 12),
                                      dilate_minus1=False,
+                                     outlier_std=3.0,
                                      makePlot=True, 
-                                     titleStr = f'{exptName}: IBI vs. closest distance, radial pos.', 
+                                     titleStr = f'{exptName}: IBI vs. head-head distance, radial pos.', 
                                      cmap='viridis_r',
                                      colorRange = (0.0, 0.6),
                                      outputFileName=outputFileName,
@@ -2024,7 +2041,7 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
     xlim = (0.0, 50.0)
     zlim = (0.0, 0.6)
     color = color
-    slice_2D_histogram(binned_IBI_mean, X, Y, binned_IBI_sem, 
+    slice_2D_histogram(binned_IBI[:,:,0], X, Y, binned_IBI[:,:,2], 
                        slice_axis = 'x', other_range = r_range, 
                        titleStr = titleStr, xlabelStr = xlabelStr, 
                        zlabelStr = zlabelStr,
@@ -2045,7 +2062,7 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
     xlim = (0.0, 50.0)
     zlim = (0.0, 0.6)
     color = color
-    slice_2D_histogram(binned_IBI_mean, X, Y, binned_IBI_sem, 
+    slice_2D_histogram(binned_IBI[:,:,0], X, Y, binned_IBI[:,:,2], 
                        slice_axis = 'x', other_range = r_range, 
                        titleStr = titleStr, xlabelStr = xlabelStr, 
                        zlabelStr = zlabelStr,
