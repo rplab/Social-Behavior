@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified November 19, 2025 -- Raghu Parthasarathy
+Last modified November 22, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -1430,9 +1430,9 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
     
     # Average across fish.
     binned_IBI = np.zeros((n_bins, 3))
-    binned_IBI[:,0] = np.mean(binned_IBI_each_fish, axis=0)
-    binned_IBI[:,1] = np.std(binned_IBI_each_fish, axis=0)
-    binned_IBI[:,2] = np.std(binned_IBI_each_fish, axis=0) / np.sqrt(nfish_total)
+    binned_IBI[:,0] = np.nanmean(binned_IBI_each_fish, axis=0)
+    binned_IBI[:,1] = np.nanstd(binned_IBI_each_fish, axis=0)
+    binned_IBI[:,2] = np.nanstd(binned_IBI_each_fish, axis=0) / np.sqrt(nfish_total)
     
     if makePlot:
         fig = plt.figure()
