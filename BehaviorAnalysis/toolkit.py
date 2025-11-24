@@ -1027,6 +1027,7 @@ def get_values_subset(data_array, keyIdx, use_abs_value = False):
         raise ValueError(f"keyIdx must be None, int, or string, got {type(keyIdx)}")
 
 
+
 def combine_all_values_constrained(datasets, keyName='speed_array_mm_s', 
                                    keyIdx = None, use_abs_value = False,
                                    constraintKey=None, constraintRange=None,
@@ -1098,13 +1099,13 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
                     Useful for signed angles (relative orientation, bending).    
     Returns
     -------
-    values_all_constrained : list of numpy arrays of all values in all 
+    values_all_constrained : list of numpy arrays of all values in each 
        datasets that satisfy the constraint; can concatenate.
        
     To do
     -------
-    I don't like the redundant code, which separately calcualtes and returns
-    things for constraintKey = None or constraint exists. Clean this up, 
+    I don't like the redundant code, which separately calculates and returns
+    things for constraintKey = None or constraint exists. Should clean this up, 
     with just one loop through datasets and applying the constraint to 
     each dataset as needed.
 

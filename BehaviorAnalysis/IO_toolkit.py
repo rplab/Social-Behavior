@@ -40,7 +40,9 @@ import imageio.v3 as iio
 from scipy.stats import binned_statistic_2d
 
 from toolkit import get_Nfish, behaviorFrameCount_all, \
-    combine_all_values_constrained, get_effective_dims
+    combine_all_values_constrained, get_effective_dims, \
+    dilate_frames, get_values_subset
+
 
 # Function to get a valid path from the user (base Path or config path)
 def get_basePath():
@@ -1919,6 +1921,7 @@ def simple_write_CSV(x, y_list, filename, header_strings=None):
         df.columns = header_strings
 
     # Save to CSV
+    print(f'\nWriting CSV file: {filename}\n')
     df.to_csv(filename, index=False)
 
     
@@ -2708,6 +2711,337 @@ def plot_waterfall_binned_crosscorr(binned_crosscorr_all, bin_centers, t_lag,
         
         plt.show()
     
+
+
+def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
+                               binKeyName='closest_distance_mm',
+                               bin_range=(0.0, 50.0), Nbins=20,
+                               constraintKey=None, constraintRange=None,
+                               constraintIdx=None,
+                               use_abs_value=False,
+                               use_abs_value_constraint=False,
+                               dilate_minus1=True,
+                               makePlot=True, titleStr=None,
+                               xlabelStr=None, ylabelStr=None,
+                               color='black', xlim=None, ylim=None,
+                               outputFileName=None, closeFigure=False,
+                               outputCSVFileName = None):
+    """
+    Calculate mean of a quantitative property binned by another property.
+    Creates a 1D line plot with error bars.
+    
+    This is analogous to what calculate_IBI_binned_by_distance() does for IBI,
+    but works for any quantitative property.
+    
+    Parameters
+    ----------
+    datasets : list of dataset dictionaries
+    keyName : str
+        Property to calculate mean of (e.g., 'speed_array_mm_s')
+    keyIdx : int, str, or None
+        Which fish/operation to use for keyName
+    binKeyName : str
+        Property to bin by (e.g., 'closest_distance_mm')
+    bin_range : tuple
+        (min, max) for binning
+    Nbins : int
+        Number of bins
+    constraintKey, constraintRange, constraintIdx : constraint parameters
+    use_abs_value : bool
+        Use absolute value of keyName
+    use_abs_value_constraint : bool
+        Use absolute value of constraint
+    dilate_minus1 : bool
+        Dilate bad frames by -1
+    makePlot : bool
+        If True, create plot
+    titleStr, xlabelStr, ylabelStr : str
+        Plot labels
+    color : str
+        Plot color
+    xlim, ylim : tuple or None
+        Axis limits
+    outputFileName : str or None
+        Save figure to this file
+    closeFigure : bool
+        Close figure after creating
+    outputCSVFileName : if not None, save to a CSV file the following (columns):
+                - plotted "X" positions (bin_centers)
+                - plotted mean "Y" positions (binned_mean[:,0])
+                - Standard deviation (binned_mean[:,2])
+                - Standard error of the mean (binned_mean[:,2])
+    Returns
+    -------
+    binned_mean : numpy array (Nbins, 3)
+        [mean, std, sem] for each bin
+    bin_centers : numpy array
+        Center values of bins
+    binned_mean_each_dataset : numpy array (Ndatasets, Nbins)
+        Mean for each dataset in each bin
+    """
+
+    # Set up bins
+    bin_edges = np.linspace(bin_range[0], bin_range[1], Nbins + 1)
+    bin_centers = 0.5 * (bin_edges[1:] + bin_edges[:-1])
+    
+    Ndatasets = len(datasets)
+    binned_mean_each_dataset = np.full((Ndatasets, Nbins), np.nan)
+    
+    print(f'\nBinning {keyName} by {binKeyName}.... ', end='')
+    
+    for j in range(Ndatasets):
+        print(f' {j}... ', end='')
+        dataset = datasets[j]
+        idx_offset = min(dataset["frameArray"])
+        
+        # Handle bad frames
+        badTrackFrames = dataset["bad_bodyTrack_frames"]["raw_frames"]
+        if dilate_minus1:
+            dilate_badTrackFrames = dilate_frames(badTrackFrames,
+                                                  dilate_frames=np.array([-1]))
+            bad_frames_set = set(dilate_badTrackFrames)
+        else:
+            bad_frames_set = set(badTrackFrames)
+        
+        # Get data
+        property_data = get_values_subset(dataset[keyName], keyIdx=keyIdx,
+                                         use_abs_value=use_abs_value)
+        bin_data = get_values_subset(dataset[binKeyName], keyIdx=None,
+                                     use_abs_value=False)
+        
+        # Determine effective dimensions
+        Ndim_property = get_effective_dims(property_data)
+        Ndim_bin = get_effective_dims(bin_data)
+        
+        # Apply constraints if provided
+        if constraintKey is not None and constraintRange is not None:
+            constraint_data = get_values_subset(dataset[constraintKey],
+                                               keyIdx=constraintIdx,
+                                               use_abs_value=use_abs_value_constraint)
+            Ndim_constraint = get_effective_dims(constraint_data)
+            
+            constraint_mask = ((constraint_data >= constraintRange[0]) &
+                             (constraint_data <= constraintRange[1]))
+            if constraint_mask.ndim > 1:
+                constraint_mask = constraint_mask.flatten()
+        else:
+            constraint_mask = None
+            Ndim_constraint = None
+        
+        # Remove bad frames
+        frames = dataset["frameArray"]
+        good_frames_mask = np.isin(frames - idx_offset,
+                                   np.array(list(bad_frames_set)) - idx_offset,
+                                   invert=True)
+        
+        # Handle dimension mismatches by tiling (following combine_all_values_constrained logic)
+        # Tile property_data if needed
+        if (Ndim_bin > 1) and (Ndim_property == 1 or (property_data.ndim == 2 and property_data.shape[1] == 1)):
+            if property_data.ndim == 1:
+                property_data = np.tile(property_data[:, np.newaxis], (1, Ndim_bin))
+            else:
+                property_data = np.tile(property_data, (1, Ndim_bin))
+        
+        # Tile bin_data if needed
+        if (Ndim_property > 1) and (Ndim_bin == 1 or (bin_data.ndim == 2 and bin_data.shape[1] == 1)):
+            if bin_data.ndim == 1:
+                bin_data = np.tile(bin_data[:, np.newaxis], (1, Ndim_property))
+            else:
+                bin_data = np.tile(bin_data, (1, Ndim_property))
+        
+        # Tile good_frames_mask if needed
+        if (good_frames_mask.ndim == 1) and (get_effective_dims(property_data) > 1):
+            good_frames_mask = np.tile(good_frames_mask[:, np.newaxis], 
+                                      (1, property_data.shape[1]))
+        
+        # Tile constraint_mask if needed
+        if constraint_mask is not None:
+            if (Ndim_constraint == 1) and (good_frames_mask.ndim > 1):
+                constraint_mask = np.tile(constraint_mask[:, np.newaxis], 
+                                         (1, good_frames_mask.shape[1]))
+            
+            if (Ndim_constraint > 1) and (property_data.ndim == 1 or property_data.shape[1] == 1):
+                if property_data.ndim == 1:
+                    property_data = np.tile(property_data[:, np.newaxis], (1, Ndim_constraint))
+                else:
+                    property_data = np.tile(property_data, (1, Ndim_constraint))
+                if good_frames_mask.ndim == 1:
+                    good_frames_mask = np.tile(good_frames_mask[:, np.newaxis], 
+                                              (1, Ndim_constraint))
+        
+        # Flatten all arrays
+        property_data_flat = property_data.flatten()
+        bin_data_flat = bin_data.flatten()
+        good_frames_mask_flat = good_frames_mask.flatten()
+        
+        # Combine masks
+        if constraint_mask is not None:
+            constraint_mask_flat = constraint_mask.flatten()
+            valid_mask = good_frames_mask_flat & constraint_mask_flat
+        else:
+            valid_mask = good_frames_mask_flat
+        
+        # Bin data
+        for bin_idx in range(Nbins):
+            bin_mask = ((bin_data_flat >= bin_edges[bin_idx]) &
+                       (bin_data_flat < bin_edges[bin_idx + 1]))
+            combined_mask = valid_mask & bin_mask
+            
+            if np.sum(combined_mask) > 0:
+                binned_mean_each_dataset[j, bin_idx] = np.nanmean(
+                    property_data_flat[combined_mask]
+                )
+    
+    print('... done.\n')
+    
+    # Calculate overall statistics
+    binned_mean = np.zeros((Nbins, 3))
+    binned_mean[:, 0] = np.nanmean(binned_mean_each_dataset, axis=0)
+    binned_mean[:, 1] = np.nanstd(binned_mean_each_dataset, axis=0)
+    binned_mean[:, 2] = (np.nanstd(binned_mean_each_dataset, axis=0) /
+                        np.sqrt(np.sum(~np.isnan(binned_mean_each_dataset), axis=0)))
+    
+    # Plot
+    if makePlot:
+        fig = plt.figure(figsize=(10, 6))
+        plt.errorbar(bin_centers, binned_mean[:, 0], binned_mean[:, 2],
+                    fmt='o-', capsize=5, markersize=8, linewidth=2,
+                    color=color, ecolor=color)
+        
+        if xlabelStr is None:
+            xlabelStr = binKeyName
+        if ylabelStr is None:
+            ylabelStr = f'Mean {keyName}'
+        if titleStr is None:
+            titleStr = f'Mean {keyName} vs {binKeyName}'
+        
+        plt.xlabel(xlabelStr, fontsize=14)
+        plt.ylabel(ylabelStr, fontsize=14)
+        plt.title(titleStr, fontsize=16)
+        plt.grid(True, alpha=0.3)
+        
+        if xlim is not None:
+            plt.xlim(xlim)
+        if ylim is not None:
+            plt.ylim(ylim)
+        
+        if outputFileName is not None:
+            plt.savefig(outputFileName, bbox_inches='tight')
+        
+        if closeFigure:
+            plt.close(fig)
+        else:
+            plt.show()
+        
+    # Output points to CSV (optional)
+    if outputCSVFileName is not None:
+        header_strings = [xlabelStr.replace(',', '_'), 
+                          f'{ylabelStr} mean', f'{ylabelStr} std', f'{ylabelStr} s.e.m.']
+        simple_write_CSV(bin_centers, 
+                         [binned_mean[:, 0], binned_mean[:, 1], binned_mean[:, 2]], 
+                         filename =  outputCSVFileName, 
+                         header_strings=header_strings)    
+        
+    return binned_mean, bin_centers, binned_mean_each_dataset
+
+    
+def plot_2D_heatmap(Z, X, Y, Z_unc=None,
+                   titleStr=None, xlabelStr='X', ylabelStr='Y', clabelStr='Z',
+                   colorRange=None, cmap='RdYlBu',
+                   unit_scaling_for_plot=[1.0, 1.0, 1.0],
+                   mask_by_sem_limit=None,
+                   outputFileName=None, closeFigure=False):
+    """
+    Create a 2D heatmap plot.
+    Based on approach formerly in make_2D_histogram()
+    
+    Parameters
+    ----------
+    Z : 2D numpy array
+        Values to plot as heatmap
+    X, Y : 2D numpy arrays
+        Meshgrid coordinates
+    Z_unc : 2D numpy array or None
+        Uncertainty values (for masking)
+    titleStr, xlabelStr, ylabelStr, clabelStr : str
+        Labels for plot
+    colorRange : tuple or None
+        (vmin, vmax) for color scale
+    cmap : str
+        Colormap name
+    unit_scaling_for_plot : list of 3 floats
+        Scaling factors for [X, Y, Z]
+    mask_by_sem_limit : float or None
+        If not None, mask points where Z_unc > this value
+    outputFileName : str or None
+        If not None, save figure to this file
+    closeFigure : bool
+        If True, close figure after creating
+    
+    Returns
+    -------
+    fig, ax : matplotlib figure and axes objects
+    """
+    
+    # Apply masking if requested
+    if (mask_by_sem_limit is not None) and (Z_unc is not None):
+        mask = Z_unc > mask_by_sem_limit
+        Z_plot = np.ma.masked_array(Z * unit_scaling_for_plot[2], mask=mask)
+    else:
+        Z_plot = Z * unit_scaling_for_plot[2]
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(8, 6))
+    
+    # Create heatmap
+    if colorRange is None:
+        pcm = ax.pcolormesh(X * unit_scaling_for_plot[0],
+                           Y * unit_scaling_for_plot[1],
+                           Z_plot, shading='nearest', cmap=cmap)
+        cbar = fig.colorbar(pcm, ax=ax)
+    else:
+        pcm = ax.pcolormesh(X * unit_scaling_for_plot[0],
+                           Y * unit_scaling_for_plot[1],
+                           Z_plot, shading='nearest',
+                           vmin=colorRange[0] * unit_scaling_for_plot[2],
+                           vmax=colorRange[1] * unit_scaling_for_plot[2],
+                           cmap=cmap)
+        cbar = fig.colorbar(pcm, ax=ax,
+                           boundaries=np.linspace(
+                               colorRange[0] * unit_scaling_for_plot[2],
+                               colorRange[1] * unit_scaling_for_plot[2], 256),
+                           ticks=np.linspace(
+                               colorRange[0] * unit_scaling_for_plot[2],
+                               colorRange[1] * unit_scaling_for_plot[2], 7))
+    
+    # Labels
+    ax.set_xlabel(xlabelStr, fontsize=16)
+    ax.set_ylabel(ylabelStr, fontsize=16)
+    ax.set_title(titleStr, fontsize=18)
+    cbar.set_label(clabelStr, fontsize=14)
+    
+    plt.tight_layout()
+    
+    if outputFileName is not None:
+        plt.savefig(outputFileName, bbox_inches='tight', dpi=300)
+    
+    if closeFigure:
+        plt.close(fig)
+    else:
+        plt.show()
+    
+    """ 
+    Should the order be this?
+    plt.show()
+    if outputFileName != None:
+        plt.savefig(outputFileName, bbox_inches='tight')
+        
+    if closeFigure:
+        print(f'Closing figure {titleStr}')
+        plt.close(fig)
+    """
+    
+    return fig, ax
     
     
 def make_2D_histogram(datasets, 
@@ -2905,9 +3239,6 @@ def make_2D_histogram(datasets,
         value1_min, value1_max = bin_ranges[0]
         value2_min, value2_max = bin_ranges[1]
     
-    # Create the 2D histogram
-    fig, ax = plt.subplots(figsize=(8, 6))
-
     if keyNameC is None:
         # calculate the normalized occurrence histogram values
         hist, xedges, yedges = np.histogram2d(values1_all, values2_all, 
@@ -2946,60 +3277,32 @@ def make_2D_histogram(datasets,
         if clabelStr is None:
             clabelStr = f'Mean {keyNameC}'
     
-    # Plot the 2D histogram
+    # For the 2D histogram
     # X and Y values
     X, Y = np.meshgrid(0.5*(xedges[1:] + xedges[:-1]), 
                        0.5*(yedges[1:] + yedges[:-1]), indexing='ij')
     
-    # mask to plot only points with low s.e.m. (optional)
-    if (mask_by_sem_limit is not None) and (keyNameC is not None):
-        mask = hist_sem > mask_by_sem_limit
-        hist_mask = np.ma.masked_array(hist*unit_scaling_for_plot[2], mask=mask)
-    else:
-        hist_mask = hist*unit_scaling_for_plot[2]
-    
-    # Create the 2D histogram and the colorbar
-    if colorRange is None:
-        cbar = fig.colorbar(ax.pcolormesh(X*unit_scaling_for_plot[0], 
-                                          Y*unit_scaling_for_plot[1], 
-                                          hist_mask, 
-                                          shading='nearest',
-                                          cmap = cmap), ax=ax)
-    else:
-        cbar = fig.colorbar(ax.pcolormesh(X*unit_scaling_for_plot[0], 
-                                          Y*unit_scaling_for_plot[1], 
-                                          hist_mask, 
-                                          shading='nearest',
-                                          vmin=colorRange[0]*unit_scaling_for_plot[2], 
-                                          vmax = colorRange[1]*unit_scaling_for_plot[2],
-                                          cmap = cmap), ax=ax)
-            
     if xlabelStr is None:
-        ax.set_xlabel(keyNames[0], fontsize=16)
-    else:
-        ax.set_xlabel(xlabelStr, fontsize=16)
+        xlabelStr = keyNames[0]
     if ylabelStr is None:
-        ax.set_ylabel(keyNames[1], fontsize=16)
-    else:
-        ax.set_ylabel(ylabelStr, fontsize=16)
+        ylabelStr = keyNames[1]
             
     if titleStr is None:
         if keyNameC is None:
             titleStr = f'2D Histogram of {keyNames[0]} vs {keyNames[1]}'
         else:
             titleStr = f'Mean {keyNameC} vs {keyNames[0]} and {keyNames[1]}'
-    ax.set_title(titleStr, fontsize=18)
-    cbar.set_label(clabelStr)
-    plt.show()
-    if outputFileName != None:
-        plt.savefig(outputFileName, bbox_inches='tight')
-        
-    if closeFigure:
-        print(f'Closing figure {titleStr}')
-        plt.close(fig)
+
+    plot_2D_heatmap(hist, X, Y, Z_unc=hist_sem,
+                       titleStr=titleStr, 
+                       xlabelStr=xlabelStr, ylabelStr=ylabelStr, clabelStr='Z',
+                       colorRange=colorRange, cmap=cmap,
+                       unit_scaling_for_plot=unit_scaling_for_plot,
+                       mask_by_sem_limit=mask_by_sem_limit,
+                       outputFileName=mask_by_sem_limit, closeFigure=closeFigure)
+
         
     return hist, X, Y, hist_sem
-
 
 
 def slice_2D_histogram(z_mean, X, Y, z_unc, slice_axis='x', other_range=None, 
@@ -3201,3 +3504,173 @@ def slice_2D_histogram(z_mean, X, Y, z_unc, slice_axis='x', other_range=None,
         plt.close(fig)
     
     return axis_values, weighted_mean, weighted_std
+
+
+def revise_datasets(keys_to_modify=["relative_orientation"],
+                   pickleFileName1=None, pickleFileName2=None):
+    """
+    Load datasets from pickle files, recalculate specified angle values,
+    and save the revised datasets back to the same pickle files.
+    
+    This function is useful for updating old pickle files after modifications
+    to angle calculation functions (e.g., changing from unsigned to signed angles).
+    
+    Parameters
+    ----------
+    keys_to_modify : list of str
+        List of keys to recalculate. Must be subset of:
+        ["relative_orientation", "bend_angle", "heading_angle"]
+        Default: ["relative_orientation"]
+    pickleFileName1 : str or None
+        Full path to position data pickle file. If None, will prompt user.
+    pickleFileName2 : str or None
+        Full path to datasets pickle file. If None, will prompt user.
+    
+    Returns
+    -------
+    None
+        Overwrites the original pickle files with updated data.
+    
+    Notes
+    -----
+    This function:
+    1. Loads data from two pickle files (position data and datasets)
+    2. Calls recalculate_angles() to update specified angle calculations
+    3. Saves the updated datasets back to the original pickle files
+    
+    The position data pickle file is not modified (only read).
+    The datasets pickle file is overwritten with updated values.
+    
+    Example usage:
+    >>> from IO_toolkit import revise_datasets
+    >>> # Recalculate relative orientation only (default, but I'll write 
+          the input anyway)
+    >>> revise_datasets(keys_to_modify=["relative_orientation", "bend_angle"])
+    """
+    
+    # Import here to avoid circular import
+    from behavior_identification import recalculate_angles
+    
+    print("\n" + "="*70)
+    print("REVISING DATASETS: Recalculating angles in pickle files")
+    print("="*70)
+    print(f"\nKeys to modify: {keys_to_modify}\n")
+    
+    # Load from pickle files
+    print("Loading data from pickle files...")
+    all_position_data, variable_tuple = load_and_assign_from_pickle(
+        pickleFileName1=pickleFileName1, 
+        pickleFileName2=pickleFileName2
+    )
+    (datasets, CSVcolumns, expt_config, params, N_datasets, 
+     Nfish, basePath, dataPath, subGroupName) = variable_tuple
+    
+    print(f"Loaded {N_datasets} datasets with {Nfish} fish each.")
+    
+    # Store the original pickle file path for default save location
+    # We need to track what file was loaded
+    # If pickleFileName2 was provided, use that
+    # Otherwise, we need to prompt and remember the choice
+    if pickleFileName2 is not None:
+        original_pickle_path = pickleFileName2
+        original_pickle_dir = os.path.dirname(pickleFileName2)
+        original_pickle_filename = os.path.basename(pickleFileName2)
+    else:
+        # Files were selected via dialog, we don't have the path stored
+        # We'll need to prompt for it below
+        original_pickle_path = None
+        original_pickle_dir = None
+        original_pickle_filename = None
+    
+    # Recalculate angles
+    datasets = recalculate_angles(all_position_data, datasets, CSVcolumns, 
+                                  keys_to_modify=keys_to_modify)
+    
+    # Save the updated datasets back to pickle
+    print("\n" + "-"*70)
+    print("Saving updated datasets to pickle file...")
+    
+    # Prepare the dictionary to save (same structure as original)
+    variables_dict = {
+        'datasets': datasets,
+        'CSVcolumns': CSVcolumns,
+        'expt_config': expt_config,
+        'params': params,
+        'basePath': basePath,
+        'dataPath': dataPath,
+        'subGroupName': subGroupName
+    }
+    
+    # Determine save location
+    if original_pickle_path is None:
+        # User was prompted during load, need to get the file path
+        print("\n\nWe need to use a dialog box to get the original file path.")
+        print("Select the ORIGINAL datasets pickle file (the one you just loaded).")
+        print("This will be used as the default save location.")
+        
+        root = tk.Tk()
+        root.withdraw()
+        original_pickle_path = filedialog.askopenfilename(
+            title="Select original datasets pickle file",
+            filetypes=[("pickle files", "*.pickle")]
+        )
+        
+        if not original_pickle_path:
+            print("\nNo file selected. Aborting without saving.")
+            return
+        
+        original_pickle_dir = os.path.dirname(original_pickle_path)
+        original_pickle_filename = os.path.basename(original_pickle_path)
+    
+    # Prompt for output filename
+    print(f"\nOriginal datasets file: {original_pickle_path}")
+    print("\nEnter output filename (press Enter to overwrite original file):")
+    print(f"  Default: {original_pickle_filename}")
+    
+    user_filename = input("  Output filename: ").strip()
+    
+    if user_filename == '':
+        # Use original filename (overwrite)
+        save_pickle_filename = original_pickle_filename
+        save_pickle_path = original_pickle_path
+        overwriting = True
+    else:
+        # User provided a new filename
+        save_pickle_filename = user_filename
+        # Make sure it ends with .pickle
+        if not save_pickle_filename.endswith('.pickle'):
+            save_pickle_filename += '.pickle'
+        save_pickle_path = os.path.join(original_pickle_dir, save_pickle_filename)
+        overwriting = (save_pickle_path == original_pickle_path)
+    
+    # Confirm action
+    if overwriting:
+        print(f"\nWill OVERWRITE: {save_pickle_path}")
+        confirm = input("Type 'yes' to confirm overwrite: ")
+    else:
+        print(f"\nWill save to NEW file: {save_pickle_path}")
+        confirm = input("Type 'yes' to confirm: ")
+    
+    if confirm.lower() != 'yes':
+        print("\nAborted. No files were modified.")
+        return
+    
+    # Use write_pickle_file to save
+    write_pickle_file(variables_dict, dataPath=original_pickle_dir, 
+                     outputFolderName='', 
+                     pickleFileName=save_pickle_filename)
+    
+    print("\n" + "="*70)
+    print("REVISION COMPLETE")
+    print("="*70)
+    print(f"\nSaved to: {save_pickle_path}")
+    if overwriting:
+        print("  (Original file was overwritten)")
+    else:
+        print("  (New file created, original unchanged)")
+    print(f"Modified keys: {keys_to_modify}")
+    print(f"Number of datasets updated: {N_datasets}")
+    print("\nThe position data pickle file was not modified (read only).")
+    print("="*70 + "\n")
+    
+    return None

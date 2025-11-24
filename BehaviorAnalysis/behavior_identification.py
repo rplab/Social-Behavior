@@ -25,10 +25,12 @@ import numpy as np
 from toolkit import wrap_to_pi, combine_all_values_constrained, \
     calculate_value_corr_all,  make_frames_dictionary, \
     remove_frames, combine_events, calculate_value_corr_all_binned, \
-    dilate_frames
-from IO_toolkit import plot_probability_distr, make_2D_histogram, \
-    slice_2D_histogram, plot_function_allSets, plot_waterfall_binned_crosscorr 
-from behavior_identification_single import average_bout_trajectory_allSets
+    dilate_frames, get_values_subset, repair_heading_angles
+from IO_toolkit import plot_probability_distr, plot_2D_heatmap, \
+    make_2D_histogram, slice_2D_histogram, plot_function_allSets, \
+        plot_waterfall_binned_crosscorr 
+from behavior_identification_single import average_bout_trajectory_allSets, \
+    calc_bend_angle
 from scipy.stats import skew
 import itertools
 from scipy.ndimage import binary_closing, binary_opening
@@ -94,17 +96,15 @@ def get_basic_two_fish_characterizations(all_position_data, datasets, CSVcolumns
         # Relative orientation of fish (angle between heading and
         # connecting vector). Nframes x Nfish==2 array; radians
         # Also the fish indexes in each frame ordered by relative 
-        # orientation angle, low to high
+        # orientation angle, low to high,
+        # Also the sum of relative orientation angles, signed and sum(abs())
         datasets[j]["relative_orientation"], \
-            datasets[j]["rel_orient_rankIdx"] = \
+            datasets[j]["rel_orient_rankIdx"], \
+            datasets[j]["relative_orientation_sum"], \
+            datasets[j]["relative_orientation_abs_sum"] = \
             get_relative_orientation(all_position_data[j], datasets[j], CSVcolumns)   
 
-        # Sum of relative orientation (Calculate for any Nfish, though only
-        # meaningful for two.)
-        datasets[j]["relative_orientation_sum"] = \
-            np.sum(datasets[j]["relative_orientation"], axis=1)  
-        
-        # Relative the difference in heading angle between the two fish,
+        # Relative difference in heading angle between the two fish,
         # range [0, pi]). Nframes x 1 array; radians
         datasets[j]["relative_heading_angle"] = \
             get_relative_heading_angle(datasets[j], CSVcolumns)   
@@ -1197,7 +1197,11 @@ def get_relative_orientation(position_data, dataset, CSVcolumns):
             relative orientation angle, low to high. If, for example, 
             this is [1, 0] for a given frame, fish 1 has the lower 
             relative orientation angle. Shape (Nframes, Nfish==2)
-            
+        relative_orientation_sum 
+            Sum of relative orientation angles
+        relative_orientation_abs_sum 
+            Sum of absolute values of relative orientation angles
+    
     Note: Valid only for Nfish==2. (Checks this.) Could expand to
         arbitrary Nfish, giving a matrix of relative orientation values.
     """
@@ -1241,8 +1245,17 @@ def get_relative_orientation(position_data, dataset, CSVcolumns):
 
     # Rank by absolute value of relative orientation
     rel_orient_rankIdx = np.argsort(np.abs(relative_orientation), axis=1)
+
+    # Sum of relative orientation (Calculate for any Nfish, though only
+    # meaningful for two.)
+    relative_orientation_sum = np.sum(relative_orientation, axis=1)  
+        
+    # Sum of absolute values of relative orientation angles
+    # (Calculate for any Nfish, though only meaningful for two.)
+    relative_orientation_abs_sum = np.sum(np.abs(relative_orientation), axis=1)  
     
-    return relative_orientation, rel_orient_rankIdx
+    return relative_orientation, rel_orient_rankIdx, relative_orientation_sum, \
+        relative_orientation_abs_sum
 
 
 def get_relative_orientation_to_body_positions(head_idx, position_data, 
@@ -1310,22 +1323,34 @@ def get_relative_heading_angle(dataset, CSVcolumns):
     return relative_heading_angle
 
 
+
+
 def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm',
                                      bin_distance_min=0, bin_distance_max=50.0, 
-                                     bin_width=5.0, dilate_minus1=False,
-                                     outlier_std = 3.0,
-                                     makePlot = True, plot_each_dataset = False,
-                                     ylim = None, 
-                                     titleStr = None, plotColor = 'black',
-                                     outputFileName = None,
-                                     closeFigure = False):
+                                     bin_width=5.0, 
+                                     constraintKey=None, constraintRange=None,
+                                     constraintIdx=None, use_abs_value_constraint=False,
+                                     dilate_minus1=False,
+                                     outlier_std=3.0,
+                                     makePlot=True, plot_each_dataset=False,
+                                     ylim=None, titleStr=None, plotColor='black',
+                                     outputFileName=None, closeFigure=False):
+    
     """
     Calculate mean inter-bout interval (IBI) binned by mean inter-fish distance
     during the interval.
+    
     Requires Nfish = 2. Calculates IBI for each fish in each dataset.
-    Returns average over all fish
-            average for each dataset (averaged over both fish)
-            and individual fish averages.
+    Returns average over all fish, average for each dataset (averaged over both fish),
+    and individual fish averages.
+    
+    The distance_key is used for binning (primary filter on mean distance during IBI).
+    Optional: constraintKey/constraintRange provides additional constraint
+    (e.g., only consider IBIs where mean radial position is within some range).
+
+    Returns - average over all fish
+            - average for each dataset (averaged over both fish)
+            - and individual fish averages.
     Could be used to bin IBI by any other quantitative property also
             by changing "distance_key", as long as the property
             has one value per frame, like Nfish==2 inter-fish distance.
@@ -1336,6 +1361,14 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
     distance_key : str, either 'head_head_distance_mm' or 'closest_distance_mm'
     bin_distance_min, bin_distance_max : float, distance range for binning (mm)
     bin_width : float, width of distance bins (mm)
+    constraintKey : str or None
+        Additional constraint key (e.g., 'radial_position_mm')
+    constraintRange : tuple or None
+        (min, max) range for additional constraint
+    constraintIdx : int, str, or None
+        Which fish/operation to use for constraint
+    use_abs_value_constraint : bool
+        If True, use absolute value of constraint
     dilate_minus1 : bool, if True dilate bad frames by -1
     outlier_std : for each fish's list if IBIs, remove IBI values > outlier_std
                   from the mean. (In rare cases, very high values, probably
@@ -1353,8 +1386,7 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
     -------
     binned_IBI : numpy array of shape (n_bins, 3) 
                  containing [mean_IBI, std_IBI, sem_IBI] for each bin; 
-                 stats are calculated across fish (i.e. std. dev. is standard
-                 dev. of mean IBI across all fish) 
+                 stats are calculated across fish
     bin_centers : array of bin center distances (mm)
     binned_IBI_each_dataset : numpy array of shape (Ndatasets, n_bins)
              with the mean IBI for each dataset (averaged over both fish), 
@@ -1379,11 +1411,11 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
     
     # Number of datasets; initialize array
     Ndatasets = len(datasets)
-    binned_IBI_each_dataset = np.zeros((Ndatasets, n_bins)) # mean value
+    binned_IBI_each_dataset = np.zeros((Ndatasets, n_bins))
 
     # Number of fish; initialize array
     nfish_total = len(datasets)*Nfish # Nfish = 2 fish per dataset
-    binned_IBI_each_fish = np.zeros((nfish_total, n_bins)) # mean value
+    binned_IBI_each_fish = np.zeros((nfish_total, n_bins))
                         
     print('\nBinning inter-bout intervals by distance.... ', end='')
     for j in range(Ndatasets):
@@ -1416,12 +1448,39 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
                                            moving_frameInfo[0,jj+1])
                 ibi_s = (len(all_ibi_frames)+1) / dataset["fps"]
                 all_ibi_distances = dataset[distance_key][(all_ibi_frames-idx_offset)]
+                
                 # Replace bad frames with NaN
                 for i in range(len(all_ibi_frames)):
                     if (all_ibi_frames[i]) in bad_frames_set:
                         all_ibi_distances[i] = np.nan
 
                 distance_mm = np.nanmean(all_ibi_distances)
+                
+                # Check additional constraint if provided
+                if constraintKey is not None and constraintRange is not None:
+                    # Get constraint values for this IBI
+                    constraint_data = dataset[constraintKey]
+                    all_ibi_constraint_values = constraint_data[(all_ibi_frames - idx_offset)]
+                    
+                    # Handle multi-dimensional constraint data
+                    if all_ibi_constraint_values.ndim > 1:
+                        # Use get_values_subset to extract the right fish/operation
+                        constraint_subset = get_values_subset(
+                            all_ibi_constraint_values,
+                            keyIdx=constraintIdx,
+                            use_abs_value=use_abs_value_constraint
+                        )
+                    else:
+                        constraint_subset = all_ibi_constraint_values
+                        if use_abs_value_constraint:
+                            constraint_subset = np.abs(constraint_subset)
+                    
+                    # Calculate mean constraint value during this IBI
+                    mean_constraint_value = np.nanmean(constraint_subset)
+                    
+                    # Check if constraint is satisfied
+                    if not (constraintRange[0] <= mean_constraint_value <= constraintRange[1]):
+                        continue
 
                 # Find which distance bin this window belongs to
                 bin_idx = np.digitize(distance_mm, bins) - 1
@@ -1440,7 +1499,6 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
                         np.nanmean(bin_IBI_array[valid_pts])
                 else:
                     # No data for this bin
-                    print(f'\n Insufficient IBI data for dataset {j} fish {k} bin {bin_idx}') 
                     binned_IBI_each_fish[j*Nfish + k, bin_idx] = np.nan  
            
         # Combine fish IBIs to get average per dataset (simple average, not weighted)
@@ -1456,7 +1514,6 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
     
     if makePlot:
         fig = plt.figure()
-        # ax = fig.add_subplot()        
         plt.errorbar(bin_centers, binned_IBI[:,0], binned_IBI[:,2], 
                      fmt='o', capsize=7, markersize=12,
                      color = plotColor, ecolor = plotColor)
@@ -1485,17 +1542,20 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
         binned_IBI = binned_IBI.flatten()
         
     return binned_IBI, bin_centers, binned_IBI_each_dataset, binned_IBI_each_fish
-    
+
+
 
 def calculate_IBI_binned_by_2D_keys(datasets, 
                                      key1='closest_distance_mm',
                                      key2='radial_position_mm',
                                      bin_ranges=((0.0, 50.0), (0.0, 25.0)), 
                                      Nbins=(20, 20),
+                                     constraintKey=None, constraintRange=None,
+                                     constraintIdx=None, use_abs_value_constraint=False,
                                      dilate_minus1=False,
                                      outlier_std=3.0,
                                      makePlot=True, 
-                                     titleStr=None, 
+                                     titleStr=None, xlabelStr=None, ylabelStr=None,
                                      cmap='RdYlBu_r',
                                      colorRange=None,
                                      outputFileName=None,
@@ -1504,11 +1564,16 @@ def calculate_IBI_binned_by_2D_keys(datasets,
     Calculate mean inter-bout interval (IBI) binned by two quantitative keys
     (e.g., inter-fish distance and radial position).
     Creates a 2D heatmap showing mean IBI in each bin.
+        
+    Both key1 and key2 are used for binning (primary filters on mean values 
+                                             during IBI).
+    Optional: constraintKey/constraintRange provides additional constraint
+    (e.g., only consider IBIs where some other property is within some range).
     
-    Requires Nfish==2. 
-    Returns average over all fish
-            average for each dataset (averaged over both fish)
-            and individual fish averages.
+    Requires Nfish==2.
+    Returns average over all fish, average for each dataset, 
+    and individual fish averages.
+    
     
     Parameters
     ----------
@@ -1518,12 +1583,21 @@ def calculate_IBI_binned_by_2D_keys(datasets,
     bin_ranges : tuple of two tuples, ((key1_min, key1_max), (key2_min, key2_max))
                  If None, will auto-determine from data
     Nbins : tuple of two ints, number of bins for (key1, key2)
+    constraintKey : str or None
+        Additional constraint key (not used for binning)
+    constraintRange : tuple or None
+        (min, max) range for additional constraint
+    constraintIdx : int, str, or None
+        Which fish/operation to use for constraint
+    use_abs_value_constraint : bool
+        If True, use absolute value of constraint
     dilate_minus1 : bool, if True dilate bad frames by -1
     outlier_std : for each fish's list of IBIs in each bin, remove IBI values 
                   > outlier_std from the mean. (In rare cases, very high values,
                   probably due to bad tracking.)
     makePlot : bool, make a plot if true
     titleStr : string, title for plot (if None, auto-generate)
+    xlabelStr, ylabelStr : x and y axis labels. If None, use key names
     cmap : string, colormap for heatmap (default 'RdYlBu_r')
     colorRange : tuple (vmin, vmax) for color scale, None for auto
     outputFileName : string, for saving the plot (default None -- don't save)
@@ -1537,8 +1611,8 @@ def calculate_IBI_binned_by_2D_keys(datasets,
     X, Y : 2D arrays from meshgrid for bin centers
     binned_IBI_each_dataset : 3D numpy array of shape (Ndatasets, Nbins[0], Nbins[1])
              with the mean IBI for each dataset (averaged over both fish), 
-             in each 2D b
-    binned_IBI_each_fish : 3D array (nfish_total , Nbins[0] , Nbins[1])
+             in each 2D bin
+    binned_IBI_each_fish : 3D array (nfish_total, Nbins[0], Nbins[1])
                           with the mean IBI for each fish, each bin
     """
 
@@ -1557,15 +1631,14 @@ def calculate_IBI_binned_by_2D_keys(datasets,
     key1_edges = np.linspace(key1_min, key1_max, Nbins[0] + 1)
     key2_edges = np.linspace(key2_min, key2_max, Nbins[1] + 1)
     
+    # Create meshgrid for bin centers
     key1_centers = 0.5 * (key1_edges[1:] + key1_edges[:-1])
     key2_centers = 0.5 * (key2_edges[1:] + key2_edges[:-1])
-    
-    # Create meshgrid for bin centers
     X, Y = np.meshgrid(key1_centers, key2_centers, indexing='ij')
     
     # Number of datasets; initialize array to store per-dataset binned IBI values
     Ndatasets = len(datasets)
-    binned_IBI_each_dataset = np.zeros((Ndatasets, Nbins[0], Nbins[1])) # mean value
+    binned_IBI_each_dataset = np.zeros((Ndatasets, Nbins[0], Nbins[1]))
     binned_IBI_each_dataset[:] = np.nan  # Initialize with NaN
     
     # Initialize array to store per-fish binned IBI values
@@ -1637,6 +1710,32 @@ def calculate_IBI_binned_by_2D_keys(datasets,
                 
                 # Only include if both key values are valid
                 if not (np.isnan(mean_key1) or np.isnan(mean_key2)):
+                    # Check additional constraint if provided
+                    if constraintKey is not None and constraintRange is not None:
+                        # Get constraint values for this IBI
+                        constraint_data = dataset[constraintKey]
+                        all_ibi_constraint_values = constraint_data[(all_ibi_frames - idx_offset)]
+                        
+                        # Handle multi-dimensional constraint data
+                        if all_ibi_constraint_values.ndim > 1:
+                            # Use get_values_subset to extract the right fish/operation
+                            constraint_subset = get_values_subset(
+                                all_ibi_constraint_values,
+                                keyIdx=constraintIdx,
+                                use_abs_value=use_abs_value_constraint
+                            )
+                        else:
+                            constraint_subset = all_ibi_constraint_values
+                            if use_abs_value_constraint:
+                                constraint_subset = np.abs(constraint_subset)
+                        
+                        # Calculate mean constraint value during this IBI
+                        mean_constraint_value = np.nanmean(constraint_subset)
+                        
+                        # Check if constraint is satisfied
+                        if not (constraintRange[0] <= mean_constraint_value <= constraintRange[1]):
+                            continue
+                    
                     # Find which bins this IBI belongs to
                     bin_idx1 = np.digitize(mean_key1, key1_edges) - 1
                     bin_idx2 = np.digitize(mean_key2, key2_edges) - 1
@@ -1662,48 +1761,37 @@ def calculate_IBI_binned_by_2D_keys(datasets,
                             bin_IBI_lists[bin_idx1][bin_idx2][0]
                     # else: remains NaN (no data for this bin)
 
-        for k in range(Nfish):
-            binned_IBI_each_dataset[j, : , :] = \
-                np.nanmean(binned_IBI_each_fish[j*Nfish : j*Nfish + 2, :, :], 
-                           axis=0)
+        # Combine fish IBIs to get average per dataset (simple average, not weighted)
+        binned_IBI_each_dataset[j, :, :] = \
+            np.nanmean(binned_IBI_each_fish[j*Nfish : j*Nfish + 2, :, :], axis=0)
         
     print('... done')
 
+    # Calculate overall statistics
     binned_IBI = np.zeros((Nbins[0], Nbins[1], 3))
     binned_IBI[:, :, 0] = np.nanmean(binned_IBI_each_fish, axis=0)  # mean
     binned_IBI[:, :, 1] = np.nanstd(binned_IBI_each_fish, axis=0)   # std
     binned_IBI[:, :, 2] = np.nanstd(binned_IBI_each_fish, axis=0) / np.sqrt(nfish_total)  # sem
     
+    
+    
     if makePlot:
-        fig, ax = plt.subplots(figsize=(10, 8))
-        
-        # Plot the 2D heatmap (mean IBI)
-        if colorRange is None:
-            pcm = ax.pcolormesh(X, Y, binned_IBI[:, :, 0], shading='nearest', cmap=cmap)
-            cbar = fig.colorbar(pcm, ax=ax)
-        else:
-            pcm = ax.pcolormesh(X, Y, binned_IBI[:, :, 0], shading='nearest', 
-                               cmap=cmap, vmin=colorRange[0], vmax=colorRange[1])
-            cbar = fig.colorbar(pcm, ax=ax, 
-                               boundaries=np.linspace(colorRange[0], colorRange[1], 256),
-                               ticks=np.linspace(colorRange[0], colorRange[1], 7))
-        
-        cbar.set_label('Mean IBI (s)', fontsize=14)
-        
-        ax.set_xlabel(key1, fontsize=16)
-        ax.set_ylabel(key2, fontsize=16)
         
         if titleStr is None:
             titleStr = f'Mean IBI binned by {key1} and {key2}'
-        ax.set_title(titleStr, fontsize=18)
-        
-        plt.tight_layout()
-        
-        if outputFileName is not None:
-            plt.savefig(outputFileName, bbox_inches='tight', dpi=300)
-        
-        if closeFigure:
-            plt.close(fig)
+        if xlabelStr is None:
+            xlabelStr = key1
+        if ylabelStr is None:
+            ylabelStr = key2
+
+        plot_2D_heatmap(binned_IBI[:, :, 0], X, Y, Z_unc=None,
+                           titleStr=titleStr, 
+                           xlabelStr=xlabelStr, ylabelStr=ylabelStr, 
+                           clabelStr='Mean IBI (s)',
+                           colorRange=colorRange, cmap=cmap,
+                           unit_scaling_for_plot=[1.0, 1.0, 1.0],
+                           mask_by_sem_limit=None,
+                           outputFileName=outputFileName, closeFigure=closeFigure)
     
     return binned_IBI, X, Y, binned_IBI_each_dataset, binned_IBI_each_fish
 
@@ -2530,3 +2618,85 @@ def make_rel_orient_rank_keys_allDatasets(datasets, behavior_key_string,
     
     print(f"\nSuccessfully created relative orientation rank keys for "
           f"behavior '{behavior_key_string}' across {len(datasets)} datasets.")
+    
+    return None
+    
+def recalculate_angles(all_position_data, datasets, CSVcolumns, 
+                      keys_to_modify=["relative_orientation"]):
+    """
+    Recalculate angle-related quantities in datasets.
+    
+    Useful for updating old pickle files after modifications to angle 
+    calculation functions (e.g., changing from unsigned to signed angles).
+    
+    Parameters
+    ----------
+    all_position_data : list of numpy arrays
+        Position data for all datasets
+    datasets : list of dictionaries
+        All datasets
+    CSVcolumns : dictionary
+        CSV column information
+    keys_to_modify : list of str
+        List of keys to recalculate. Must be subset of:
+        ["relative_orientation", "bend_angle", "heading_angle"]
+        Default: ["relative_orientation"]
+    
+    Returns
+    -------
+    datasets : list of dictionaries
+        Updated datasets with recalculated values
+    
+    Notes
+    -----
+    - If "relative_orientation" is in keys_to_modify:
+      Recalculates datasets[j]["relative_orientation"] and 
+      datasets[j]["rel_orient_rankIdx"] using get_relative_orientation()
+      Also calculates datasets[j]["relative_orientation_sum"] and
+      datasets[j]["relative_orientation_abs_sum"]
+    
+    - If "heading_angle" is in keys_to_modify:
+      Recalculates datasets[j]["heading_angle"] using repair_heading_angles()
+    
+    - If "bend_angle" is in keys_to_modify:
+      Recalculates datasets[j]["bend_angle"] using calc_bend_angle()
+    """
+    
+    # Validate keys_to_modify
+    valid_keys = ["relative_orientation", "bend_angle", "heading_angle"]
+    for key in keys_to_modify:
+        if key not in valid_keys:
+            raise ValueError(f"Invalid key '{key}' in keys_to_modify. " + 
+                           f"Must be subset of {valid_keys}")
+    
+    print(f"\nRecalculating angles for keys: {keys_to_modify}")
+    
+    # Recalculate heading_angle if requested
+    if "heading_angle" in keys_to_modify:
+        print("  Recalculating heading_angle for all datasets...")
+        datasets = repair_heading_angles(all_position_data, datasets, CSVcolumns)
+        print("  Done.")
+    
+    # Recalculate relative_orientation if requested
+    if "relative_orientation" in keys_to_modify:
+        print("  Recalculating relative_orientation for all datasets...")
+        for j in range(len(datasets)):
+            datasets[j]["relative_orientation"], \
+                datasets[j]["rel_orient_rankIdx"], \
+                datasets[j]["relative_orientation_sum"], \
+                datasets[j]["relative_orientation_abs_sum"] = \
+                get_relative_orientation(all_position_data[j], 
+                                         datasets[j], CSVcolumns)
+        print("  Done.")
+    
+    # Recalculate bend_angle if requested
+    if "bend_angle" in keys_to_modify:
+        print("  Recalculating bend_angle for all datasets...")
+        for j in range(len(datasets)):
+            datasets[j]["bend_angle"] = calc_bend_angle(all_position_data[j], 
+                                                        CSVcolumns)
+        print("  Done.")
+    
+    print("All angle recalculations complete.\n")
+    
+    return datasets
