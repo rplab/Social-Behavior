@@ -1889,6 +1889,8 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                              won't save a figure file
         outputFileNameExt : extension for figure output (e.g. 'eps' or 'png')
         closeFigures : (bool) if True, close a figure after creating it.
+        writeCSVs : (bool) Used by various functions; if true, output plotted 
+                            points to a CSV file. See code for filenames
 
     Outputs:
         saved_pair_outputs : list, containing

@@ -3299,7 +3299,7 @@ def make_2D_histogram(datasets,
                        colorRange=colorRange, cmap=cmap,
                        unit_scaling_for_plot=unit_scaling_for_plot,
                        mask_by_sem_limit=mask_by_sem_limit,
-                       outputFileName=mask_by_sem_limit, closeFigure=closeFigure)
+                       outputFileName=outputFileName, closeFigure=closeFigure)
 
         
     return hist, X, Y, hist_sem
