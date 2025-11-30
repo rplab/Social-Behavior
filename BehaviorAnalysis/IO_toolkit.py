@@ -13,7 +13,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Raghuveer Parthasarathy, October 5, 2025
+Last modified by Raghuveer Parthasarathy, November 29, 2025
 
 Module containing functions for handling data files, configuration
 files, and output files -- reading and writing.
@@ -25,6 +25,7 @@ Formerly in toolkit.py
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import cm
 import csv
 import os
 from pathlib import Path
@@ -1941,7 +1942,7 @@ def combine_images_to_tiff(filenamestring, path, ext="png",
     ext : str, optional
         File extension to filter by (default: "png")
     exclude_string : str, optional
-        String to exclude from filenames (default: None)
+        String to exclude from filenames (default: None). If '', make None
     
     Returns:
     --------
@@ -1955,6 +1956,9 @@ def combine_images_to_tiff(filenamestring, path, ext="png",
     if not ext.startswith('.'):
         ext = f'.{ext}'
     
+    if exclude_string=='':
+        exclude_string = None
+        
     # Find all matching files
     matching_files = [
         f for f in search_path.glob(f'*{ext}')
@@ -2432,7 +2436,8 @@ def plot_function_allSets(y_list, x_array = None,
                            xlim = None, ylim = None, 
                            color = 'black', 
                            outputFileName = None,
-                           closeFigure = False):
+                           closeFigure = False,
+                           outputCSVFileName = None):
     """
     Plot some function that has been calculated for all datasets, 
     such as the autocorrelation, for the average array from all 
@@ -2442,7 +2447,8 @@ def plot_function_allSets(y_list, x_array = None,
     Inputs:
        y_list : list of numpy arrays
        x_array : x-values, same for all datasets. If None, just use indexes
-       ylabelStr : string for x axis label
+       xlabelStr : string for x axis label
+       ylabelStr : string for y axis label
        titleStr : string for title
        average_in_dataset : if true, average each dataset's arrays for 
                             the individual dataset plots
@@ -2453,6 +2459,11 @@ def plot_function_allSets(y_list, x_array = None,
        outputFileName : if not None, save the figure with this filename 
                        (include extension)
        closeFigure : (bool) if True, close figure after creating it.
+       outputCSVFileName : if not None, save to a CSV file the following (columns):
+                   - plotted "X" positions (x_array)
+                   - plotted mean "Y" positions (prob_dist_all)
+                   - Standard deviation (prob_dist_each_std)
+                   - Standard error of the mean (prob_dist_each_sem)
                        
     Returns:
         x_array, y_mean : x values and average y values
@@ -2517,6 +2528,24 @@ def plot_function_allSets(y_list, x_array = None,
     if closeFigure:
         plt.close(fig)
     
+    # Output points to CSV (optional)
+    if outputCSVFileName is not None:
+        if Nfish==1:
+            header_strings = [xlabelStr.replace(',', '_'), f'{ylabelStr}_mean'] + \
+                              [f'{ylabelStr}_{i}' for i in range(len(y_list))]
+            y_to_write = [y_mean] + y_list
+        else:
+            y_list_labels = [f'{ylabelStr}_mean']
+            y_to_write = [y_mean]
+            for j in range(len(y_list)):
+                for k in range(Nfish):
+                    y_list_labels.append(f'{ylabelStr}_set{j}_fish{k}')
+                    y_to_write.append(y_list[j][:,k])
+            header_strings = [xlabelStr.replace(',', '_')] + y_list_labels
+        simple_write_CSV(x_array, y_to_write, 
+                         filename =  outputCSVFileName, 
+                         header_strings=header_strings)
+        
     return x_array, y_mean
 
 
@@ -2528,7 +2557,8 @@ def plot_waterfall_binned_crosscorr(binned_crosscorr_all, bin_centers, t_lag,
                                      outputFileName=None,
                                      vmin=None, vmax=None, 
                                      plot_heatmap = False, 
-                                     heatmap_ylabelStr='Distance (mm)'):
+                                     heatmap_ylabelStr='Distance (mm)',
+                                     closeFigure = False):
     """
     Create a waterfall plot of binned cross-correlations averaged 
     across all datasets.
@@ -2550,6 +2580,7 @@ def plot_waterfall_binned_crosscorr(binned_crosscorr_all, bin_centers, t_lag,
     vmin, vmax : color scale limits (if None, use data range)
     plot_heatmap : if True, also make a heatmap plot.
     heatmap_ylabelStr : y-axis label for heatmap
+    closeFigure : (bool) if True, close figure after creating it.
     """
     
     # Calculate average across all datasets
@@ -2658,6 +2689,9 @@ def plot_waterfall_binned_crosscorr(binned_crosscorr_all, bin_centers, t_lag,
     
     plt.show()
 
+    if closeFigure:
+        plt.close(fig)
+
     # Print summary statistics
     valid_bins = ~np.all(np.isnan(avg_crosscorr), axis=1)  
     print('\nSummary:')
@@ -2710,6 +2744,9 @@ def plot_waterfall_binned_crosscorr(binned_crosscorr_all, bin_centers, t_lag,
             plt.savefig('heatmap_' + outputFileName, bbox_inches='tight')
         
         plt.show()
+
+        if closeFigure:
+            plt.close(fig)
     
 
 
@@ -3043,6 +3080,137 @@ def plot_2D_heatmap(Z, X, Y, Z_unc=None,
     
     return fig, ax
     
+
+def plot_2Darray_linePlots(Z, X, Y, Z_unc=None,
+                           titleStr=None, xlabelStr='X', ylabelStr='Y', clabelStr='Z',
+                           colorRange=None, cmap='RdYlBu',
+                           unit_scaling_for_plot=[1.0, 1.0, 1.0],
+                           mask_by_sem_limit=None,
+                           outputFileName=None, closeFigure=False):
+    """
+    Create a series of line plots of Z vs X for each unique Y value.
+    
+    Parameters
+    ----------
+    Z : 2D numpy array
+        Values to plot (shape: len(X_unique) x len(Y_unique))
+    X, Y : 2D numpy arrays
+        Meshgrid coordinates
+    Z_unc : 2D numpy array or None
+        Uncertainty values for errorbars
+    titleStr, xlabelStr, ylabelStr, clabelStr : str
+        Labels for plot
+    colorRange : tuple or None
+        (vmin, vmax) for color scale (used to normalize colormap)
+    cmap : str
+        Colormap name
+    unit_scaling_for_plot : list of 3 floats
+        Scaling factors for [X, Y, Z]
+    mask_by_sem_limit : float or None
+        If not None, mask points where Z_unc > this value
+    outputFileName : str or None
+        If not None, save figure to this file
+    closeFigure : bool
+        If True, close figure after creating
+    
+    Returns
+    -------
+    fig, ax : matplotlib figure and axes objects
+    """
+    
+    # Apply unit scaling
+    X_plot = X * unit_scaling_for_plot[0]
+    Y_plot = Y * unit_scaling_for_plot[1]
+    Z_plot = Z * unit_scaling_for_plot[2]
+    if mask_by_sem_limit is not None:
+        mask_by_sem_limit = mask_by_sem_limit * unit_scaling_for_plot[2]
+    
+    if Z_unc is not None:
+        Z_unc_plot = Z_unc * unit_scaling_for_plot[2]
+    else:
+        Z_unc_plot = None
+    
+    # Get unique Y values (assuming meshgrid structure)
+    # Y varies along axis=1 (columns)
+    Y_unique = Y_plot[0, :]  # First row contains all unique Y values
+    X_unique = X_plot[:, 0]  # First column contains all unique X values
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(10, 7))
+    
+    # Set up colormap
+    cmap_obj = cm.get_cmap(cmap)
+    
+    # Determine color normalization
+    if colorRange is not None:
+        vmin = colorRange[0] * unit_scaling_for_plot[2]
+        vmax = colorRange[1] * unit_scaling_for_plot[2]
+    else:
+        vmin = np.nanmin(Y_plot)
+        vmax = np.nanmax(Y_plot)
+    
+    # Normalize Y values for coloring
+    if vmax > vmin:
+        Y_norm = (Y_unique - vmin) / (vmax - vmin)
+    else:
+        Y_norm = np.ones_like(Y_unique) * 0.5
+    
+    # Plot each Y slice
+    for j, (y_val, y_norm) in enumerate(zip(Y_unique, Y_norm)):
+        # Extract Z values for this Y
+        Z_slice = Z_plot[:, j]
+        
+        # Apply masking if requested
+        if mask_by_sem_limit is not None and Z_unc_plot is not None:
+            mask = Z_unc_plot[:, j] > mask_by_sem_limit
+            Z_slice = np.ma.masked_array(Z_slice, mask=mask)
+            if Z_unc_plot is not None:
+                Z_unc_slice = np.ma.masked_array(Z_unc_plot[:, j], mask=mask)
+        else:
+            if Z_unc_plot is not None:
+                Z_unc_slice = Z_unc_plot[:, j]
+        
+        # Get color from colormap
+        color = cmap_obj(y_norm)
+        
+        # Plot with errorbars if uncertainty is provided
+        if Z_unc_plot is not None:
+            ax.errorbar(X_unique, Z_slice, yerr=Z_unc_slice,
+                       label=f'{y_val:.2f}',
+                       color=color, marker='o', markersize=8,
+                       linestyle='-', linewidth=2.5, capsize=3, alpha=0.8)
+        else:
+            ax.plot(X_unique, Z_slice,
+                   label=f'{y_val:.2f}',
+                   color=color, marker='o', markersize=8,
+                   linestyle='-', linewidth=2.5, alpha=0.8)
+    
+    # Labels and formatting
+    ax.set_xlabel(xlabelStr, fontsize=16)
+    ax.set_ylabel(clabelStr, fontsize=16)
+    ax.set_title(titleStr, fontsize=18)
+    
+    # Add legend (may want to adjust location or use fewer entries for many Y values)
+    n_lines = len(Y_unique)
+    if n_lines <= 15:
+        ax.legend(loc='best', fontsize=10, framealpha=0.9, title = f'{ylabelStr}')
+    else:
+        # For many lines, show legend outside plot or with fewer entries
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), 
+                 fontsize=9, framealpha=0.9, title = f'{ylabelStr}')
+    
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    
+    if outputFileName is not None:
+        plt.savefig(outputFileName, bbox_inches='tight', dpi=300)
+    
+    if closeFigure:
+        plt.close(fig)
+    else:
+        plt.show()
+    
+    return fig, ax
     
 def make_2D_histogram(datasets, 
                       keyNames = ('speed_array_mm_s', 'head_head_distance_mm'), 
@@ -3058,11 +3226,14 @@ def make_2D_histogram(datasets,
                       colorRange = None, 
                       unit_scaling_for_plot = [1.0, 1.0, 1.0],
                       mask_by_sem_limit = None,
-                      cmap = 'RdYlBu', outputFileName = None,
+                      cmap = 'RdYlBu', 
+                      plot_type = 'heatmap', 
+                      outputFileName = None,
                       closeFigure = False):
     """
-    Create a 2D histogram plot of the values from two keys in the 
-    given datasets. Combine all the values across datasets.
+    Create a 2D histogram plot of the values from two keys in the given 
+    datasets. Combine all the values across datasets. Or can plot the mean 
+    value of a quantitative property (third key) binned by these two keys.
 
     If keyNameC is None: plots a normalized 2D histogram (occurrence count)
     If keyNameC is provided: plots mean value of keyC in each (keyA, keyB) bin
@@ -3119,11 +3290,13 @@ def make_2D_histogram(datasets,
                    for plots only, multiply values by unit_scaling_for_plot,  
                    for example to convert radians to degrees.
                    if keyNameC is None, ignore 3rd item
-    cmap : string, colormap. Default 'RdYlBu' (rather than usual Python viridis)
     mask_by_sem_limit : float or None. 
                    If not None, and if keyNameC is not None, only plot 
                    the 2D mesh at points whose s.e.m. of the third variable
                    is less than this value, to ignore noisy points. 
+    cmap : string, colormap. Default 'RdYlBu' (rather than usual Python viridis)
+    plot_type : str, 'heatmap' or 'line_plots'
+                   Determines which plotting function to use.
     outputFileName : if not None, save the figure with this filename 
                      (include extension)    
     closeFigure : (bool) if True, close figure after creating it.
@@ -3293,7 +3466,20 @@ def make_2D_histogram(datasets,
         else:
             titleStr = f'Mean {keyNameC} vs {keyNames[0]} and {keyNames[1]}'
 
-    plot_2D_heatmap(hist, X, Y, Z_unc=hist_sem,
+    # Choose plotting function based on plot_type
+    # For line_plots, ignore the colorRange 
+    if plot_type.lower() == 'line_plots':
+        plot_2Darray_linePlots(hist, X, Y, Z_unc=hist_sem,
+                              titleStr=titleStr, 
+                              xlabelStr=xlabelStr, ylabelStr=ylabelStr, 
+                              clabelStr=clabelStr,
+                              colorRange=None, cmap=cmap,
+                              unit_scaling_for_plot=unit_scaling_for_plot,
+                              mask_by_sem_limit=mask_by_sem_limit,
+                              outputFileName=outputFileName, 
+                              closeFigure=closeFigure)        
+    else:  # default to heatmap
+        plot_2D_heatmap(hist, X, Y, Z_unc=hist_sem,
                        titleStr=titleStr, 
                        xlabelStr=xlabelStr, ylabelStr=ylabelStr, clabelStr='Z',
                        colorRange=colorRange, cmap=cmap,
@@ -3395,14 +3581,19 @@ def slice_2D_histogram(z_mean, X, Y, z_unc, slice_axis='x', other_range=None,
         z_mean_masked = z_mean[:, mask]
         weights_masked = weights[:, mask]
         
-        # Calculate weighted mean along y-axis (axis=1)
-        sum_weights = np.nansum(weights_masked, axis=1)
-        weighted_mean = np.nansum(weights_masked * z_mean_masked, axis=1) / sum_weights
-        
-        # Calculate weighted standard deviation
-        # Formula: sqrt(sum(w_i * (x_i - mu)^2) / sum(w_i))
-        weighted_variance = np.nansum(weights_masked * (z_mean_masked - weighted_mean[:, np.newaxis])**2, axis=1) / sum_weights
-        weighted_std = np.sqrt(weighted_variance)
+        if z_mean_masked.shape[1] == 1:
+            # Only one "bin" along other axis
+            weighted_mean = z_mean_masked.flatten()
+            weighted_std = z_unc[:, mask].flatten()
+        else:
+            # Calculate weighted mean along y-axis (axis=1)
+            sum_weights = np.nansum(weights_masked, axis=1)
+            weighted_mean = np.nansum(weights_masked * z_mean_masked, axis=1) / sum_weights
+            
+            # Calculate weighted standard deviation
+            # Formula: sqrt(sum(w_i * (x_i - mu)^2) / sum(w_i))
+            weighted_variance = np.nansum(weights_masked * (z_mean_masked - weighted_mean[:, np.newaxis])**2, axis=1) / sum_weights
+            weighted_std = np.sqrt(weighted_variance)
         
         # For labels
         if xlabelStr is None:
@@ -3440,14 +3631,19 @@ def slice_2D_histogram(z_mean, X, Y, z_unc, slice_axis='x', other_range=None,
         # Apply mask to data
         z_mean_masked = z_mean[mask, :]
         weights_masked = weights[mask, :]
-        
-        # Calculate weighted mean along x-axis (axis=0)
-        sum_weights = np.sum(weights_masked, axis=0)
-        weighted_mean = np.sum(weights_masked * z_mean_masked, axis=0) / sum_weights
-        
-        # Calculate weighted standard deviation
-        weighted_variance = np.sum(weights_masked * (z_mean_masked - weighted_mean[np.newaxis, :])**2, axis=0) / sum_weights
-        weighted_std = np.sqrt(weighted_variance)
+
+        if z_mean_masked.shape[0] == 1:
+            # Only one "bin" along other axis
+            weighted_mean = z_mean_masked.flatten()
+            weighted_std = z_unc[mask, :].flatten()
+        else:
+            # Calculate weighted mean along x-axis (axis=0)
+            sum_weights = np.sum(weights_masked, axis=0)
+            weighted_mean = np.sum(weights_masked * z_mean_masked, axis=0) / sum_weights
+            
+            # Calculate weighted standard deviation
+            weighted_variance = np.sum(weights_masked * (z_mean_masked - weighted_mean[np.newaxis, :])**2, axis=0) / sum_weights
+            weighted_std = np.sqrt(weighted_variance)
         
         # For labels
         if xlabelStr is None:
@@ -3509,7 +3705,8 @@ def slice_2D_histogram(z_mean, X, Y, z_unc, slice_axis='x', other_range=None,
 def revise_datasets(keys_to_modify=["relative_orientation"],
                    pickleFileName1=None, pickleFileName2=None):
     """
-    Load datasets from pickle files, recalculate specified angle values,
+    Load datasets from pickle files, recalculate specified angle values
+    using recalculate_angles(), update the “datasets” variable,
     and save the revised datasets back to the same pickle files.
     
     This function is useful for updating old pickle files after modifications
@@ -3607,6 +3804,7 @@ def revise_datasets(keys_to_modify=["relative_orientation"],
         print("\n\nWe need to use a dialog box to get the original file path.")
         print("Select the ORIGINAL datasets pickle file (the one you just loaded).")
         print("This will be used as the default save location.")
+        print("Note that the dialog box may be hidden behind other windows.")
         
         root = tk.Tk()
         root.withdraw()
@@ -3674,3 +3872,27 @@ def revise_datasets(keys_to_modify=["relative_orientation"],
     print("="*70 + "\n")
     
     return None
+
+
+def get_plot_and_CSV_filenames(s, outputFileNameBase, outputFileNameExt, 
+                               writeCSVs):
+    """
+    Simple function to make filenames for output plot and CSV file
+    
+    Returns
+        outputFileName = outputFileNameBase + s + '.' + outputFileNameExt
+             None if either outputFileNameBase or outputFileNameExt is None
+        outputCSVFileName = outputFileNameBase + s + '.csv'
+             None if writeCSVs is False
+    """
+    if (outputFileNameBase is not None) and (outputFileNameExt is not None):
+        outputFileName = outputFileNameBase + s + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    # CSV file
+    
+    if (writeCSVs is True) and (outputFileNameBase is not None):
+        outputCSVFileName = outputFileNameBase + s + '.csv'
+    else:
+        outputCSVFileName = None
+    return outputFileName, outputCSVFileName

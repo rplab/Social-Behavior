@@ -27,8 +27,9 @@ from toolkit import wrap_to_pi, combine_all_values_constrained, \
     remove_frames, combine_events, calculate_value_corr_all_binned, \
     dilate_frames, get_values_subset, repair_heading_angles
 from IO_toolkit import plot_probability_distr, plot_2D_heatmap, \
-    make_2D_histogram, slice_2D_histogram, plot_function_allSets, \
-        plot_waterfall_binned_crosscorr 
+    plot_2Darray_linePlots, make_2D_histogram, slice_2D_histogram, \
+    plot_function_allSets, plot_waterfall_binned_crosscorr, \
+    get_plot_and_CSV_filenames
 from behavior_identification_single import average_bout_trajectory_allSets, \
     calc_bend_angle
 from scipy.stats import skew
@@ -1558,6 +1559,7 @@ def calculate_IBI_binned_by_2D_keys(datasets,
                                      titleStr=None, xlabelStr=None, ylabelStr=None,
                                      cmap='RdYlBu_r',
                                      colorRange=None,
+                                     plot_type = 'heatmap',
                                      outputFileName=None,
                                      closeFigure=False):
     """
@@ -1600,6 +1602,8 @@ def calculate_IBI_binned_by_2D_keys(datasets,
     xlabelStr, ylabelStr : x and y axis labels. If None, use key names
     cmap : string, colormap for heatmap (default 'RdYlBu_r')
     colorRange : tuple (vmin, vmax) for color scale, None for auto
+    plot_type : str, 'heatmap' or 'line_plots'
+                   Determines which plotting function to use.
     outputFileName : string, for saving the plot (default None -- don't save)
     closeFigure : bool, if True, close the figure after creating it
     
@@ -1784,14 +1788,28 @@ def calculate_IBI_binned_by_2D_keys(datasets,
         if ylabelStr is None:
             ylabelStr = key2
 
-        plot_2D_heatmap(binned_IBI[:, :, 0], X, Y, Z_unc=None,
+        # Choose plotting function based on plot_type
+        # For line_plots, ignore the colorRange, but use sem as error bars
+        if plot_type.lower() == 'linePlots':
+            plot_2Darray_linePlots(binned_IBI[:, :, 0], X, Y, 
+                                   Z_unc=binned_IBI[:, :, 2],
                            titleStr=titleStr, 
                            xlabelStr=xlabelStr, ylabelStr=ylabelStr, 
                            clabelStr='Mean IBI (s)',
-                           colorRange=colorRange, cmap=cmap,
+                           colorRange=None, cmap=cmap,
                            unit_scaling_for_plot=[1.0, 1.0, 1.0],
                            mask_by_sem_limit=None,
                            outputFileName=outputFileName, closeFigure=closeFigure)
+        else: # default to heatmap
+            plot_2D_heatmap(binned_IBI[:, :, 0], X, Y, Z_unc=None,
+                               titleStr=titleStr, 
+                               xlabelStr=xlabelStr, ylabelStr=ylabelStr, 
+                               clabelStr='Mean IBI (s)',
+                               colorRange=colorRange, cmap=cmap,
+                               unit_scaling_for_plot=[1.0, 1.0, 1.0],
+                               mask_by_sem_limit=None,
+                               outputFileName=outputFileName, 
+                               closeFigure=closeFigure)
     
     return binned_IBI, X, Y, binned_IBI_each_dataset, binned_IBI_each_fish
 
@@ -1854,21 +1872,8 @@ def calculate_interfish_bout_lags(datasets):
     return interfish_bout_lags_s
     
 
-def get_plot_and_CSV_filenames(s, outputFileNameBase, outputFileNameExt, 
-                               writeCSVs):
-    # simple function to make filenames for plot and CSV file; None if not used
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + s + '.' + outputFileNameExt
-    else:
-        outputFileName = None
-    if (writeCSVs is True) and (outputFileNameBase is not None):
-        outputCSVFileName = outputFileNameBase + s + '.csv'
-    else:
-        outputCSVFileName = None
-    return outputFileName, outputCSVFileName
-
-
 def make_pair_fish_plots(datasets, exptName = '', color = 'black',
+                         plot_type_2D = 'heatmap',
                          outputFileNameBase = 'pair_fish', 
                          outputFileNameExt = 'png',
                          closeFigures = False,
@@ -1885,6 +1890,9 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
         exptName : (string) Experiment name, to append to titles.
         plot_each_dataset : (bool) if True, plot the prob. distr. for each array               
         color: plot color (uses alpha for indiv. dataset colors)
+        plot_type_2D : str, 'heatmap' or 'line_plots'
+                    Which plotting function make_2D_histogram() will use
+                    ('heatmap' or 'line_plots')
         outputFileNameBase : base file name for figure output; if None,
                              won't save a figure file
         outputFileNameExt : extension for figure output (e.g. 'eps' or 'png')
@@ -1912,8 +1920,6 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
     
 
 
-    
-    
     # head-head distance histogram
     head_head_mm_all = combine_all_values_constrained(datasets, 
                                                      keyName='head_head_distance_mm', 
@@ -2019,27 +2025,35 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                            closeFigure = closeFigures,
                            outputCSVFileName = outputCSVFileName)
 
-    """
-    # 2D histogram of speed and head-head distance
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_speed_distance_2D' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
-    make_2D_histogram(datasets, keyNames = ('speed_array_mm_s', 
-                                            'head_head_distance_mm'), 
-                          keyIdx = (None, None), 
-                          dilate_minus1=True, bin_ranges=((0.0, 100.0), (0.0, 50.0)), 
-                          Nbins=(20,20),
-                          titleStr = 'speed and h-h distance', 
-                          colorRange = (0, 0.05), cmap = 'viridis',
-                          outputFileName = outputFileName,
-                          closeFigure = closeFigures)
+    # Sum of absolute value of relative orientation angles histogram
+    relative_orientation_abs_sum_all = combine_all_values_constrained(datasets, 
+                                                 keyName='relative_orientation_abs_sum', 
+                                                 dilate_minus1 = False)
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_rel_orientation_abs_sum', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs)
+    bin_width = np.pi/60
+    plot_probability_distr(relative_orientation_abs_sum_all, bin_width = bin_width,
+                           bin_range=[None, None], 
+                           color = color,
+                           yScaleType = 'linear',
+                           plot_each_dataset = False,
+                           plot_sem_band = True,
+                           polarPlot = False,
+                           titleStr = f'{exptName}: Sum of Relative Orientation Angles',
+                           xlabelStr = 'Sum of Rel. Orient. Angles (rad)',
+                           ylim = (0, 0.6), xlim = (0.0, 6.3),
+                           outputFileName = outputFileName,
+                           closeFigure = closeFigures,
+                           outputCSVFileName = outputCSVFileName)
 
+    """
     # 2D histogram of heading alignment and head-head distance
     if outputFileNameBase is not None:
         outputFileName = outputFileNameBase + '_heading_distance_2D' + '.' + outputFileNameExt
     else:
         outputFileName = None
+    # use heatmap as plot type; for 2D histogram slicing along Y is not helpful
     make_2D_histogram(datasets, keyNames = ('head_head_distance_mm', 
                                             'relative_heading_angle'), 
                           keyIdx = (None, None), 
@@ -2049,6 +2063,7 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                           colorRange = (0.0, 0.007),
                           titleStr = f'{exptName}: heading angle and hh distance', 
                           cmap = 'viridis',
+                          plot_type = 'heatmap',
                           outputFileName = outputFileName,
                           closeFigure = closeFigures)
     """
@@ -2058,6 +2073,7 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
         outputFileName = outputFileNameBase + '_orientation_distance_2D' + '.' + outputFileNameExt
     else:
         outputFileName = None
+    # use heatmap as plot type; for 2D histogram slicing along Y is not helpful
     make_2D_histogram(datasets, keyNames = ('head_head_distance_mm', 
                                             'relative_orientation'), 
                           keyIdx = (None, None), 
@@ -2068,6 +2084,7 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                           colorRange = (0.0, 0.0075),
                           clabelStr = 'Probability',
                           titleStr = f'{exptName}: abs(Rel. orient.) and hh distance', 
+                          plot_type = 'heatmap',
                           outputFileName = outputFileName,
                           closeFigure = closeFigures)
 
@@ -2162,6 +2179,7 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                                      titleStr = f'{exptName}: IBI vs. head-head distance, radial pos.', 
                                      cmap='viridis_r',
                                      colorRange = (0.0, 0.6),
+                                     plot_type = plot_type_2D,
                                      outputFileName=outputFileName,
                                      closeFigure=closeFigures)
         
@@ -2170,8 +2188,8 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
         outputFileName = outputFileNameBase + '_IBI_v_dist_r_interior' + '.' + outputFileNameExt
     else:
         outputFileName = None
-    r_range = (0.0, 22.0)
-    titleStr = f'{exptName}: Average IBI for r < {r_range[1]:.1f} mm'
+    r_range = (15.0, 22.0)
+    titleStr = f'{exptName}: Average IBI for {r_range[0]:.1f} r < {r_range[1]:.1f} mm'
     xlabelStr = 'Closest Distance (mm)'
     ylabelStr = 'Radial position (mm)'
     zlabelStr = 'Average IBI (s)'
@@ -2182,7 +2200,7 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                        slice_axis = 'x', other_range = r_range, 
                        titleStr = titleStr, xlabelStr = xlabelStr, 
                        zlabelStr = zlabelStr,
-                       ylabelStr = ylabelStr, zlim = zlim, xlim = xlim, 
+                       ylabelStr = ylabelStr, zlim = zlim, xlim = xlim,
                        color = color, outputFileName=outputFileName,
                        closeFigure=closeFigures)
 
@@ -2228,18 +2246,19 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
         keyIdx = (fishIdx, None), 
         use_abs_value = use_abs_value,
         keyNameC = 'bend_angle', keyIdxC = fishIdx,
-        colorRange = (-0.2, 0.2),
+        colorRange = (-12*np.pi/180.0, 12*np.pi/180.0),
         constraintKey = 'radial_position_mm', constraintRange = (0.0, maxR), 
         constraintIdx = fishIdx,
         dilate_minus1= False, 
-        bin_ranges = ((-np.pi, np.pi), (0.0, 50.0)), Nbins = (20,25), 
+        bin_ranges = ((-np.pi, np.pi), (0.0, 30.0)), Nbins = (19,15), 
         titleStr = titleStr,
         clabelStr= 'Mean Bending Angle (degrees)',
         xlabelStr = 'Relative Orientation (degrees)',
         ylabelStr = 'Closest Distance (mm)', 
         mask_by_sem_limit = mask_by_sem_limit_degrees*np.pi/180.0,
         unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
-        cmap = 'RdYlBu', 
+        cmap = 'RdYlBu_r', 
+        plot_type = plot_type_2D,
         outputFileName = outputFileName,
         closeFigure = closeFigures)
     saved_pair_outputs.append(bend_2Dhist_mean)
@@ -2248,12 +2267,66 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
     saved_pair_outputs.append(Y)
 
     # Slice along bend angle binned by distance and orientation, 
-    # orientation axis, constrain distance: 10 mm < distance < 25 mm
+    # orientation axis, constrain distance: distance < 3 mm
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_bendAngle_v_orientation_dLT2p5mm' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    d_range = (0.0, 2.5)
+    xlabelStr = 'Relative Orientation (rad)'
+    titleStr = f'{exptName}: Bend Angle for d < {d_range[1]:.2f} mm'
+    ylabelStr = 'Closest Distance (mm)'
+    zlabelStr = 'Average Bend Angle (rad)'
+    xlim = (-np.pi, np.pi)
+    zlim = (-15*np.pi/180, 15*np.pi/180)
+    color = color
+    slice_2D_histogram(bend_2Dhist_mean, X, Y, bend_2Dhist_sem, 
+                       slice_axis = 'x', other_range = d_range, 
+                       titleStr = titleStr, xlabelStr = xlabelStr, 
+                       zlabelStr = zlabelStr,
+                       ylabelStr = ylabelStr, zlim = zlim, xlim = xlim, 
+                       plot_z_zero_line = True,
+                       plot_vert_zero_line = True,
+                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                       color = color, outputFileName=outputFileName,
+                       closeFigure=closeFigures)
+
+    # Symmetrize the above bending angle / relative orientation graph,
+    # taking theta[theta > 0] - theta[theta < 0]
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_bendAngle_v_orientation_dLT2p5mm_asymm' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    midXind = int((X.shape[0] - 1)/2.0)
+    if np.abs(X[midXind, 0]) > 1e-6:
+        print('"X" array is not centered at zero. Will not symmetrize.')
+    else:
+        bend_2Dhist_mean_symm = 0.5*(bend_2Dhist_mean[midXind:,:] - 
+                                     np.flipud(bend_2Dhist_mean[:(midXind+1),:]))
+        bend_2Dhist_sem_symm = np.sqrt(bend_2Dhist_sem[midXind:,:]**2 +
+                                       np.flipud(bend_2Dhist_sem[:(midXind+1),:])**2)/np.sqrt(2)
+        X_symm = X[midXind:,:]
+        Y_symm = Y[midXind:,:]
+        slice_2D_histogram(bend_2Dhist_mean_symm, X_symm, Y_symm,
+                           bend_2Dhist_sem_symm, 
+                           slice_axis = 'x', other_range = d_range, 
+                           titleStr = titleStr, xlabelStr = f'|{xlabelStr}|', 
+                           zlabelStr = zlabelStr + ' toward Other',
+                           ylabelStr = ylabelStr, zlim = zlim, 
+                           xlim = (0.0, xlim[1]), 
+                           plot_z_zero_line = True,
+                           plot_vert_zero_line = False,
+                           unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                           color = color, outputFileName=outputFileName,
+                           closeFigure=closeFigures)
+
+    # Slice along bend angle binned by distance and orientation, 
+    # orientation axis, constrain distance: 3 mm < distance < 13 mm
     if outputFileNameBase is not None:
         outputFileName = outputFileNameBase + '_bendAngle_v_orientation_dSlice' + '.' + outputFileNameExt
     else:
         outputFileName = None
-    d_range = (5.0, 15.0)
+    d_range = (3.0, 13.0)
     xlabelStr = 'Relative Orientation (rad)'
     titleStr = f'{exptName}: Bend Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
     ylabelStr = 'Closest Distance (mm)'
@@ -2268,10 +2341,40 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                        ylabelStr = ylabelStr, zlim = zlim, xlim = xlim, 
                        plot_z_zero_line = True,
                        plot_vert_zero_line = True,
+                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
                        color = color, outputFileName=outputFileName,
                        closeFigure=closeFigures)
 
-    #Average above-threshold speed versus distance and relative orientation
+    # Symmetrize the above bending angle / relative orientation graph,
+    # taking theta[theta > 0] - theta[theta < 0]
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_bendAngle_v_orientation_dSlice_asymm' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    midXind = int((X.shape[0] - 1)/2.0)
+    if np.abs(X[midXind, 0]) > 1e-6:
+        print('"X" array is not centered at zero. Will not symmetrize.')
+    else:
+        bend_2Dhist_mean_symm = 0.5*(bend_2Dhist_mean[midXind:,:] - 
+                                     np.flipud(bend_2Dhist_mean[:(midXind+1),:]))
+        bend_2Dhist_sem_symm = np.sqrt(bend_2Dhist_sem[midXind:,:]**2 +
+                                       np.flipud(bend_2Dhist_sem[:(midXind+1),:])**2)/np.sqrt(2)
+        X_symm = X[midXind:,:]
+        Y_symm = Y[midXind:,:]
+        slice_2D_histogram(bend_2Dhist_mean_symm, X_symm, Y_symm,
+                           bend_2Dhist_sem_symm, 
+                           slice_axis = 'x', other_range = d_range, 
+                           titleStr = titleStr, xlabelStr = f'|{xlabelStr}|', 
+                           zlabelStr = zlabelStr + ' toward Other',
+                           ylabelStr = ylabelStr, zlim = zlim, 
+                           xlim = (0.0, xlim[1]), 
+                           plot_z_zero_line = True,
+                           plot_vert_zero_line = False,
+                           unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                           color = color, outputFileName=outputFileName,
+                           closeFigure=closeFigures)
+    
+    # Average above-threshold speed versus distance and relative orientation
     # Hard-code speed threshold 
     if outputFileNameBase is not None:
         outputFileName = outputFileNameBase + '_movingSpeed_v_HHdistance_orientation_2D' + '.' + outputFileNameExt
@@ -2305,6 +2408,7 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
         clabelStr= 'Mean above-threshold speed (mm/s)',
         xlabelStr = xlabelStr, ylabelStr = ylabelStr, 
         colorRange = colorRange, 
+        plot_type = plot_type_2D,
         outputFileName = outputFileName, 
         closeFigure = closeFigures)
 
@@ -2335,10 +2439,9 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
 
 
     # Speed cross-correlation function
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_speedCrosscorr' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_speedCrosscorr', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs)
     speed_cc_all, t_lag = \
         calculate_value_corr_all(datasets, keyName = 'speed_array_mm_s',
                                  corr_type='cross', dilate_minus1 = True, 
@@ -2351,7 +2454,8 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                           plot_each_dataset = True, 
                           average_in_dataset = True,
                           outputFileName = outputFileName,
-                          closeFigure = closeFigures)
+                          closeFigure = closeFigures,
+                          outputCSVFileName = outputCSVFileName)
     
     # Waterfall plot of speed cross-correlations binned by distance
     if outputFileNameBase is not None:
@@ -2368,7 +2472,8 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                                     bin_counts_all=bin_counts_all, 
                                     xlabelStr='Time lag (s)',
                                     titleStr=f'{exptName}: Closest Distance-Binned Cross-correlation',
-                                    outputFileName=outputFileName)
+                                    outputFileName=outputFileName,
+                                    closeFigure = closeFigures)
 
     return saved_pair_outputs
 

@@ -33,7 +33,8 @@ import matplotlib.pyplot as plt
 from toolkit import make_frames_dictionary, dilate_frames, wrap_to_pi,\
     combine_all_values_constrained, get_values_subset, \
     calculate_value_corr_all, fit_gaussian_mixture
-from IO_toolkit import plot_probability_distr, plot_function_allSets
+from IO_toolkit import plot_probability_distr, plot_function_allSets, \
+    get_plot_and_CSV_filenames
 
 def get_coord_characterizations(all_position_data, datasets, 
                                 CSVcolumns, expt_config, params):
@@ -1231,7 +1232,8 @@ def average_bout_trajectory_allSets(datasets, t_range_s=(-0.5, 2.0),
 def make_single_fish_plots(datasets, exptName = '', color = 'black',
                            outputFileNameBase = 'single_fish',
                            outputFileNameExt = 'png',
-                           closeFigures = False):
+                           closeFigures = False,
+                           writeCSVs = False):
     """
     makes several useful "single fish" plots -- i.e. 
     plots of characteristics of individual fish, which may be in multi-fish 
@@ -1248,6 +1250,8 @@ def make_single_fish_plots(datasets, exptName = '', color = 'black',
                              won't save a figure file
         outputFileNameExt : extension for figure output (e.g. 'eps' or 'png')
         closeFigures : (bool) if True, close a figure after creating it.
+        writeCSVs : (bool) Used by various functions; if true, output plotted 
+                            points to a CSV file. See code for filenames
 
     Outputs:
 
@@ -1257,13 +1261,12 @@ def make_single_fish_plots(datasets, exptName = '', color = 'black',
     speeds_mm_s_all = combine_all_values_constrained(datasets, 
                                                      keyName='speed_array_mm_s', 
                                                      dilate_minus1 = True)
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_speed' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_speed', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs)
     plot_probability_distr(speeds_mm_s_all, bin_width = 1.0, 
                            bin_range = [0, None], 
-                           ylim = (0.001, 0.5), xlim = (0.0, 70.0),
+                           ylim = (0.001, 0.5), xlim = (0.0, 60.0),
                            color = color,
                            yScaleType = 'log',
                            plot_each_dataset = False,
@@ -1271,16 +1274,16 @@ def make_single_fish_plots(datasets, exptName = '', color = 'black',
                            xlabelStr = 'Speed (mm/s)', 
                            titleStr = f'{exptName}: Probability Distr.: Speed',
                            outputFileName = outputFileName,
-                           closeFigure=closeFigures)
+                           closeFigure=closeFigures,
+                           outputCSVFileName=outputCSVFileName)
 
     # Angular_speed histogram
     angular_speeds_rad_s_all = combine_all_values_constrained(datasets, 
                                                      keyName='angular_speed_array_rad_s', 
                                                      dilate_minus1 = True)
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_angularSpeed' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_angularSpeed', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs)
     plot_probability_distr(angular_speeds_rad_s_all, bin_width = 1.0, 
                            bin_range = [0, None], 
                            color = color, 
@@ -1291,17 +1294,17 @@ def make_single_fish_plots(datasets, exptName = '', color = 'black',
                            xlabelStr = 'Angular Speed (rad/s)', 
                            titleStr = f'{exptName}: Probability Distr.: Angular Speed',
                            outputFileName = outputFileName,
-                           closeFigure=closeFigures)
+                           closeFigure=closeFigures,
+                           outputCSVFileName=outputCSVFileName)
 
 
     # Radial position histogram
     radial_position_mm_all = combine_all_values_constrained(datasets, 
                                                      keyName='radial_position_mm', 
                                                      dilate_minus1 = False)
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_radialpos' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_radialpos', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs)
     plot_probability_distr(radial_position_mm_all, bin_width = 0.5, 
                            bin_range = [0, None],
                            color = color,
@@ -1313,16 +1316,16 @@ def make_single_fish_plots(datasets, exptName = '', color = 'black',
                            xlabelStr = 'Radial position (mm)', 
                            titleStr = f'{exptName}: Probability Distr.: r',
                            outputFileName = outputFileName,
-                           closeFigure=closeFigures)
+                           closeFigure=closeFigures,
+                           outputCSVFileName=outputCSVFileName)
     
     # Heading angle histogram
     heading_angle_all = combine_all_values_constrained(datasets, 
                                                  keyName='heading_angle', 
                                                  dilate_minus1 = False)
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_heading_angle' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_heading_angle', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs)
     bin_width = np.pi/30
     plot_probability_distr(heading_angle_all, bin_width = bin_width,
                            bin_range=[None, None], yScaleType = 'linear',
@@ -1334,16 +1337,16 @@ def make_single_fish_plots(datasets, exptName = '', color = 'black',
                            ylim = (0, 0.3),
                            unit_scaling_for_plot = 1.0,
                            outputFileName = outputFileName,
-                           closeFigure=closeFigures)
+                           closeFigure=closeFigures,
+                           outputCSVFileName=outputCSVFileName)
     
     # Radial alignment angle
     radial_alignment_all = combine_all_values_constrained(datasets, 
                                                      keyName='radial_alignment_rad', 
                                                      dilate_minus1 = False)
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_radialAlignment_angle' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_radialAlignment_angle', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs)
     bin_width = np.pi/30
     plot_probability_distr(radial_alignment_all, bin_width = bin_width,
                            bin_range=[None, None], yScaleType = 'linear',
@@ -1354,13 +1357,14 @@ def make_single_fish_plots(datasets, exptName = '', color = 'black',
                            titleStr = f'{exptName}: Radial alignment angle (rad)',
                            ylim = (0, 0.6),
                            outputFileName = outputFileName,
-                           closeFigure=closeFigures)
+                           closeFigure=closeFigures,
+                           outputCSVFileName=outputCSVFileName)
 
     # Speed vs. time for bouts
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_boutSpeed' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
+    # Note that this doesn't support CSV output
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_boutSpeed', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs=False)
     average_bout_trajectory_allSets(datasets, keyName = "speed_array_mm_s", 
                                     keyIdx = None, t_range_s=(-1.0, 2.0), 
                                     titleStr = f'{exptName}: Bout Speed', 
@@ -1370,10 +1374,9 @@ def make_single_fish_plots(datasets, exptName = '', color = 'black',
                                     closeFigure=closeFigures)
 
     # speed autocorrelation function
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_speedAutocorr' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_speedAutocorr', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs=False)
     speed_ac_all, t_lag = \
         calculate_value_corr_all(datasets, keyName = 'speed_array_mm_s',
                                  corr_type='auto', dilate_minus1 = True, 
@@ -1385,6 +1388,7 @@ def make_single_fish_plots(datasets, exptName = '', color = 'black',
                           xlim = (-0.1, 2.0),
                           average_in_dataset = True,
                           outputFileName = outputFileName,
-                          closeFigure=closeFigures)
+                          closeFigure=closeFigures,
+                          outputCSVFileName=outputCSVFileName)
 
     

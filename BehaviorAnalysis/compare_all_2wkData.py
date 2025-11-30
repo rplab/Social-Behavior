@@ -29,7 +29,8 @@ Modify the expBaseStrm et., for each dataset of interest.
 
 import os
 import numpy as np
-from IO_toolkit import load_and_assign_from_pickle, make_2D_histogram
+from IO_toolkit import load_and_assign_from_pickle, make_2D_histogram, \
+    combine_images_to_tiff
 from behavior_identification import make_pair_fish_plots
 from behavior_identification_single import make_single_fish_plots
 from toolkit import get_fps 
@@ -192,7 +193,7 @@ all_expts = load_expt_data(pickleFileName1, pickleFileName2, exptName,
 
 #%% Make single fish plots (a lot!)
 
-"""
+
 closeFigures = True
 if closeFigures:
     print('Single fish plots: Closing Figure Windows.')
@@ -203,8 +204,8 @@ for exptName in all_expts.keys():
                        color = all_expts[exptName]['plot_color'], 
                        outputFileNameBase = f'{exptName} single_properties',
                        outputFileNameExt = 'png',
-                       closeFigures = closeFigures)
-"""
+                       closeFigures = closeFigures,
+                       writeCSVs = False)
 
 #%% Make all pair plots (a lot!)
 # Only for Nfish ==2
@@ -221,23 +222,46 @@ for exptName in all_expts.keys():
                              color = all_expts[exptName]['plot_color'], 
                              outputFileNameBase = f'{exptName} pair_properties', 
                              outputFileNameExt = 'png',
-                             closeFigures = closeFigures)
-        """
+                             closeFigures = closeFigures,
+                             writeCSVs = False)
         all_expts[exptName]["bend_2Dhist_mean"] = saved_pair_outputs[0]
         all_expts[exptName]["bend_2Dhist_sem"] = saved_pair_outputs[1]
         all_expts[exptName]["bend_2Dhist_X"] = saved_pair_outputs[2]
         all_expts[exptName]["bend_2Dhist_Y"] = saved_pair_outputs[3]
-        """
     
-"""
-exptName = 'TwoWk_Light'
-make_pair_fish_plots(all_expts[exptName]['datasets'], 
-                     exptName = exptName,
-                     plot_each_dataset = True, 
-                     color = all_expts[exptName]['plot_color'], 
-                     outputFileNameBase = f'{exptName} pair_properties', 
-                     outputFileNameExt = 'png')
-"""
+
+#%% Make combination plots
+
+fileNameStringsToCombine = ['speed', 'angularSpeed', 'radialpos', 'heading_angle',
+                            'radialAlignment_angle', 'boutSpeed',
+                            'speedAutocorr', 'distance_head_head', 
+                            'distance_closest', 'rel_heading_angle',
+                            'rel_orientation', 'rel_orientation_sum', 
+                            'rel_orientation_abs_sum',
+                            'orientation_distance_2D', 'IBI_v_dist_and_radialpos',
+                            'IBI_v_dist_r_interior', 'IBI_v_dist_r_edge',
+                            'bendAngle_distance_orientation_2D',
+                            'bendAngle_v_orientation_dLT2p5mm', 
+                            'bendAngle_v_orientation_dLT2p5mm_asymm',
+                            'bendAngle_v_orientation_dSlice',
+                            'bendAngle_v_orientation_dSlice_asymm',
+                            'movingSpeed_v_HHdistance_orientation_2D',
+                            'movingSpeed_v_HHdistance_lowOrientation',
+                            'speedCrosscorr', 'speedCrosscorrDistBinned']
+                            
+excludeStrings = ['angular', '', 'IBI', '', 
+                  '', '', '', '',  
+                  '', '', 'sum', 'abs', '', 
+                  '', '', '', '', '', 'asymm', '', 'asymm', '',
+                  '', '', 'DistBinned', '']
+
+if len(fileNameStringsToCombine) != len(excludeStrings):
+    raise ValueError('List lengths not equal for combine_images strings.')
+for s, excl_s in zip(fileNameStringsToCombine, excludeStrings):
+    print(f'Combining {s}')
+    combine_images_to_tiff(filenamestring = s, 
+                           path = r'C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\Code_current', 
+                           ext = 'png', exclude_string=excl_s)
 
 
 #%% Differences of bending angle
@@ -264,7 +288,6 @@ if calcDifferences:
     plt.title('Light - Dark')
     plt.savefig('Delta_bending_Light - Dark.png', bbox_inches='tight')
     
-
 
 
 #%% Correlations of pair behaviors
