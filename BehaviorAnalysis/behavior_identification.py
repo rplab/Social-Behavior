@@ -2273,10 +2273,10 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
     else:
         outputFileName = None
     d_range = (0.0, 2.5)
-    xlabelStr = 'Relative Orientation (rad)'
+    xlabelStr = 'Relative Orientation (deg)'
     titleStr = f'{exptName}: Bend Angle for d < {d_range[1]:.2f} mm'
     ylabelStr = 'Closest Distance (mm)'
-    zlabelStr = 'Average Bend Angle (rad)'
+    zlabelStr = 'Mean Bending Angle (degrees)'
     xlim = (-np.pi, np.pi)
     zlim = (-15*np.pi/180, 15*np.pi/180)
     color = color
@@ -2327,12 +2327,12 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
     else:
         outputFileName = None
     d_range = (3.0, 13.0)
-    xlabelStr = 'Relative Orientation (rad)'
+    xlabelStr = 'Relative Orientation (deg)'
     titleStr = f'{exptName}: Bend Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
     ylabelStr = 'Closest Distance (mm)'
-    zlabelStr = 'Average Bend Angle (rad)'
+    zlabelStr = 'Mean Bending Angle (degrees)'
     xlim = (-np.pi, np.pi)
-    zlim = (-0.1, 0.1)
+    zlim = (-15*np.pi/180, 15*np.pi/180)
     color = color
     slice_2D_histogram(bend_2Dhist_mean, X, Y, bend_2Dhist_sem, 
                        slice_axis = 'x', other_range = d_range, 

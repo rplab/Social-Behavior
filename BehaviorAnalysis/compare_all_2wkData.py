@@ -30,7 +30,7 @@ Modify the expBaseStrm et., for each dataset of interest.
 import os
 import numpy as np
 from IO_toolkit import load_and_assign_from_pickle, make_2D_histogram, \
-    combine_images_to_tiff
+    combine_images_to_tiff, plot_2D_heatmap, slice_2D_histogram
 from behavior_identification import make_pair_fish_plots
 from behavior_identification_single import make_single_fish_plots
 from toolkit import get_fps 
@@ -202,7 +202,7 @@ for exptName in all_expts.keys():
     make_single_fish_plots(all_expts[exptName]['datasets'], 
                        exptName = exptName,
                        color = all_expts[exptName]['plot_color'], 
-                       outputFileNameBase = f'{exptName} single_properties',
+                       outputFileNameBase = f'JUNK{exptName} single_properties',
                        outputFileNameExt = 'png',
                        closeFigures = closeFigures,
                        writeCSVs = False)
@@ -220,7 +220,7 @@ for exptName in all_expts.keys():
                              all_expts[exptName]['datasets'], 
                              exptName = exptName,
                              color = all_expts[exptName]['plot_color'], 
-                             outputFileNameBase = f'{exptName} pair_properties', 
+                             outputFileNameBase = f'JUNK{exptName} pair_properties', 
                              outputFileNameExt = 'png',
                              closeFigures = closeFigures,
                              writeCSVs = False)
@@ -230,7 +230,9 @@ for exptName in all_expts.keys():
         all_expts[exptName]["bend_2Dhist_Y"] = saved_pair_outputs[3]
     
 
-#%% Make combination plots
+
+
+#%% Make combination (multipage) images from individual PNGs
 
 fileNameStringsToCombine = ['speed', 'angularSpeed', 'radialpos', 'heading_angle',
                             'radialAlignment_angle', 'boutSpeed',
@@ -262,32 +264,173 @@ for s, excl_s in zip(fileNameStringsToCombine, excludeStrings):
     combine_images_to_tiff(filenamestring = s, 
                            path = r'C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\Code_current', 
                            ext = 'png', exclude_string=excl_s)
-
+    
 
 #%% Differences of bending angle
 
-calcDifferences = False
+calcDifferences = True
 
 if calcDifferences:
-    # Differences
+    
+    mask_by_sem_limit_degrees = 4.0 # show points with s.e.m. < this
+    unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+    cmap = 'RdYlBu_r'
+    plot_type = 'heatmap'
+    colorRange = (-6*np.pi/180.0, 6*np.pi/180.0)
+    clabelStr= 'Mean Bending Angle (degrees)'
+    xlabelStr = 'Relative Orientation (degrees)'
+    ylabelStr = 'Closest Distance (mm)'
+
+    # Mesh is the same for all datasets
     X = all_expts['TwoWk_Light']["bend_2Dhist_X"]
     Y = all_expts['TwoWk_Light']["bend_2Dhist_Y"]
+
+    # Difference between light and time-shifted light
     dLight = all_expts['TwoWk_Light']["bend_2Dhist_mean"] - \
         all_expts['TwoWk_Light_TIMESHIFT0']["bend_2Dhist_mean"]
-    fig, ax = plt.subplots(figsize=(8, 6))
-    cbar = fig.colorbar(ax.pcolormesh(X, Y, dLight, shading='nearest', 
-                                      cmap = 'RdYlBu', vmin=-0.05, vmax=0.05), ax=ax)
-    plt.title('Light - Light_TS0')
-    plt.savefig('Delta_bending_Light - Light_TS0.png', bbox_inches='tight')
-    
+    dLight_unc = np.sqrt(all_expts['TwoWk_Light']["bend_2Dhist_sem"]**2 + \
+        all_expts['TwoWk_Light_TIMESHIFT0']["bend_2Dhist_mean"]**2)
+    titleStr = f'Light - TimeShift Light: Bend Angle; unc. < {mask_by_sem_limit_degrees:.1f} deg'
+    outputFileName = 'Difference in Bend Angle, Light - TS0Light.png'
+    plot_2D_heatmap(dLight, X, Y, Z_unc=dLight_unc,
+                   titleStr=titleStr, xlabelStr=xlabelStr, ylabelStr=ylabelStr, 
+                   clabelStr=clabelStr, colorRange = colorRange, cmap=cmap,
+                   unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                   mask_by_sem_limit = mask_by_sem_limit_degrees*np.pi/180.0,
+                   outputFileName=outputFileName, 
+                   closeFigure=False)
+    # Slice along bend angle binned by distance and orientation, 
+    # orientation axis, constrain distance: distance < 2.5 mm
+    d_range = (0.0, 2.5)
+    xlabelStr = 'Relative Orientation (deg)'
+    titleStr = f'Light - TimeShift Light: Bend Angle for d < {d_range[1]:.2f} mm'
+    zlabelStr = 'Mean Bending Angle (degrees)'
+    xlim = (-np.pi, np.pi)
+    zlim = (-15*np.pi/180, 15*np.pi/180)
+    color = 'peru'
+    outputFileName = 'Difference in Bend Angle, Light - TS0Light small distance.png'
+    slice_2D_histogram(dLight, X, Y, dLight_unc, 
+                       slice_axis = 'x', other_range = d_range, 
+                       titleStr = titleStr, xlabelStr = xlabelStr, 
+                       zlabelStr = zlabelStr,
+                       ylabelStr = ylabelStr, zlim = zlim, xlim = xlim, 
+                       plot_z_zero_line = True, plot_vert_zero_line = True,
+                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                       color = color, outputFileName=outputFileName,
+                       closeFigure=False)
+    # Slice along bend angle binned by distance and orientation, 
+    # orientation axis, constrain distance: distance 3 to 13 mm mm
+    d_range = (3.0, 13.0)
+    titleStr = f'Light - TimeShift Light: Bend Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
+    outputFileName = 'Difference in Bend Angle, Light - TS0Light middle distance.png'
+    slice_2D_histogram(dLight, X, Y, dLight_unc, 
+                       slice_axis = 'x', other_range = d_range, 
+                       titleStr = titleStr, xlabelStr = xlabelStr, 
+                       zlabelStr = zlabelStr,
+                       ylabelStr = ylabelStr, zlim = zlim, xlim = xlim, 
+                       plot_z_zero_line = True, plot_vert_zero_line = True,
+                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                       color = color, outputFileName=outputFileName,
+                       closeFigure=False)
+
+
+    # Difference between light and dark
     dLightDark = all_expts['TwoWk_Light']["bend_2Dhist_mean"] - \
         all_expts['TwoWk_Dark']["bend_2Dhist_mean"]
-    fig, ax = plt.subplots(figsize=(8, 6))
-    cbar = fig.colorbar(ax.pcolormesh(X, Y, dLightDark, shading='nearest', 
-                                      cmap = 'RdYlBu', vmin=-0.05, vmax=0.05), ax=ax)
-    plt.title('Light - Dark')
-    plt.savefig('Delta_bending_Light - Dark.png', bbox_inches='tight')
+    dLightDark_unc = np.sqrt(all_expts['TwoWk_Light']["bend_2Dhist_sem"]**2 + \
+        all_expts['TwoWk_Dark']["bend_2Dhist_mean"]**2)
+    titleStr = f'Light - Dark: Bend Angle; unc. < {mask_by_sem_limit_degrees:.1f} deg'
+    outputFileName = 'Difference in Bend Angle, Light - Dark.png'
+        
+    plot_2D_heatmap(dLightDark, X, Y, Z_unc=dLightDark_unc,
+                   titleStr=titleStr, xlabelStr=xlabelStr, ylabelStr=ylabelStr, 
+                   clabelStr=clabelStr, colorRange = colorRange, cmap=cmap,
+                   unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                   mask_by_sem_limit = mask_by_sem_limit_degrees*np.pi/180.0,
+                   outputFileName=outputFileName, 
+                   closeFigure=False)
+    # Slice along bend angle binned by distance and orientation, 
+    # orientation axis, constrain distance: distance < 2.5 mm
+    d_range = (0.0, 2.5)
+    xlabelStr = 'Relative Orientation (deg)'
+    titleStr = f'Light - Dark: Bend Angle for d < {d_range[1]:.2f} mm'
+    zlabelStr = 'Mean Bending Angle (degrees)'
+    xlim = (-np.pi, np.pi)
+    zlim = (-15*np.pi/180, 15*np.pi/180)
+    color = 'darkseagreen'
+    outputFileName = 'Difference in Bend Angle, Light - Dark small distance.png'
+    slice_2D_histogram(dLightDark, X, Y, dLightDark_unc, 
+                       slice_axis = 'x', other_range = d_range, 
+                       titleStr = titleStr, xlabelStr = xlabelStr, 
+                       zlabelStr = zlabelStr,
+                       ylabelStr = ylabelStr, zlim = zlim, xlim = xlim, 
+                       plot_z_zero_line = True, plot_vert_zero_line = True,
+                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                       color = color, outputFileName=outputFileName,
+                       closeFigure=False)
+    # Slice along bend angle binned by distance and orientation, 
+    # orientation axis, constrain distance: distance 3 to 13 mm mm
+    d_range = (3.0, 13.0)
+    titleStr = f'Light - Dark: Bend Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
+    outputFileName = 'Difference in Bend Angle, Light - Dark middle distance.png'
+    slice_2D_histogram(dLightDark, X, Y, dLightDark_unc, 
+                       slice_axis = 'x', other_range = d_range, 
+                       titleStr = titleStr, xlabelStr = xlabelStr, 
+                       zlabelStr = zlabelStr,
+                       ylabelStr = ylabelStr, zlim = zlim, xlim = xlim, 
+                       plot_z_zero_line = True, plot_vert_zero_line = True,
+                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                       color = color, outputFileName=outputFileName,
+                       closeFigure=False)
     
+    # Difference between dark and time-shifted dark
+    dDark = all_expts['TwoWk_Dark']["bend_2Dhist_mean"] - \
+        all_expts['TwoWk_Dark_TIMESHIFT0']["bend_2Dhist_mean"]
+    dDark_unc = np.sqrt(all_expts['TwoWk_Dark']["bend_2Dhist_sem"]**2 + \
+        all_expts['TwoWk_Dark_TIMESHIFT0']["bend_2Dhist_mean"]**2)
+    titleStr = f'Difference in Bend Angle: Dark - TimeShift Dark; unc. < {mask_by_sem_limit_degrees:.1f} deg'
+    outputFileName = 'Difference in Bend Angle, Dark - TS0Dark.png'
+    plot_2D_heatmap(dDark, X, Y, Z_unc=dDark_unc,
+                   titleStr=titleStr, xlabelStr=xlabelStr, ylabelStr=ylabelStr, 
+                   clabelStr=clabelStr, colorRange = colorRange, cmap=cmap,
+                   unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                   mask_by_sem_limit = mask_by_sem_limit_degrees*np.pi/180.0,
+                   outputFileName=outputFileName, 
+                   closeFigure=False)
+
+    # Slice along bend angle binned by distance and orientation, 
+    # orientation axis, constrain distance: distance < 2.5 mm
+    d_range = (0.0, 2.5)
+    xlabelStr = 'Relative Orientation (deg)'
+    titleStr = f'Dark - Timeshift Dark: Bend Angle for d < {d_range[1]:.2f} mm'
+    zlabelStr = 'Mean Bending Angle (degrees)'
+    xlim = (-np.pi, np.pi)
+    zlim = (-15*np.pi/180, 15*np.pi/180)
+    color = 'blue'
+    outputFileName = 'Difference in Bend Angle, Dark - TS0Dark small distance.png'
+    slice_2D_histogram(dDark, X, Y, dDark_unc, 
+                       slice_axis = 'x', other_range = d_range, 
+                       titleStr = titleStr, xlabelStr = xlabelStr, 
+                       zlabelStr = zlabelStr,
+                       ylabelStr = ylabelStr, zlim = zlim, xlim = xlim, 
+                       plot_z_zero_line = True, plot_vert_zero_line = True,
+                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                       color = color, outputFileName=outputFileName,
+                       closeFigure=False)
+    # Slice along bend angle binned by distance and orientation, 
+    # orientation axis, constrain distance: distance 3 to 13 mm mm
+    d_range = (3.0, 13.0)
+    titleStr = f'Dark - Timeshift Dark: Bend Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
+    outputFileName = 'Difference in Bend Angle, Dark - TS0Dark middle distance.png'
+    slice_2D_histogram(dDark, X, Y, dDark_unc, 
+                       slice_axis = 'x', other_range = d_range, 
+                       titleStr = titleStr, xlabelStr = xlabelStr, 
+                       zlabelStr = zlabelStr,
+                       ylabelStr = ylabelStr, zlim = zlim, xlim = xlim, 
+                       plot_z_zero_line = True, plot_vert_zero_line = True,
+                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                       color = color, outputFileName=outputFileName,
+                       closeFigure=False)
 
 
 #%% Correlations of pair behaviors
