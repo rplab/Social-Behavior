@@ -210,7 +210,12 @@ def apply_behavior_constraints(dataset, behavior_A,
                                 
                                 # Check if value is valid (not NaN) and within range
                                 if not np.isnan(val):
-                                    valid_constraint_mask[i] = (constraintRange[0] <= val <= constraintRange[1])
+                                    if use_abs_value_constraint:
+                                        valid_constraint_mask[i] = \
+                                            (constraintRange[0] <= np.abs(val) <= constraintRange[1])
+                                    else:
+                                        valid_constraint_mask[i] = \
+                                            (constraintRange[0] <= val <= constraintRange[1])
                                 
                             except (IndexError, TypeError, AttributeError) as e:
                                 print(f'   Warning: Could not access constraint value at frame {frameA}: {e}')
@@ -1313,7 +1318,11 @@ def pool_quant_property_from_behavior_1dataset(dataset,
                                 
                                 # Check if value is valid (not NaN) and within range
                                 if not np.isnan(val):
-                                    valid_constraint_mask[i] = (constraintRange[0] <= val <= constraintRange[1])
+                                    if use_abs_value_constraint:
+                                        valid_constraint_mask[i] = (constraintRange[0] <= np.abs(val) <= constraintRange[1])
+                                    else:
+                                        valid_constraint_mask[i] = (constraintRange[0] <= val <= constraintRange[1])
+
                                 
                             except (IndexError, TypeError, AttributeError) as e:
                                 print(f'   Warning: Could not access constraint value at frame {frameA}: {e}')

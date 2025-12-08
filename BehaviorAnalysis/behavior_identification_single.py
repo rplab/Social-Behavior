@@ -1038,8 +1038,15 @@ def average_bout_trajectory_oneSet(dataset, keyName = "speed_array_mm_s",
             # Check constraint if provided
             if constraintKey is not None and constraintRange is not None:
                 constraint_value = constraint_array[moving_frameInfo[0,j]]
+                if use_abs_value_constraint:
+                    if not (constraintRange[0] <= np.abs(constraint_value) <= constraintRange[1]):
+                        continue
                 if not (constraintRange[0] <= constraint_value <= constraintRange[1]):
                     continue
+                else:
+                    if not (constraintRange[0] <= constraint_value <= constraintRange[1]):
+                        continue
+                    
             if (values_fullRange.ndim > 1) and (values_fullRange.shape[1]>1):
                 # Not recommended; probably won't happen
                 values = values_fullRange[start_frame:end_frame, thisKeyIdx]

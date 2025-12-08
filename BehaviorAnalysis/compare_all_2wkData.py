@@ -4,7 +4,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Wed Oct 15 08:59:05 2025
-Last modified Nov. 19, 2025 -- Raghuveer Parthasarathy
+Last modified Dec. 7, 2025 -- Raghuveer Parthasarathy
 
 Description
 -----------
@@ -29,9 +29,9 @@ Modify the expBaseStrm et., for each dataset of interest.
 
 import os
 import numpy as np
-from IO_toolkit import load_and_assign_from_pickle, make_2D_histogram, \
+from IO_toolkit import load_and_assign_from_pickle, \
     combine_images_to_tiff, plot_2D_heatmap, slice_2D_histogram
-from behavior_identification import make_pair_fish_plots
+from behavior_identification import make_pair_fish_plots, make_bending_angle_plots
 from behavior_identification_single import make_single_fish_plots
 from toolkit import get_fps 
 from behavior_correlations import plot_behaviorCorrelation,  \
@@ -216,11 +216,22 @@ if closeFigures:
     
 for exptName in all_expts.keys():
     if all_expts[exptName]['Nfish'] == 2:
-        saved_pair_outputs = make_pair_fish_plots(
-                             all_expts[exptName]['datasets'], 
+        """
+        make_pair_fish_plots(all_expts[exptName]['datasets'], 
                              exptName = exptName,
                              color = all_expts[exptName]['plot_color'], 
-                             outputFileNameBase = f'JUNK{exptName} pair_properties', 
+                             outputFileNameBase = f'{exptName} pair_properties', 
+                             outputFileNameExt = 'png',
+                             closeFigures = closeFigures,
+                             writeCSVs = False)
+        """
+        saved_pair_outputs = make_bending_angle_plots(
+                             all_expts[exptName]['datasets'], 
+                             exptName = exptName,
+                             distance_type = 'head_head_distance',
+                             bending_threshold_deg = all_expts[exptName]['params']['bend_min_deg'],
+                             color = all_expts[exptName]['plot_color'], 
+                             outputFileNameBase = f'{exptName} pair_properties', 
                              outputFileNameExt = 'png',
                              closeFigures = closeFigures,
                              writeCSVs = False)
@@ -243,10 +254,10 @@ fileNameStringsToCombine = ['speed', 'angularSpeed', 'radialpos', 'heading_angle
                             'orientation_distance_2D', 'IBI_v_dist_and_radialpos',
                             'IBI_v_dist_r_interior', 'IBI_v_dist_r_edge',
                             'bendAngle_distance_orientation_2D',
-                            'bendAngle_v_orientation_dLT2p5mm', 
-                            'bendAngle_v_orientation_dLT2p5mm_asymm',
-                            'bendAngle_v_orientation_dSlice',
-                            'bendAngle_v_orientation_dSlice_asymm',
+                            'bendAngle_v_orientation_small', 
+                            'bendAngle_v_orientation_small_asymm',
+                            'bendAngle_v_orientation_middle',
+                            'bendAngle_v_orientation_middle_asymm',
                             'movingSpeed_v_HHdistance_orientation_2D',
                             'movingSpeed_v_HHdistance_lowOrientation',
                             'speedCrosscorr', 'speedCrosscorrDistBinned']
@@ -279,7 +290,12 @@ if calcDifferences:
     colorRange = (-6*np.pi/180.0, 6*np.pi/180.0)
     clabelStr= 'Mean Bending Angle (degrees)'
     xlabelStr = 'Relative Orientation (degrees)'
-    ylabelStr = 'Closest Distance (mm)'
+
+    # ylabelStr = 'Closest Distance (mm)'
+    outputFileNameBase = 'Difference in Bend Angle, (Closest Distance), '
+
+    ylabelStr = 'Head-Head Distance (mm)'
+    outputFileNameBase = 'Difference in Bend Angle, (HH Distance), '
 
     # Mesh is the same for all datasets
     X = all_expts['TwoWk_Light']["bend_2Dhist_X"]
@@ -291,7 +307,7 @@ if calcDifferences:
     dLight_unc = np.sqrt(all_expts['TwoWk_Light']["bend_2Dhist_sem"]**2 + \
         all_expts['TwoWk_Light_TIMESHIFT0']["bend_2Dhist_mean"]**2)
     titleStr = f'Light - TimeShift Light: Bend Angle; unc. < {mask_by_sem_limit_degrees:.1f} deg'
-    outputFileName = 'Difference in Bend Angle, Light - TS0Light.png'
+    outputFileName = outputFileNameBase + 'Light - TS0Light.png'
     plot_2D_heatmap(dLight, X, Y, Z_unc=dLight_unc,
                    titleStr=titleStr, xlabelStr=xlabelStr, ylabelStr=ylabelStr, 
                    clabelStr=clabelStr, colorRange = colorRange, cmap=cmap,
@@ -299,6 +315,7 @@ if calcDifferences:
                    mask_by_sem_limit = mask_by_sem_limit_degrees*np.pi/180.0,
                    outputFileName=outputFileName, 
                    closeFigure=False)
+
     # Slice along bend angle binned by distance and orientation, 
     # orientation axis, constrain distance: distance < 2.5 mm
     d_range = (0.0, 2.5)
@@ -308,7 +325,7 @@ if calcDifferences:
     xlim = (-np.pi, np.pi)
     zlim = (-15*np.pi/180, 15*np.pi/180)
     color = 'peru'
-    outputFileName = 'Difference in Bend Angle, Light - TS0Light small distance.png'
+    outputFileName = outputFileNameBase + 'Light - TS0Light small distance.png'
     slice_2D_histogram(dLight, X, Y, dLight_unc, 
                        slice_axis = 'x', other_range = d_range, 
                        titleStr = titleStr, xlabelStr = xlabelStr, 
@@ -322,7 +339,7 @@ if calcDifferences:
     # orientation axis, constrain distance: distance 3 to 13 mm mm
     d_range = (3.0, 13.0)
     titleStr = f'Light - TimeShift Light: Bend Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
-    outputFileName = 'Difference in Bend Angle, Light - TS0Light middle distance.png'
+    outputFileName = outputFileNameBase + 'Light - TS0Light middle distance.png'
     slice_2D_histogram(dLight, X, Y, dLight_unc, 
                        slice_axis = 'x', other_range = d_range, 
                        titleStr = titleStr, xlabelStr = xlabelStr, 
@@ -340,7 +357,7 @@ if calcDifferences:
     dLightDark_unc = np.sqrt(all_expts['TwoWk_Light']["bend_2Dhist_sem"]**2 + \
         all_expts['TwoWk_Dark']["bend_2Dhist_mean"]**2)
     titleStr = f'Light - Dark: Bend Angle; unc. < {mask_by_sem_limit_degrees:.1f} deg'
-    outputFileName = 'Difference in Bend Angle, Light - Dark.png'
+    outputFileName = outputFileNameBase + 'Light - Dark.png'
         
     plot_2D_heatmap(dLightDark, X, Y, Z_unc=dLightDark_unc,
                    titleStr=titleStr, xlabelStr=xlabelStr, ylabelStr=ylabelStr, 
@@ -358,7 +375,7 @@ if calcDifferences:
     xlim = (-np.pi, np.pi)
     zlim = (-15*np.pi/180, 15*np.pi/180)
     color = 'darkseagreen'
-    outputFileName = 'Difference in Bend Angle, Light - Dark small distance.png'
+    outputFileName = outputFileNameBase + 'Light - Dark small distance.png'
     slice_2D_histogram(dLightDark, X, Y, dLightDark_unc, 
                        slice_axis = 'x', other_range = d_range, 
                        titleStr = titleStr, xlabelStr = xlabelStr, 
@@ -372,7 +389,7 @@ if calcDifferences:
     # orientation axis, constrain distance: distance 3 to 13 mm mm
     d_range = (3.0, 13.0)
     titleStr = f'Light - Dark: Bend Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
-    outputFileName = 'Difference in Bend Angle, Light - Dark middle distance.png'
+    outputFileName = outputFileNameBase + 'Light - Dark middle distance.png'
     slice_2D_histogram(dLightDark, X, Y, dLightDark_unc, 
                        slice_axis = 'x', other_range = d_range, 
                        titleStr = titleStr, xlabelStr = xlabelStr, 
@@ -389,7 +406,7 @@ if calcDifferences:
     dDark_unc = np.sqrt(all_expts['TwoWk_Dark']["bend_2Dhist_sem"]**2 + \
         all_expts['TwoWk_Dark_TIMESHIFT0']["bend_2Dhist_mean"]**2)
     titleStr = f'Difference in Bend Angle: Dark - TimeShift Dark; unc. < {mask_by_sem_limit_degrees:.1f} deg'
-    outputFileName = 'Difference in Bend Angle, Dark - TS0Dark.png'
+    outputFileName = outputFileNameBase + 'Dark - TS0Dark.png'
     plot_2D_heatmap(dDark, X, Y, Z_unc=dDark_unc,
                    titleStr=titleStr, xlabelStr=xlabelStr, ylabelStr=ylabelStr, 
                    clabelStr=clabelStr, colorRange = colorRange, cmap=cmap,
@@ -407,7 +424,7 @@ if calcDifferences:
     xlim = (-np.pi, np.pi)
     zlim = (-15*np.pi/180, 15*np.pi/180)
     color = 'blue'
-    outputFileName = 'Difference in Bend Angle, Dark - TS0Dark small distance.png'
+    outputFileName = outputFileNameBase + 'Dark - TS0Dark small distance.png'
     slice_2D_histogram(dDark, X, Y, dDark_unc, 
                        slice_axis = 'x', other_range = d_range, 
                        titleStr = titleStr, xlabelStr = xlabelStr, 
@@ -421,7 +438,7 @@ if calcDifferences:
     # orientation axis, constrain distance: distance 3 to 13 mm mm
     d_range = (3.0, 13.0)
     titleStr = f'Dark - Timeshift Dark: Bend Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
-    outputFileName = 'Difference in Bend Angle, Dark - TS0Dark middle distance.png'
+    outputFileName = outputFileNameBase + 'Dark - TS0Dark middle distance.png'
     slice_2D_histogram(dDark, X, Y, dDark_unc, 
                        slice_axis = 'x', other_range = d_range, 
                        titleStr = titleStr, xlabelStr = xlabelStr, 

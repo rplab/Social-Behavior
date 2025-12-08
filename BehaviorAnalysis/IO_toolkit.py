@@ -4,7 +4,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Aug 25 20:59:37 2025
-Last modified Oct. 29, 2025 -- Raghuveer Parthasarathy
+Last modified Dec. 7, 2025 -- Raghuveer Parthasarathy
 
 Description
 -----------
@@ -3257,9 +3257,8 @@ def make_2D_histogram(datasets,
                     a string "min", "max", or "mean", apply this
                        operation along axis==1 (e.g. for fastest fish)
     use_abs_value : (bool, bool) default False, False (for each property)
-                    If True, use absolute value of the quantitative 
-                    property before applying constraints or combining values. 
-                    Useful for signed angles (relative orientation, bending).
+                    If True, return absolute value of the quantitative 
+                    property. Probably should always be false
     keyNameC (str or None): Key name for the third variable whose mean will be
                            plotted as a heatmap. If None, plots occurrence histogram.
     keyIdxC : integer or string or None, same indexing as keyIdx but for keyNameC
@@ -3327,6 +3326,7 @@ def make_2D_histogram(datasets,
                                              constraintKey=constraintKey, 
                                              constraintRange=constraintRange, 
                                              constraintIdx=constraintIdx,
+                                             use_abs_value_constraint = use_abs_value_constraint,
                                              dilate_minus1=dilate_minus1)
     values2 = combine_all_values_constrained(datasets, keyNames[1], 
                                              keyIdx=keyIdx[1],
@@ -3334,16 +3334,18 @@ def make_2D_histogram(datasets,
                                              constraintKey=constraintKey, 
                                              constraintRange=constraintRange, 
                                              constraintIdx=constraintIdx,
+                                             use_abs_value_constraint = use_abs_value_constraint,
                                              dilate_minus1 = dilate_minus1)
     
     # Get values for keyC if provided
     if keyNameC is not None:
         valuesC = combine_all_values_constrained(datasets, keyNameC, 
                                                  keyIdx=keyIdxC,
-                                                 use_abs_value = use_abs_value_constraint,
+                                                 use_abs_value = False,
                                                  constraintKey=constraintKey, 
                                                  constraintRange=constraintRange, 
                                                  constraintIdx=constraintIdx,
+                                                 use_abs_value_constraint = use_abs_value_constraint,
                                                  dilate_minus1=dilate_minus1)
     
     # Flatten the values and handle different dimensions

@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified November 22, 2025 -- Raghu Parthasarathy
+Last modified December 7, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -1480,8 +1480,12 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
                     mean_constraint_value = np.nanmean(constraint_subset)
                     
                     # Check if constraint is satisfied
-                    if not (constraintRange[0] <= mean_constraint_value <= constraintRange[1]):
-                        continue
+                    if use_abs_value_constraint:
+                        if not (constraintRange[0] <= np.abs(mean_constraint_value) <= constraintRange[1]):
+                            continue
+                    else:
+                        if not (constraintRange[0] <= mean_constraint_value <= constraintRange[1]):
+                            continue
 
                 # Find which distance bin this window belongs to
                 bin_idx = np.digitize(distance_mm, bins) - 1
@@ -1737,8 +1741,12 @@ def calculate_IBI_binned_by_2D_keys(datasets,
                         mean_constraint_value = np.nanmean(constraint_subset)
                         
                         # Check if constraint is satisfied
-                        if not (constraintRange[0] <= mean_constraint_value <= constraintRange[1]):
-                            continue
+                        if use_abs_value_constraint:
+                            if not (constraintRange[0] <= np.abs(mean_constraint_value) <= constraintRange[1]):
+                                continue
+                        else:
+                            if not (constraintRange[0] <= mean_constraint_value <= constraintRange[1]):
+                                continue
                     
                     # Find which bins this IBI belongs to
                     bin_idx1 = np.digitize(mean_key1, key1_edges) - 1
@@ -1879,11 +1887,12 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                          closeFigures = False,
                          writeCSVs = False):
     """
-    makes several useful "pair" plots -- i.e. plots of characteristics 
+    Makes several useful "pair" plots -- i.e. plots of characteristics 
     of pairs of fish.
     Note that there are lots of parameter values that are hard-coded; this
     function is probably more useful to read than to run, pasting and 
     modifying its code.
+    Bending angle plots extracted and moved to make_bending_angle_plots()
     
     Inputs:
         datasets : dictionaries for each dataset
@@ -1901,16 +1910,10 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                             points to a CSV file. See code for filenames
 
     Outputs:
-        saved_pair_outputs : list, containing
-            0 : bend_2Dhist_mean, mean 2D bending angle histogram
-            1 : bend_2Dhist_std, std dev for 2D bending angle histogram
-            2: bin positions ("X") for head_head_distance_mm for 2D bending angle histogram
-            3: bin positions ("Y") for relative orientation for 2D bending angle histogram
+        None
 
     """
-    
-    saved_pair_outputs = []
-    
+        
     verifyPairs = True
     for j in range(len(datasets)):
         if datasets[j]["Nfish"] != 2:
@@ -1918,8 +1921,6 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
     if verifyPairs==False:
         raise ValueError('Error in make_pair_fish_plots; Nfish must be 2 !')
     
-
-
     # head-head distance histogram
     head_head_mm_all = combine_all_values_constrained(datasets, 
                                                      keyName='head_head_distance_mm', 
@@ -2226,154 +2227,6 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                        closeFigure=closeFigures)
 
     
-    # 2D plot of mean bending angle vs. relative orientation and closest distance
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_bendAngle_distance_orientation_2D' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
-    maxR = np.inf  # no radial posiiton constraint
-    fishIdx = None # combine all fish
-    mask_by_sem_limit_degrees = 2.0 # show points with s.e.m. < this
-    use_abs_value = (False, False)
-    if maxR < np.inf:
-        titleStr = f'{exptName}: Bend Angle, r < {maxR}; unc. < {mask_by_sem_limit_degrees:.1f} deg'
-    else:
-        titleStr = f'{exptName}: Bend Angle; unc. < {mask_by_sem_limit_degrees:.1f} deg'
-    # Save the output 2D histograms, for use later.
-    bend_2Dhist_mean, X, Y, bend_2Dhist_sem = make_2D_histogram(
-        datasets,
-        keyNames = ('relative_orientation','closest_distance_mm'),
-        keyIdx = (fishIdx, None), 
-        use_abs_value = use_abs_value,
-        keyNameC = 'bend_angle', keyIdxC = fishIdx,
-        colorRange = (-12*np.pi/180.0, 12*np.pi/180.0),
-        constraintKey = 'radial_position_mm', constraintRange = (0.0, maxR), 
-        constraintIdx = fishIdx,
-        dilate_minus1= False, 
-        bin_ranges = ((-np.pi, np.pi), (0.0, 30.0)), Nbins = (19,15), 
-        titleStr = titleStr,
-        clabelStr= 'Mean Bending Angle (degrees)',
-        xlabelStr = 'Relative Orientation (degrees)',
-        ylabelStr = 'Closest Distance (mm)', 
-        mask_by_sem_limit = mask_by_sem_limit_degrees*np.pi/180.0,
-        unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
-        cmap = 'RdYlBu_r', 
-        plot_type = plot_type_2D,
-        outputFileName = outputFileName,
-        closeFigure = closeFigures)
-    saved_pair_outputs.append(bend_2Dhist_mean)
-    saved_pair_outputs.append(bend_2Dhist_sem)
-    saved_pair_outputs.append(X)
-    saved_pair_outputs.append(Y)
-
-    # Slice along bend angle binned by distance and orientation, 
-    # orientation axis, constrain distance: distance < 3 mm
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_bendAngle_v_orientation_dLT2p5mm' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
-    d_range = (0.0, 2.5)
-    xlabelStr = 'Relative Orientation (deg)'
-    titleStr = f'{exptName}: Bend Angle for d < {d_range[1]:.2f} mm'
-    ylabelStr = 'Closest Distance (mm)'
-    zlabelStr = 'Mean Bending Angle (degrees)'
-    xlim = (-np.pi, np.pi)
-    zlim = (-15*np.pi/180, 15*np.pi/180)
-    color = color
-    slice_2D_histogram(bend_2Dhist_mean, X, Y, bend_2Dhist_sem, 
-                       slice_axis = 'x', other_range = d_range, 
-                       titleStr = titleStr, xlabelStr = xlabelStr, 
-                       zlabelStr = zlabelStr,
-                       ylabelStr = ylabelStr, zlim = zlim, xlim = xlim, 
-                       plot_z_zero_line = True,
-                       plot_vert_zero_line = True,
-                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
-                       color = color, outputFileName=outputFileName,
-                       closeFigure=closeFigures)
-
-    # Symmetrize the above bending angle / relative orientation graph,
-    # taking theta[theta > 0] - theta[theta < 0]
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_bendAngle_v_orientation_dLT2p5mm_asymm' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
-    midXind = int((X.shape[0] - 1)/2.0)
-    if np.abs(X[midXind, 0]) > 1e-6:
-        print('"X" array is not centered at zero. Will not symmetrize.')
-    else:
-        bend_2Dhist_mean_symm = 0.5*(bend_2Dhist_mean[midXind:,:] - 
-                                     np.flipud(bend_2Dhist_mean[:(midXind+1),:]))
-        bend_2Dhist_sem_symm = np.sqrt(bend_2Dhist_sem[midXind:,:]**2 +
-                                       np.flipud(bend_2Dhist_sem[:(midXind+1),:])**2)/np.sqrt(2)
-        X_symm = X[midXind:,:]
-        Y_symm = Y[midXind:,:]
-        slice_2D_histogram(bend_2Dhist_mean_symm, X_symm, Y_symm,
-                           bend_2Dhist_sem_symm, 
-                           slice_axis = 'x', other_range = d_range, 
-                           titleStr = titleStr, xlabelStr = f'|{xlabelStr}|', 
-                           zlabelStr = zlabelStr + ' toward Other',
-                           ylabelStr = ylabelStr, zlim = zlim, 
-                           xlim = (0.0, xlim[1]), 
-                           plot_z_zero_line = True,
-                           plot_vert_zero_line = False,
-                           unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
-                           color = color, outputFileName=outputFileName,
-                           closeFigure=closeFigures)
-
-    # Slice along bend angle binned by distance and orientation, 
-    # orientation axis, constrain distance: 3 mm < distance < 13 mm
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_bendAngle_v_orientation_dSlice' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
-    d_range = (3.0, 13.0)
-    xlabelStr = 'Relative Orientation (deg)'
-    titleStr = f'{exptName}: Bend Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
-    ylabelStr = 'Closest Distance (mm)'
-    zlabelStr = 'Mean Bending Angle (degrees)'
-    xlim = (-np.pi, np.pi)
-    zlim = (-15*np.pi/180, 15*np.pi/180)
-    color = color
-    slice_2D_histogram(bend_2Dhist_mean, X, Y, bend_2Dhist_sem, 
-                       slice_axis = 'x', other_range = d_range, 
-                       titleStr = titleStr, xlabelStr = xlabelStr, 
-                       zlabelStr = zlabelStr,
-                       ylabelStr = ylabelStr, zlim = zlim, xlim = xlim, 
-                       plot_z_zero_line = True,
-                       plot_vert_zero_line = True,
-                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
-                       color = color, outputFileName=outputFileName,
-                       closeFigure=closeFigures)
-
-    # Symmetrize the above bending angle / relative orientation graph,
-    # taking theta[theta > 0] - theta[theta < 0]
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_bendAngle_v_orientation_dSlice_asymm' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
-    midXind = int((X.shape[0] - 1)/2.0)
-    if np.abs(X[midXind, 0]) > 1e-6:
-        print('"X" array is not centered at zero. Will not symmetrize.')
-    else:
-        bend_2Dhist_mean_symm = 0.5*(bend_2Dhist_mean[midXind:,:] - 
-                                     np.flipud(bend_2Dhist_mean[:(midXind+1),:]))
-        bend_2Dhist_sem_symm = np.sqrt(bend_2Dhist_sem[midXind:,:]**2 +
-                                       np.flipud(bend_2Dhist_sem[:(midXind+1),:])**2)/np.sqrt(2)
-        X_symm = X[midXind:,:]
-        Y_symm = Y[midXind:,:]
-        slice_2D_histogram(bend_2Dhist_mean_symm, X_symm, Y_symm,
-                           bend_2Dhist_sem_symm, 
-                           slice_axis = 'x', other_range = d_range, 
-                           titleStr = titleStr, xlabelStr = f'|{xlabelStr}|', 
-                           zlabelStr = zlabelStr + ' toward Other',
-                           ylabelStr = ylabelStr, zlim = zlim, 
-                           xlim = (0.0, xlim[1]), 
-                           plot_z_zero_line = True,
-                           plot_vert_zero_line = False,
-                           unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
-                           color = color, outputFileName=outputFileName,
-                           closeFigure=closeFigures)
-    
     # Average above-threshold speed versus distance and relative orientation
     # Hard-code speed threshold 
     if outputFileNameBase is not None:
@@ -2475,9 +2328,276 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                                     outputFileName=outputFileName,
                                     closeFigure = closeFigures)
 
+    return None
+
+
+def make_bending_angle_plots(datasets, exptName = '', distance_type = None,
+                             bending_threshold_deg = 0.0,
+                             color = 'black',
+                             plot_type_2D = 'heatmap',
+                             outputFileNameBase = 'pair_fish', 
+                             outputFileNameExt = 'png',
+                             closeFigures = False,
+                             writeCSVs = False):
+    
+    
+    """
+    Makes several useful plots of bending angle properties for 
+    of pairs of fish.
+    
+    Removed from make_pair_fish_plots()
+        
+    Inputs:
+        datasets : dictionaries for each dataset
+        exptName : (string) Experiment name, to append to titles.
+        bending_threshold_deg : (float) for a plot of mean bending angle
+                constrained to abs(angle) > threshold, use this threshold.
+                Input in degrees. 
+        distance_type : string, either closest_distance or head_head_distance
+                Default is None; user should think about this!
+        plot_each_dataset : (bool) if True, plot the prob. distr. for each array               
+        color: plot color (uses alpha for indiv. dataset colors)
+        plot_type_2D : str, 'heatmap' or 'line_plots'
+                    Which plotting function make_2D_histogram() will use
+                    ('heatmap' or 'line_plots')
+        outputFileNameBase : base file name for figure output; if None,
+                             won't save a figure file
+        outputFileNameExt : extension for figure output (e.g. 'eps' or 'png')
+        closeFigures : (bool) if True, close a figure after creating it.
+        writeCSVs : (bool) Used by various functions; if true, output plotted 
+                            points to a CSV file. See code for filenames
+
+    Outputs:
+        saved_pair_outputs : list, containing
+            0 : bend_2Dhist_mean, mean 2D bending angle histogram
+            1 : bend_2Dhist_std, std dev for 2D bending angle histogram
+            2: bin positions ("X") for head_head_distance_mm for 2D bending angle histogram
+            3: bin positions ("Y") for relative orientation for 2D bending angle histogram
+
+    To do:
+        Redundant code for slicing, symmetrization. Probably not worth cleaning up.
+        
+    """
+    
+    # Make sure of distance measure being used
+    if not (distance_type==None or distance_type == 'closest_distance' or \
+            distance_type == 'head_head_distance'):
+        print('\nDistance measure must be "closest_distance" or "head_head_distance".\n')
+        distance_type = None
+    if distance_type == None:
+        distance_type_choice = 0
+        while not ((distance_type_choice  == 1) or (distance_type_choice  == 2)):
+            distance_type_choice = int(input('Choose distance measure ' + 
+                                             '\n  (1) closest_distance ' + 
+                                             '\n  (2) head_head_distance' +
+                                             '\nEnter "1" or "2": '))
+        if distance_type_choice==1:
+            distance_type = 'closest_distance'
+        else:
+            distance_type = 'head_head_distance'
+
+    # Strings for file output, labels
+    if distance_type == 'closest_distance':
+        distance_file_string = 'closestDistance'
+        distanceLabelStr = 'Closest Distance (mm)'
+    elif distance_type == 'head_head_distance':
+        distance_file_string = 'headHeadDistance'
+        distanceLabelStr = 'Head-Head Distance (mm)'
+    else:
+        raise ValueError('Invalid distance type')
+    
+        
+    saved_pair_outputs = []
+
+    
+    verifyPairs = True
+    for j in range(len(datasets)):
+        if datasets[j]["Nfish"] != 2:
+            verifyPairs = False
+    if verifyPairs==False:
+        raise ValueError('Error in make_pair_fish_plots; Nfish must be 2 !')
+
+
+    # 2D plot of mean bending angle vs. relative orientation and distance
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + \
+            f'_bendAngle_{distance_file_string}_orientation_2D' + \
+                '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    mask_by_sem_limit_degrees = 2.0 # show points with s.e.m. < this
+    use_abs_value = (False, False)
+    titleStr = f'{exptName}: Bend Angle; unc. < {mask_by_sem_limit_degrees:.1f} deg'
+    # Save the output 2D histograms, for use later.
+    bend_2Dhist_mean, X, Y, bend_2Dhist_sem = make_2D_histogram(
+        datasets,
+        keyNames = ('relative_orientation', f'{distance_type}_mm'),
+        keyIdx = (None, None), 
+        use_abs_value = use_abs_value,
+        keyNameC = 'bend_angle', keyIdxC = None,
+        colorRange = (-12*np.pi/180.0, 12*np.pi/180.0),
+        dilate_minus1= False, 
+        bin_ranges = ((-np.pi, np.pi), (0.0, 30.0)), Nbins = (19,15), 
+        titleStr = titleStr,
+        clabelStr= 'Mean Bending Angle (degrees)',
+        xlabelStr = 'Relative Orientation (degrees)',
+        ylabelStr = distanceLabelStr, 
+        mask_by_sem_limit = mask_by_sem_limit_degrees*np.pi/180.0,
+        unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+        cmap = 'RdYlBu_r', 
+        plot_type = plot_type_2D,
+        outputFileName = outputFileName,
+        closeFigure = closeFigures)
+    saved_pair_outputs.append(bend_2Dhist_mean)
+    saved_pair_outputs.append(bend_2Dhist_sem)
+    saved_pair_outputs.append(X)
+    saved_pair_outputs.append(Y)
+
+    # Slice bend angle binned by distance and orientation, along the
+    # orientation axis, distance slice: distance < 2.5 mm
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + f'_bendAngle_v_orientation_small_{distance_file_string}' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    d_range = (0.0, 2.5)
+    xlabelStr = 'Relative Orientation (deg)'
+    titleStr = f'{exptName}: Bend Angle for d < {d_range[1]:.2f} mm'
+    zlabelStr = 'Mean Bending Angle (degrees)'
+    xlim = (-np.pi, np.pi)
+    zlim = (-15*np.pi/180, 15*np.pi/180)
+    color = color
+    slice_2D_histogram(bend_2Dhist_mean, X, Y, bend_2Dhist_sem, 
+                       slice_axis = 'x', other_range = d_range, 
+                       titleStr = titleStr, xlabelStr = xlabelStr, 
+                       zlabelStr = zlabelStr,
+                       ylabelStr = distanceLabelStr, zlim = zlim, xlim = xlim, 
+                       plot_z_zero_line = True,
+                       plot_vert_zero_line = True,
+                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                       color = color, outputFileName=outputFileName,
+                       closeFigure=closeFigures)
+
+    # Symmetrize the above bending angle / relative orientation graph,
+    # taking theta[theta > 0] - theta[theta < 0]
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + f'_bendAngle_v_orientation_small_{distance_file_string}_asymm' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    midXind = int((X.shape[0] - 1)/2.0)
+    if np.abs(X[midXind, 0]) > 1e-6:
+        print('"X" array is not centered at zero. Will not symmetrize.')
+    else:
+        bend_2Dhist_mean_symm = 0.5*(bend_2Dhist_mean[midXind:,:] - 
+                                     np.flipud(bend_2Dhist_mean[:(midXind+1),:]))
+        bend_2Dhist_sem_symm = np.sqrt(bend_2Dhist_sem[midXind:,:]**2 +
+                                       np.flipud(bend_2Dhist_sem[:(midXind+1),:])**2)/np.sqrt(2)
+        X_symm = X[midXind:,:]
+        Y_symm = Y[midXind:,:]
+        slice_2D_histogram(bend_2Dhist_mean_symm, X_symm, Y_symm,
+                           bend_2Dhist_sem_symm, 
+                           slice_axis = 'x', other_range = d_range, 
+                           titleStr = titleStr, xlabelStr = f'|{xlabelStr}|', 
+                           zlabelStr = zlabelStr + ' toward Other',
+                           ylabelStr = distanceLabelStr, zlim = zlim, 
+                           xlim = (0.0, xlim[1]), 
+                           plot_z_zero_line = True,
+                           plot_vert_zero_line = False,
+                           unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                           color = color, outputFileName=outputFileName,
+                           closeFigure=closeFigures)
+
+    # Slice along bend angle binned by distance and orientation, 
+    # orientation axis, constrain distance: 5 mm < distance < 15 mm
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + f'_bendAngle_v_orientation_middle_{distance_file_string}' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    d_range = (5.0, 15.0)
+    xlabelStr = 'Relative Orientation (deg)'
+    titleStr = f'{exptName}: Bend Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
+    zlabelStr = 'Mean Bending Angle (degrees)'
+    xlim = (-np.pi, np.pi)
+    zlim = (-15*np.pi/180, 15*np.pi/180)
+    color = color
+    slice_2D_histogram(bend_2Dhist_mean, X, Y, bend_2Dhist_sem, 
+                       slice_axis = 'x', other_range = d_range, 
+                       titleStr = titleStr, xlabelStr = xlabelStr, 
+                       zlabelStr = zlabelStr,
+                       ylabelStr = distanceLabelStr, zlim = zlim, xlim = xlim, 
+                       plot_z_zero_line = True,
+                       plot_vert_zero_line = True,
+                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                       color = color, outputFileName=outputFileName,
+                       closeFigure=closeFigures)
+
+    # Symmetrize the above bending angle / relative orientation graph,
+    # taking theta[theta > 0] - theta[theta < 0]
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + f'_bendAngle_v_orientation_middle_{distance_file_string}_asymm' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    midXind = int((X.shape[0] - 1)/2.0)
+    if np.abs(X[midXind, 0]) > 1e-6:
+        print('"X" array is not centered at zero. Will not symmetrize.')
+    else:
+        bend_2Dhist_mean_symm = 0.5*(bend_2Dhist_mean[midXind:,:] - 
+                                     np.flipud(bend_2Dhist_mean[:(midXind+1),:]))
+        bend_2Dhist_sem_symm = np.sqrt(bend_2Dhist_sem[midXind:,:]**2 +
+                                       np.flipud(bend_2Dhist_sem[:(midXind+1),:])**2)/np.sqrt(2)
+        X_symm = X[midXind:,:]
+        Y_symm = Y[midXind:,:]
+        slice_2D_histogram(bend_2Dhist_mean_symm, X_symm, Y_symm,
+                           bend_2Dhist_sem_symm, 
+                           slice_axis = 'x', other_range = d_range, 
+                           titleStr = titleStr, xlabelStr = f'|{xlabelStr}|', 
+                           zlabelStr = zlabelStr + ' toward Other',
+                           ylabelStr = distanceLabelStr, zlim = zlim, 
+                           xlim = (0.0, xlim[1]), 
+                           plot_z_zero_line = True,
+                           plot_vert_zero_line = False,
+                           unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                           color = color, outputFileName=outputFileName,
+                           closeFigure=closeFigures)
+
+    
+    # 2D plot of mean bending angle vs. relative orientation and distance,
+    # Constrained to bending angle > minimum threshold for "bending"
+    # presumably params['bend_min_deg']
+    if bending_threshold_deg > 0.0:
+        if outputFileNameBase is not None:
+            outputFileName = outputFileNameBase + \
+                f'_bendAngle_above{bending_threshold_deg:.0f}deg_{distance_file_string}_orientation_2D' + \
+                    '.' + outputFileNameExt
+        else:
+            outputFileName = None
+        mask_by_sem_limit_degrees = 8.0 # show points with s.e.m. < this
+        use_abs_value = (False, False)
+        titleStr = f'{exptName}: Bend Angle >{bending_threshold_deg:.0f}deg; unc. < {mask_by_sem_limit_degrees:.1f}deg'
+        # Save the output 2D histograms, for use later.
+        bend_2Dhist_mean, X, Y, bend_2Dhist_sem = make_2D_histogram(
+            datasets,
+            keyNames = ('relative_orientation', f'{distance_type}_mm'),
+            keyIdx = (None, None), 
+            use_abs_value = use_abs_value,
+            keyNameC = 'bend_angle', keyIdxC = None,
+            colorRange = (-45*np.pi/180.0, 45*np.pi/180.0),
+            dilate_minus1= False, 
+            constraintKey = 'bend_angle', 
+            constraintRange = ((np.pi/180.0)*bending_threshold_deg, np.inf), 
+            constraintIdx = None, use_abs_value_constraint = True,
+            bin_ranges = ((-np.pi, np.pi), (0.0, 30.0)), Nbins = (19,15), 
+            titleStr = titleStr,
+            clabelStr= 'Mean Bending Angle (degrees)',
+            xlabelStr = 'Relative Orientation (degrees)',
+            ylabelStr = distanceLabelStr, 
+            mask_by_sem_limit = mask_by_sem_limit_degrees*np.pi/180.0,
+            unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+            cmap = 'RdYlBu_r', 
+            plot_type = plot_type_2D,
+            outputFileName = outputFileName,
+            closeFigure = closeFigures)    
+    
     return saved_pair_outputs
-
-
 
 def make_rel_orient_rank_key(dataset, behavior_key_string):
     """

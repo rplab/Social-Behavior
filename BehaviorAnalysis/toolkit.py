@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Raghuveer Parthasarathy, Nov. 14, 2025
+Last modified by Raghuveer Parthasarathy, Dec. 7, 2025
 
 Description
 -----------
@@ -1080,9 +1080,10 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
                     a string "min", "max", or "mean", apply this
                        operation along axis==1 (e.g. for fastest fish)
     use_abs_value : bool, default False
-                    If True, use absolute value of the quantitative 
-                    property before applying constraints or combining values. 
-                    Useful for signed angles (relative orientation, bending).
+                    If True, return the absolute value of the quantitative 
+                    property. Note that use_abs_value_constraint determines
+                    the application of the constraint. 
+                    Is this useful? Probably not -- would we ever want it True?
     constraintKey : the key to use for the constraint (e.g. "interfish_distance_mm")
                     datasets[j][constraintKey] should be a single, 1D numpy array
                     or should be a (N, Nfish) numpy array with the column
@@ -1096,6 +1097,9 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
     use_abs_value_constraint : bool, default False
                     If True, use absolute value of the quantitative 
                     property before applying constraints or combining values. 
+                    *Also* use the absolute value of the quantitative
+                    property when comparing with constraintRange.
+                    (Ambiguous?)
                     Useful for signed angles (relative orientation, bending).    
     Returns
     -------
@@ -1124,7 +1128,7 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
         constraintIdxString = None
             
     values_all_constrained = []
-    
+
     if constraintKey is None or constraintRange is None \
                              or len(constraintRange) != 2:
         # If constraintRange is empty or invalid, return all values,
@@ -1179,15 +1183,17 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
         constraint_array = get_values_subset(datasets[j][constraintKey], 
                                              keyIdx = constraintIdx, 
                                              use_abs_value = use_abs_value_constraint)
-        constrained_mask = (constraint_array >= constraintRange[0]) \
-                            & (constraint_array <= constraintRange[1])
+        if use_abs_value_constraint:
+            constrained_mask = (np.abs(constraint_array) >= constraintRange[0]) \
+                                & (np.abs(constraint_array) <= constraintRange[1])
+        else:
+            constrained_mask = (constraint_array >= constraintRange[0]) \
+                                & (constraint_array <= constraintRange[1])
         constrained_mask = constrained_mask.flatten()
         good_frames_mask = np.isin(frames-idx_offset, 
                                    bad_frames-idx_offset, invert=True)
         values = get_values_subset(datasets[j][keyName], keyIdx = keyIdx, 
                                    use_abs_value = use_abs_value)
-        if use_abs_value:
-            values = np.abs(values)
 
         Ndim_constrained = get_effective_dims(constraint_array)
         
@@ -1213,6 +1219,9 @@ def combine_all_values_constrained(datasets, keyName='speed_array_mm_s',
             constrained_mask = np.tile(constrained_mask[:, np.newaxis], 
                                        (1, good_frames_mask.ndim))
         
+        if use_abs_value:
+            values = np.abs(values)
+
         values = values.flatten()
         good_frames_mask = good_frames_mask.flatten()
         constrained_mask = constrained_mask.flatten()
