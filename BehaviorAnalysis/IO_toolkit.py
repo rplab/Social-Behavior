@@ -4,7 +4,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Aug 25 20:59:37 2025
-Last modified Dec. 7, 2025 -- Raghuveer Parthasarathy
+Last modified Dec. 9, 2025 -- Raghuveer Parthasarathy
 
 Description
 -----------
@@ -1905,7 +1905,7 @@ def simple_write_CSV(x, y_list, filename, header_strings=None):
     # Validate input lengths
     length = len(x)
     for i, y in enumerate(y_list):
-        if len(y) != length:
+        if (length > 1) and (len(y) != length):
             raise ValueError(f"Length mismatch: y[{i}] has length {len(y)}, expected {length}.")
 
     # Create DataFrame
@@ -2184,7 +2184,8 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
     probability distribution (semi-transparent). 
     Can also output the concatenated probability distribution.
     Can plot in polar coordinates – useful for angle distributions.
-    Typically use this with the output of combine_all_values_constrained() .  
+    Typically use this with the output of combine_all_values_constrained().
+    Optional writing of values to a CSV file.
     
     Inputs:
        x_list : list of numpy arrays

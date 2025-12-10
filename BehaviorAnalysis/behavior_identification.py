@@ -29,7 +29,7 @@ from toolkit import wrap_to_pi, combine_all_values_constrained, \
 from IO_toolkit import plot_probability_distr, plot_2D_heatmap, \
     plot_2Darray_linePlots, make_2D_histogram, slice_2D_histogram, \
     plot_function_allSets, plot_waterfall_binned_crosscorr, \
-    get_plot_and_CSV_filenames
+    get_plot_and_CSV_filenames, simple_write_CSV
 from behavior_identification_single import average_bout_trajectory_allSets, \
     calc_bend_angle
 from scipy.stats import skew
@@ -1335,11 +1335,12 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
                                      outlier_std=3.0,
                                      makePlot=True, plot_each_dataset=False,
                                      ylim=None, titleStr=None, plotColor='black',
-                                     outputFileName=None, closeFigure=False):
+                                     outputFileName=None, closeFigure=False,
+                                     outputCSVFileName = None):
     
     """
     Calculate mean inter-bout interval (IBI) binned by mean inter-fish distance
-    during the interval.
+    during the interval. Plot (optional) and write a CSV (optional).
     
     Requires Nfish = 2. Calculates IBI for each fish in each dataset.
     Returns average over all fish, average for each dataset (averaged over both fish),
@@ -1382,6 +1383,13 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
     outputFileName : string, for saving the plot (default None -- don't save)
     closeFigure : (bool) if True, if makePlot is True, close the figure
                         after creating it.
+    outputCSVFileName : if not None, save to a CSV file the following (columns):
+                - plotted "X" positions (bin_centers)
+                - plotted mean "Y" positions (binned_IBI[:,0] == mean_IBI)
+                - Standard deviation (binned_IBI[:,1] == std_IBI)
+                - Standard error of the mean (binned_IBI[:,2] == sem_IBI)
+                - Each individual dataset's mean IBI (binned_IBI_each_dataset)
+                  (not each individual fish)
     
     Returns
     -------
@@ -1517,6 +1525,7 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
     binned_IBI[:,1] = np.nanstd(binned_IBI_each_fish, axis=0)
     binned_IBI[:,2] = np.nanstd(binned_IBI_each_fish, axis=0) / np.sqrt(nfish_total)
     
+    xlabelStr= f'Distance: {distance_key}' # will also use for CSV
     if makePlot:
         fig = plt.figure()
         plt.errorbar(bin_centers, binned_IBI[:,0], binned_IBI[:,2], 
@@ -1530,7 +1539,7 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
                             alpha=alpha_each)
 
         plt.title(titleStr)
-        plt.xlabel(f'Distance: {distance_key}')
+        plt.xlabel(xlabelStr)
         plt.ylabel('Mean IBI (s)')
         plt.xlim((bin_distance_min, bin_distance_max))
         if ylim is not None:
@@ -1545,6 +1554,21 @@ def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm
     # If only 1 bin, flatten
     if binned_IBI.shape[0]==1:
         binned_IBI = binned_IBI.flatten()
+
+    # Output points to CSV (optional)
+    if outputCSVFileName is not None:
+        header_strings = [xlabelStr.replace(',', '_'), 
+                          'mean_IBI (s)', 'std_IBI (s)', 'sem_IBI (s)']
+        for j in range(Ndatasets):
+            header_strings.append(f'IBI_Dataset_{j+1}')
+        list_to_output = [binned_IBI[:, i] if binned_IBI.ndim == 2 \
+                          else binned_IBI[i] for i in range(3)]
+        for j in range(Ndatasets):
+            list_to_output.append(binned_IBI_each_dataset[j,:],)
+        simple_write_CSV(bin_centers, 
+                         list_to_output, 
+                         filename =  outputCSVFileName, 
+                         header_strings=header_strings)
         
     return binned_IBI, bin_centers, binned_IBI_each_dataset, binned_IBI_each_fish
 
