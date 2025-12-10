@@ -2227,6 +2227,7 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
                    - plotted mean "Y" positions (prob_dist_all)
                    - Standard deviation (prob_dist_each_std)
                    - Standard error of the mean (prob_dist_each_sem)
+                   - Each individual probability distribution array
                        
     Returns:
         prob_dist_all, bin_centers : concatenated probability distribution
@@ -2346,8 +2347,14 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
     if outputCSVFileName is not None:
         header_strings = [xlabelStr.replace(',', '_'), 
                           'prob', 'prob_std', 'prob_sem']
+        for j in range(len(x_list)):
+            header_strings.append(f'prob_Dataset_{j+1}')
+        p_list_to_output = [prob_dist_all, prob_dist_each_std, prob_dist_each_sem]
+        
+        for j in range(len(x_list)):
+            p_list_to_output.append(prob_dist_each[j],)
         simple_write_CSV(bin_centers*unit_scaling_for_plot, 
-                         [prob_dist_all, prob_dist_each_std, prob_dist_each_sem], 
+                         p_list_to_output, 
                          filename =  outputCSVFileName, 
                          header_strings=header_strings)
             
