@@ -4,7 +4,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Wed Oct 15 08:59:05 2025
-Last modified Dec. 7, 2025 -- Raghuveer Parthasarathy
+Last modified Dec. 19, 2025 -- Raghuveer Parthasarathy
 
 Description
 -----------
@@ -31,7 +31,8 @@ import os
 import numpy as np
 from IO_toolkit import load_and_assign_from_pickle, \
     combine_images_to_tiff, plot_2D_heatmap, slice_2D_histogram
-from behavior_identification import make_pair_fish_plots, make_bending_angle_plots
+from behavior_identification import make_pair_fish_plots,  \
+    make_bending_angle_plots, make_pair_1D_v_distance_plots
 from behavior_identification_single import make_single_fish_plots
 from toolkit import get_fps 
 from behavior_correlations import plot_behaviorCorrelation,  \
@@ -216,7 +217,6 @@ if closeFigures:
     
 for exptName in all_expts.keys():
     if all_expts[exptName]['Nfish'] == 2:
-        """
         make_pair_fish_plots(all_expts[exptName]['datasets'], 
                              exptName = exptName,
                              color = all_expts[exptName]['plot_color'], 
@@ -224,7 +224,6 @@ for exptName in all_expts.keys():
                              outputFileNameExt = 'png',
                              closeFigures = closeFigures,
                              writeCSVs = False)
-        """
         saved_pair_outputs = make_bending_angle_plots(
                              all_expts[exptName]['datasets'], 
                              exptName = exptName,
@@ -240,7 +239,25 @@ for exptName in all_expts.keys():
         all_expts[exptName]["bend_2Dhist_X"] = saved_pair_outputs[2]
         all_expts[exptName]["bend_2Dhist_Y"] = saved_pair_outputs[3]
     
+#%% Make pair plots of behavior v distance
+# Only for Nfish ==2
 
+closeFigures = True
+if closeFigures:
+    print('Pair plots of behavior v distance: Closing Figure Windows.')
+    
+distanceKey = 'closest_distance_mm'      # can make it be 'head_head_distance_mm'
+for exptName in all_expts.keys():
+    if all_expts[exptName]['Nfish'] == 2:
+        make_pair_1D_v_distance_plots(all_expts[exptName]['datasets'], 
+                                      exptName = exptName,
+                                      distanceKey=distanceKey,
+                                      bin_range=(0.0, 50.0), Nbins=20,
+                                      color = all_expts[exptName]['plot_color'],
+                                      outputFileNameBase = f'{exptName} behavior', 
+                                      outputFileNameExt = 'png',
+                                      closeFigures = closeFigures,
+                                      writeCSVs = False)
 
 
 #%% Make combination (multipage) images from individual PNGs

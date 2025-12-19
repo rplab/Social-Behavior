@@ -29,6 +29,7 @@ from toolkit import wrap_to_pi, combine_all_values_constrained, \
 from IO_toolkit import plot_probability_distr, plot_2D_heatmap, \
     plot_2Darray_linePlots, make_2D_histogram, slice_2D_histogram, \
     plot_function_allSets, plot_waterfall_binned_crosscorr, \
+    calculate_property_1Dbinned, \
     get_plot_and_CSV_filenames, simple_write_CSV
 from behavior_identification_single import average_bout_trajectory_allSets, \
     calc_bend_angle
@@ -1921,7 +1922,6 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
     Inputs:
         datasets : dictionaries for each dataset
         exptName : (string) Experiment name, to append to titles.
-        plot_each_dataset : (bool) if True, plot the prob. distr. for each array               
         color: plot color (uses alpha for indiv. dataset colors)
         plot_type_2D : str, 'heatmap' or 'line_plots'
                     Which plotting function make_2D_histogram() will use
@@ -2353,6 +2353,159 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                                     closeFigure = closeFigures)
 
     return None
+
+
+def make_pair_1D_v_distance_plots(datasets, exptName = '', 
+                                  distanceKey='closest_distance_mm', 
+                                  bin_range=(0.0, 50.0), Nbins=20,
+                                  color = 'black',
+                                  outputFileNameBase = 'pair_', 
+                                  outputFileNameExt = 'png',
+                                  closeFigures = False,
+                                  writeCSVs = False):
+    """
+    Makes several useful plots of something vs. inter-fish distance
+    
+    Inputs:
+        datasets : dictionaries for each dataset
+        exptName : (string) Experiment name, to append to titles.
+        distanceKey : (string) which distance key to use, 
+                      'closest_distance_mm' or 'head_head_distance_mm'
+        bin_range : tuple,  (min, max) for binning
+        Nbins : int,  Number of bins
+        color: plot color (uses alpha for indiv. dataset colors)
+        outputFileNameBase : base file name for figure output; if None,
+                             won't save a figure file
+        outputFileNameExt : extension for figure output (e.g. 'eps' or 'png')
+        closeFigures : (bool) if True, close a figure after creating it.
+        writeCSVs : (bool) Used by various functions; if true, output plotted 
+                            points to a CSV file. See code for filenames
+
+    Outputs:
+        None
+
+    """
+        
+    verifyPairs = True
+    for j in range(len(datasets)):
+        if datasets[j]["Nfish"] != 2:
+            verifyPairs = False
+    if verifyPairs==False:
+        raise ValueError('Error in make_pair_1D_v_distance_plots; Nfish must be 2 !')
+    
+    if distanceKey=='closest_distance_mm':
+        xlabelStr = 'Closest distance (mm)'
+        distance_abbrev = 'CL'
+    elif distanceKey=='head_head_distance_mm':
+        xlabelStr = 'Head-Head distance (mm)'
+        distance_abbrev = 'HH'
+    else: 
+        raise ValueError('Invalid distance key.')
+        
+    # Perpendicular one-sees
+    keyName = 'perp_oneSees'
+    titleStr = f'{keyName} probability v distance'
+    ylabelStr = f'{keyName} probability'
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames(
+                                            f'_{keyName}_v_{distance_abbrev}distance', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs)
+    _, _, _ = calculate_property_1Dbinned(datasets, 
+                                          keyName= keyName, 
+                                          key_is_a_behavior = True, 
+                                          binKeyName=distanceKey,
+                                          bin_range=bin_range, Nbins=Nbins,
+                                          dilate_minus1= False,
+                                          makePlot=True, titleStr=titleStr,
+                                          xlabelStr= xlabelStr, 
+                                          ylabelStr= ylabelStr,
+                                          color=color, 
+                                          outputFileName=outputFileName, 
+                                          closeFigure=closeFigures)
+
+    # J-Bend
+    keyName = 'Jbend_any'
+    titleStr = f'{keyName} probability v distance'
+    ylabelStr = f'{keyName} probability'
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames(f'_{keyName}_v_{distance_abbrev}distance', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs)
+    _, _, _ = calculate_property_1Dbinned(datasets, 
+                                          keyName= keyName, 
+                                          key_is_a_behavior = True, 
+                                          binKeyName=distanceKey,
+                                          bin_range=bin_range, Nbins=Nbins,
+                                          dilate_minus1= False,
+                                          makePlot=True, titleStr=titleStr,
+                                          xlabelStr= xlabelStr, 
+                                          ylabelStr= ylabelStr,
+                                          color=color, 
+                                          outputFileName=outputFileName, 
+                                          closeFigure=closeFigures)
+
+    # C-Bend
+    keyName = 'Cbend_any'
+    titleStr = f'{keyName} probability v distance'
+    ylabelStr = f'{keyName} probability'
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames(f'_{keyName}_v_{distance_abbrev}distance', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs)
+    _, _, _ = calculate_property_1Dbinned(datasets, 
+                                          keyName= keyName, 
+                                          key_is_a_behavior = True, 
+                                          binKeyName=distanceKey,
+                                          bin_range=bin_range, Nbins=Nbins,
+                                          dilate_minus1= False,
+                                          makePlot=True, titleStr=titleStr,
+                                          xlabelStr= xlabelStr, 
+                                          ylabelStr= ylabelStr,
+                                          color=color, 
+                                          outputFileName=outputFileName, 
+                                          closeFigure=closeFigures)
+
+    # R-Bend
+    keyName = 'Rbend_any'
+    titleStr = f'{keyName} probability v distance'
+    ylabelStr = f'{keyName} probability'
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames(f'_{keyName}_v_{distance_abbrev}distance', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs)
+    _, _, _ = calculate_property_1Dbinned(datasets, 
+                                          keyName= keyName, 
+                                          key_is_a_behavior = True, 
+                                          binKeyName=distanceKey,
+                                          bin_range=bin_range, Nbins=Nbins,
+                                          dilate_minus1= False,
+                                          makePlot=True, titleStr=titleStr,
+                                          xlabelStr= xlabelStr, 
+                                          ylabelStr= ylabelStr,
+                                          color=color, 
+                                          outputFileName=outputFileName, 
+                                          closeFigure=closeFigures)
+
+    # isActive (moving or bending)
+    keyName = 'isActive_any'
+    titleStr = f'{keyName} probability v distance'
+    ylabelStr = f'{keyName} probability'
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames(f'_{keyName}_v_{distance_abbrev}distance', 
+                                            outputFileNameBase, 
+                                            outputFileNameExt, writeCSVs)
+    _, _, _ = calculate_property_1Dbinned(datasets, 
+                                          keyName= keyName, 
+                                          key_is_a_behavior = True, 
+                                          binKeyName=distanceKey,
+                                          bin_range=bin_range, Nbins=Nbins,
+                                          dilate_minus1= False,
+                                          makePlot=True, titleStr=titleStr,
+                                          xlabelStr= xlabelStr, 
+                                          ylabelStr= ylabelStr,
+                                          color=color, 
+                                          outputFileName=outputFileName, 
+                                          closeFigure=closeFigures)
+
+
+    return None
+
 
 
 def make_bending_angle_plots(datasets, exptName = '', distance_type = None,
