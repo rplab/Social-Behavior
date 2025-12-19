@@ -4,7 +4,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Aug 25 20:59:37 2025
-Last modified Dec. 9, 2025 -- Raghuveer Parthasarathy
+Last modified Dec. 18, 2025 -- Raghuveer Parthasarathy
 
 Description
 -----------
@@ -2362,16 +2362,23 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
     return prob_dist_all, bin_centers, prob_dist_each_std, \
            prob_dist_each_sem, Nsets_total
 
-def plot_behavior_property_histogram(bin_centers, counts, 
+
+
+    
+def plot_behavior_probability_bin_by_property(bin_centers, counts, 
                                     behavior_key_for_title, property_key_for_label,
                                     xlabelStr=None, ylabelStr='Number of events',
                                     titleStr=None, normalize=True,
                                     xlim = None, ylim = None, 
                                     outputFileName=None):
     """
-    Plot histogram of behavior events binned by quantitative property.
-    *Unfinished* -- doesn't normalize by the number of occurrences of that 
-    property overall
+    Plot the probability of a behavior binned by some quantitative property,
+    such as distance. Note that the behavior probability is conditional
+    on the quantitative property bin, regardless of the probability of 
+    that property bin. In other words, for example, we want the probability
+    of a turn at d = 5 mm and the probability of a turn at d = 10 mm not
+    to depend on how many times d = 5 mm and d = 10 mm occur. The former 
+    is (# turning frames when d = 5mm) / (# frames when d = 5 mm)
     
     Parameters
     ----------
@@ -2759,24 +2766,40 @@ def plot_waterfall_binned_crosscorr(binned_crosscorr_all, bin_centers, t_lag,
 
 
 def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
-                               binKeyName='closest_distance_mm',
-                               bin_range=(0.0, 50.0), Nbins=20,
-                               constraintKey=None, constraintRange=None,
-                               constraintIdx=None,
-                               use_abs_value=False,
-                               use_abs_value_constraint=False,
-                               dilate_minus1=True,
-                               makePlot=True, titleStr=None,
-                               xlabelStr=None, ylabelStr=None,
-                               color='black', xlim=None, ylim=None,
-                               outputFileName=None, closeFigure=False,
-                               outputCSVFileName = None):
+                                key_is_a_behavior = False,
+                                binKeyName='closest_distance_mm',
+                                bin_range=(0.0, 50.0), Nbins=20,
+                                constraintKey=None, constraintRange=None,
+                                constraintIdx=None,
+                                use_abs_value=False,
+                                use_abs_value_constraint=False,
+                                dilate_minus1=True,
+                                makePlot=True, titleStr=None,
+                                xlabelStr=None, ylabelStr=None,
+                                color='black', xlim=None, ylim=None,
+                                outputFileName=None, closeFigure=False,
+                                outputCSVFileName = None):
     """
     Calculate mean of a quantitative property binned by another property.
     Creates a 1D line plot with error bars.
     
     This is analogous to what calculate_IBI_binned_by_distance() does for IBI,
     but works for any quantitative property.
+    
+    This function can also be used to calculate the probability of a 
+    *behavior* binned by some quantitative property, such as distance. 
+    If so, set key_is_a_behavior = True, and have keyName be the behavior name
+    (e.g. "Jbend_any")
+    Note that the behavior probability is conditional
+    on the quantitative property bin, regardless of the probability of 
+    that property bin. In other words, for example, we want the probability
+    of a turn at d = 5 mm and the probability of a turn at d = 10 mm not
+    to depend on how many times d = 5 mm and d = 10 mm occur. The former 
+    is (# turning frames when d = 5mm) / (# frames when d = 5 mm)
+    
+    The "behavior frames" are given by the "raw frames" key in the
+    behavior dictionary
+    
     
     Parameters
     ----------
@@ -2785,6 +2808,8 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
         Property to calculate mean of (e.g., 'speed_array_mm_s')
     keyIdx : int, str, or None
         Which fish/operation to use for keyName
+    key_is_a_behavior : bool
+        If True, 
     binKeyName : str
         Property to bin by (e.g., 'closest_distance_mm')
     bin_range : tuple
@@ -2837,8 +2862,11 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
     for j in range(Ndatasets):
         print(f' {j}... ', end='')
         dataset = datasets[j]
-        idx_offset = min(dataset["frameArray"])
-        
+        frames = dataset["frameArray"]
+        idx_offset = min(frames)
+        if idx_offset != 1:
+            raise ValueError('Minimum frame number is not 1!')
+
         # Handle bad frames
         badTrackFrames = dataset["bad_bodyTrack_frames"]["raw_frames"]
         if dilate_minus1:
@@ -2849,8 +2877,15 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
             bad_frames_set = set(badTrackFrames)
         
         # Get data
-        property_data = get_values_subset(dataset[keyName], keyIdx=keyIdx,
-                                         use_abs_value=use_abs_value)
+        if key_is_a_behavior:
+            behavior_frames = dataset[keyName]["raw_frames"]
+            is_in_bf = np.isin(frames, behavior_frames)
+            property_data = is_in_bf.astype(float)
+        else:
+            # Quantitative property
+            property_data = get_values_subset(dataset[keyName], keyIdx=keyIdx,
+                                              use_abs_value=use_abs_value)
+
         bin_data = get_values_subset(dataset[binKeyName], keyIdx=None,
                                      use_abs_value=False)
         
@@ -2874,7 +2909,6 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
             Ndim_constraint = None
         
         # Remove bad frames
-        frames = dataset["frameArray"]
         good_frames_mask = np.isin(frames - idx_offset,
                                    np.array(list(bad_frames_set)) - idx_offset,
                                    invert=True)

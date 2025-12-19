@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Raghuveer Parthasarathy, Dec. 7, 2025
+Last modified by Raghuveer Parthasarathy, Dec. 18, 2025
 
 Description
 -----------
@@ -958,7 +958,7 @@ def get_values_subset(data_array, keyIdx, use_abs_value = False):
     
     Parameters
     ----------
-    data_array : numpy array
+    data_array : numpy array of all the data values
     keyIdx : integer, string, or None
         If None: return full array
         If integer: return column keyIdx
