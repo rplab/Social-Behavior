@@ -4,7 +4,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Aug 25 20:59:37 2025
-Last modified Dec. 18, 2025 -- Raghuveer Parthasarathy
+Last modified Dec. 25, 2025 -- Raghuveer Parthasarathy
 
 Description
 -----------
@@ -241,7 +241,8 @@ def load_analysis_parameters(basePath, params_file):
 def check_analysis_parameters(params):
     """
     Checks that all the keys in the analysis parameters file exist.
-    If a key doesn't exist, prompts the user for its value with defaults from the file.
+    If a key doesn't exist, prompts the user for its value with 
+    defaults from the file.
     Performs various checks
     Inputs:
         params : dictionary of analysis parameters
@@ -274,20 +275,35 @@ def check_analysis_parameters(params):
         "approach_cos_angle_thresh": 0.5,
         "approach_min_frame_duration": [2,2],
         "motion_speed_threshold_mm_second": 9,
-        "proximity_threshold_mm": 7,
+        "proximity_threshold_mm": [5.0, 15.0],
+        "proximity_distance_measure": 'closest',
         "output_subFolder": 'Analysis',
         "allDatasets_ExcelFile": 'behavior_counts.xlsx', 
         "allDatasets_markFrames_ExcelFile":  'behaviors_in_each_frame.xlsx'
         # "another_key": default_value,
     }
     
+    # if "proximity_threshold_mm" is just a single number, make the range
+    #    0.0 to that number (see Dec. 2025 notes)
+    if type(params["proximity_threshold_mm"])==int or \
+       type(params["proximity_threshold_mm"])==float:
+           params["proximity_threshold_mm"] = [0.0, params["proximity_threshold_mm"]]
+        
+    if 'proximity_distance_measure' not in params:
+        print('Using closest distance for "maintaining proximity" measure')
+        params['proximity_distance_measure'] = 'closest_distance'
+    if (params['proximity_distance_measure'] != 'closest') and \
+        (params['proximity_distance_measure'] != 'head_to_head'):
+        print('INVALID OPTION. Using closest distance for "maintaining proximity" measure')
+        params['proximity_distance_measure'] = 'closest'
+        
     # Check for missing keys and prompt the user for their values
     for key, default_value in required_keys.items():
         if key not in params:
             user_input = input(f"Enter value for {key} (default: {default_value}): ")
             params[key] = user_input if user_input else default_value
     
-    # Set edge rejection criterion to None 'None', and if negative
+    # Set edge rejection criterion to None if 'None', and if negative
     if isinstance(params["edge_rejection_threshold_mm"], str):
         if params["edge_rejection_threshold_mm"].lower() == 'none':
             params["edge_rejection_threshold_mm"] = None

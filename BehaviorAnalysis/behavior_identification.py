@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified December 7, 2025 -- Raghu Parthasarathy
+Last modified December 25, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -81,7 +81,8 @@ def get_basic_two_fish_characterizations(all_position_data, datasets, CSVcolumns
         # than the threshold value of the "proximity_threshold_mm" parameter)
         close_pair_frames =  get_close_pair_frames(datasets[j]["closest_distance_mm"],
                                                   datasets[j]["frameArray"], 
-                                                  proximity_threshold_mm = params["proximity_threshold_mm"])
+                                                  proximity_threshold_mm = \
+                                                      min(params["proximity_threshold_mm"]))
         # make a dictionary containing frames, removing frames with 
         # "bad" elements. Also makes a 2xN array of initial frames and durations, 
         # as usual for these behavior dictionaries
@@ -758,8 +759,8 @@ def get_tail_rubbing_frames(body_x, body_y, head_separation,
 
 def get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params):
     """
-    Returns an array of frames for "maintaining proximity" events, in which fish
-    maintain proximity while moving, over some duration
+    Returns an array of frames for "maintaining proximity" events, 
+    in which fish maintain proximity while moving, over some duration
 
     Args:
         position_data : basic position information for this dataset, numpy array
@@ -768,6 +769,10 @@ def get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params):
         CSVcolumns: information on what the columns of position_data are
         params : dictionary of all analysis parameters -- will use speed 
             and proximity thresholds. Includes:
+            proximity_threshold_mm :list of two items, min and max range to 
+                consider for proximity
+            proximity_distance_measure : what distance measure to use (closest
+                    or head_to_head)
             max_motion_gap_s : maximum gap in matching criterion to allow (s). 
                 At 25 fps, 0.5 s = 12.5 frames.
             min_proximity_duration_s : min duration that matching criteria 
@@ -780,6 +785,13 @@ def get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params):
 
     """
     
+    if params["proximity_distance_measure"] == 'closest':
+        distance_key = "closest_distance_mm"
+    elif params["proximity_distance_measure"] == 'head_to_head':
+        distance_key = "head_head_distance_mm"
+    else:
+        raise ValueError('Invalid distance measure!')
+            
     # Criteria, evaluated in each frame.
     speed_criterion = np.any(dataset["speed_array_mm_s"] > 
                              params["motion_speed_threshold_mm_second"], 
@@ -790,8 +802,12 @@ def get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params):
     ste_smallgap = np.ones((N_smallgap+1,), dtype=bool)
     speed_criterion_closed = binary_closing(speed_criterion, ste_smallgap)
 
-    distance_criterion = dataset["closest_distance_mm"].flatten() < \
-        params["proximity_threshold_mm"]
+    # Distance
+    distance_criterion = (dataset[distance_key].flatten() > \
+                          params["proximity_threshold_mm"][0]) & \
+                         (dataset[distance_key].flatten() < \
+                          params["proximity_threshold_mm"][1])
+                             
     all_criteria = speed_criterion_closed & distance_criterion
 
     # Opening to enforce min. duration
@@ -825,17 +841,6 @@ def get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params):
         axs[fno].set_xlim(xlim)
         
     
-        # Plot 4: Distances
-        fno = fno + 1
-        axs[fno].plot(frames, dataset["head_head_distance_mm"], color='peru', label='Head-Head distance')
-        axs[fno].plot(frames, dataset["closest_distance_mm"].flatten(), color='darkturquoise', label='Closest distance')
-        axs[fno].plot(frames, np.ones_like(frames) * params["proximity_threshold_mm"], linestyle='dotted', color='gray')
-        axs[fno].set_ylabel('distance, mm')
-        axs[fno].set_title(f'{dataset["dataset_name"]}: Distances', fontsize = 20)
-        axs[fno].legend()
-        axs[fno].set_xlim(xlim)
-        axs[fno].set_xlabel('frame', fontsize = 18)  # X-axis label added here
-        
         # Plot 4: Criteria
         fno = fno + 1
         axs[fno].plot(frames, speed_criterion, color='olive', label='Speed')

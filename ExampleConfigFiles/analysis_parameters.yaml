@@ -23,7 +23,8 @@ params:
   approach_cos_angle_thresh: 0.5
   approach_min_frame_duration: [2,2]
   motion_speed_threshold_mm_second: 9
-  proximity_threshold_mm: 7
+  proximity_threshold_mm: [5.0, 15.0]
+  proximity_distance_measure: closest
   max_motion_gap_s: 0.5 
   min_proximity_duration_s: 0.0
   # Output files, path
