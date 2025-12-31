@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Split from behavior_identification.py on July 22, 2024
-Last modified Nov. 12, 2025 -- Raghu Parthasarathy
+Last modified Dec. 31, 2025 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -243,6 +243,7 @@ def get_single_fish_characterizations(all_position_data, datasets, CSVcolumns,
                                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"],
                                           behavior_name = CRJ_key,
                                           Nframes=datasets[j]['Nframes'])
+
         # Average speed (averaged over fish), and average speed only in 
         # moving frames. get_mean_speed() will dilate bad tracks by +1
         speed_mean_all, speed_mean_moving = \
@@ -252,6 +253,13 @@ def get_single_fish_characterizations(all_position_data, datasets, CSVcolumns,
         datasets[j]["speed_mm_s_mean"] = np.mean(speed_mean_all)
         datasets[j]["speed_whenMoving_mm_s_mean"] = np.mean(speed_mean_moving)
 
+        # Average angular speed (averaged over fish), and average speed only in 
+        # moving frames. get_mean_speed() will dilate bad tracks by +1
+        angular_speed_mean_all, angular_speed_mean_moving = \
+            get_mean_speed(datasets[j]["angular_speed_array_rad_s"], 
+                           isMoving_frames_each, datasets[j]["bad_bodyTrack_frames"]["raw_frames"])
+        # average over fish, since ID is unreliable
+        datasets[j]["angular_speed_rad_s_mean"] = np.mean(angular_speed_mean_all)
 
         # Bout statistics.
         bouts_N, bout_duration_s,  bout_rate_bpm, bout_ibi_s = \

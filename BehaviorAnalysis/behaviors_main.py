@@ -185,7 +185,7 @@ def main():
         raise ValueError("Error: Bad Loading Option.")
         
     t_load = perf_counter()
-    print(f'\n\nData loaded, repaired; elapsed time: {t_load - t0:.2f} seconds')
+    print(f'\n\nData loaded, repaired; elapsed time: {t_load - t0:.2f} seconds.\n')
 
     #%% Identify bad tracking
             
@@ -248,7 +248,7 @@ def main():
                                           expt_config['arena_radius_mm'])
     
     t_assessTracks = perf_counter()
-    print(f'\n\nBad tracking identified, re-linked; elapsed time: {t_assessTracks - t0:.2f} seconds')
+    print(f'\n\nBad tracking identified, re-linked; elapsed time: {t_assessTracks - t0:.2f} seconds.\n')
     
     #%% Analysis: Basic characterizations
     
@@ -266,7 +266,7 @@ def main():
                                                  expt_config, params)
 
     t_single = perf_counter()
-    print(f'\n\nSingle fish characterizations done; elapsed time: {t_single - t0:.2f} seconds')
+    print(f'\n\nSingle fish characterizations done; elapsed time: {t_single - t0:.2f} seconds.\n')
 
     #%% Analysis: multi-fish characterizations
 
@@ -347,7 +347,7 @@ def main():
                                                    Nframes=datasets[j]['Nframes'])
             
     t_pair = perf_counter()
-    print(f'\n\nPair characterizations done; elapsed time: {t_pair - t0:.2f} seconds')
+    print(f'\n\nPair characterizations done; elapsed time: {t_pair - t0:.2f} seconds.\n')
     
             
     #%% Outputs
@@ -384,7 +384,7 @@ def main():
     os.chdir(cwd)
 
     t_write = perf_counter()
-    print(f'\n\nOutputs written; elapsed time: {t_write - t0:.2f} seconds')
+    print(f'\n\nOutputs written; elapsed time: {t_write - t0:.2f} seconds.\n')
 
     
     return datasets, all_position_data, CSVcolumns

@@ -4,7 +4,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Aug 25 20:59:37 2025
-Last modified Dec. 25, 2025 -- Raghuveer Parthasarathy
+Last modified Dec. 31, 2025 -- Raghuveer Parthasarathy
 
 Description
 -----------
@@ -297,6 +297,13 @@ def check_analysis_parameters(params):
         print('INVALID OPTION. Using closest distance for "maintaining proximity" measure')
         params['proximity_distance_measure'] = 'closest'
         
+    # If 'allDatasets_markFrames_ExcelFile' is empty or None, set to None
+    if "allDatasets_markFrames_ExcelFile" not in params:
+        print('\n\nSetting allDatasets_markFrames_ExcelFile to None.\n')
+        params['allDatasets_markFrames_ExcelFile'] = None
+    if params['allDatasets_markFrames_ExcelFile'].lower() == 'none':
+        params['allDatasets_markFrames_ExcelFile'] = None
+    
     # Check for missing keys and prompt the user for their values
     for key, default_value in required_keys.items():
         if key not in params:
@@ -468,12 +475,13 @@ def set_outputFile_params(params, expt_config, subGroupName):
     else:
         params["allDatasets_ExcelFile"] = f"{expt_config['expt_name']}_{subGroupName}_{base_name1}{extension1}" 
     print(f"Modifying output allDatasets_ExcelFile file name to be: {params['allDatasets_ExcelFile']}")
-    base_name, extension = os.path.splitext(params["allDatasets_markFrames_ExcelFile"])
-    if subGroupName is None:
-        params["allDatasets_markFrames_ExcelFile"] = f"{expt_config['expt_name']}_{base_name}{extension}"
-    else:
-        params["allDatasets_markFrames_ExcelFile"] = f"{expt_config['expt_name']}_{subGroupName}_{base_name}{extension}"
-    print(f"Modifying output allDatasets_markFrames_ExcelFile file name to be: {params['allDatasets_markFrames_ExcelFile']}")
+    if params["allDatasets_markFrames_ExcelFile"] is not None:
+        base_name, extension = os.path.splitext(params["allDatasets_markFrames_ExcelFile"])
+        if subGroupName is None:
+            params["allDatasets_markFrames_ExcelFile"] = f"{expt_config['expt_name']}_{base_name}{extension}"
+        else:
+            params["allDatasets_markFrames_ExcelFile"] = f"{expt_config['expt_name']}_{subGroupName}_{base_name}{extension}"
+        print(f"Modifying output allDatasets_markFrames_ExcelFile file name to be: {params['allDatasets_markFrames_ExcelFile']}")
     
     
     # If there are subgroups, modify the output Excel file name for
@@ -1273,57 +1281,58 @@ def write_output_files(params, output_path, datasets):
         # two-fish behaviors if that dataset was for single fish data
         key_list_revised = [key for key in key_list if key in datasets[0]]
         
-        # Mark frames for each dataset
-        # Create the ExcelWriter object with path validation
-        excel_filename = sanitize_filename(params['allDatasets_markFrames_ExcelFile'])
-        excel_file_path = output_path / excel_filename
         
-        # Check if full path length is reasonable
-        if len(str(excel_file_path)) > 250:  # Conservative limit
-            # Try shortening the filename
-            name, ext = excel_filename.rsplit('.', 1)
-            shortened_name = name[:100] + '_shortened.' + ext
-            excel_file_path = output_path / shortened_name
-            print(f"Warning: Excel filename was too long, shortened to: {shortened_name}")
-        
-        try:
-            writer = pd.ExcelWriter(excel_file_path, engine='xlsxwriter')
-        except (FileNotFoundError, OSError, PermissionError) as e:
-            print(f"Error creating Excel file: {e}")
-            print(f"Attempted path: {excel_file_path}")
-            print(f"Path length: {len(str(excel_file_path))} characters")
+        if params['allDatasets_markFrames_ExcelFile'] is not None:
+            # Mark frames for each dataset
+            # Create the ExcelWriter object with path validation
+            excel_filename = sanitize_filename(params['allDatasets_markFrames_ExcelFile'])
+            excel_file_path = output_path / excel_filename
             
-            # Fallback: try with a very short filename
-            fallback_name = "behav_frame.xlsx"
-            excel_file_path = output_path / fallback_name
-            print(f"Trying fallback filename: {fallback_name}")
-            writer = pd.ExcelWriter(excel_file_path, engine='xlsxwriter')
-
-        # Call the function to write frames for each dataset
-        print('   Marking behaviors in each frame for each dataset.')
-        t_mark_frames_start = perf_counter()
-        for j in range(N_datasets):
-            # Excel worksheet name handling - more robust sanitization
-            dataset_name = str(datasets[j]["dataset_name"])
-            sheet_name = sanitize_sheet_name(dataset_name)
+            # Check if full path length is reasonable
+            if len(str(excel_file_path)) > 250:  # Conservative limit
+                # Try shortening the filename
+                name, ext = excel_filename.rsplit('.', 1)
+                shortened_name = name[:100] + '_shortened.' + ext
+                excel_file_path = output_path / shortened_name
+                print(f"Warning: Excel filename was too long, shortened to: {shortened_name}")
             
-            mark_behavior_frames_Excel(writer, datasets[j], key_list_revised, 
-                                       sheet_name)
-        t_mark_frames_end = perf_counter()
-        print(f'       ... {N_datasets} x mark_behavior_frames_Excel: ' + 
-              f'time {t_mark_frames_end - t_mark_frames_start:.1f} s')
-        
-        # Save and close the Excel file
-        try:
-            writer.close()
-        except Exception as e:
-            print(f"Warning: Error closing Excel writer: {e}")
-            # Try to save manually if possible
             try:
-                writer.save()
-            except:
-                pass
-
+                writer = pd.ExcelWriter(excel_file_path, engine='xlsxwriter')
+            except (FileNotFoundError, OSError, PermissionError) as e:
+                print(f"Error creating Excel file: {e}")
+                print(f"Attempted path: {excel_file_path}")
+                print(f"Path length: {len(str(excel_file_path))} characters")
+                
+                # Fallback: try with a very short filename
+                fallback_name = "behav_frame.xlsx"
+                excel_file_path = output_path / fallback_name
+                print(f"Trying fallback filename: {fallback_name}")
+                writer = pd.ExcelWriter(excel_file_path, engine='xlsxwriter')
+    
+            # Call the function to write frames for each dataset
+            print('   Marking behaviors in each frame for each dataset.')
+            t_mark_frames_start = perf_counter()
+            for j in range(N_datasets):
+                # Excel worksheet name handling - more robust sanitization
+                dataset_name = str(datasets[j]["dataset_name"])
+                sheet_name = sanitize_sheet_name(dataset_name)
+                
+                mark_behavior_frames_Excel(writer, datasets[j], key_list_revised, 
+                                           sheet_name, mark=1)
+            t_mark_frames_end = perf_counter()
+            print(f'       ... {N_datasets} x mark_behavior_frames_Excel: ' + 
+                  f'time {t_mark_frames_end - t_mark_frames_start:.1f} s')
+            
+            # Save and close the Excel file
+            try:
+                writer.close()
+            except Exception as e:
+                print(f"Warning: Error closing Excel writer: {e}")
+                # Try to save manually if possible
+                try:
+                    writer.save()
+                except:
+                    pass
         
         print('   Writing summary text file and basic measurements for each dataset.')
         # For each dataset, summary text file and basic measurements    
@@ -1354,6 +1363,7 @@ def write_output_files(params, output_path, datasets):
         initial_keys = ["dataset_name", "fps", "image_scale",
                         "total_time_seconds", "close_pair_fraction", 
                         "speed_mm_s_mean", "speed_whenMoving_mm_s_mean",
+                        "angular_speed_rad_s_mean",
                         "bout_rate_bpm", "bout_duration_s", "bout_ibi_s",
                         "fish_length_Delta_mm_mean", 
                         "head_head_distance_mm_mean", "closest_distance_mm_mean",
@@ -1362,6 +1372,7 @@ def write_output_files(params, output_path, datasets):
                            "Image scale (um/px)",
                            "Total Time (s)", "Fraction of time in proximity", 
                            "Mean speed (mm/s)", "Mean moving speed (mm/s)", 
+                           "Mean angular speed (rad/s)",
                            "Mean bout rate (/min)", "Mean bout duration (s)",
                            "Mean inter-bout interval (s)",
                            "Mean difference in fish lengths (mm)", 
@@ -1489,6 +1500,7 @@ def write_behavior_txt_file(dataset, key_list):
         results_file.write(f"   Mean fish length: {dataset['fish_length_mm_mean']:.3f} mm\n")
         results_file.write(f"   Mean fish speed: {dataset['speed_mm_s_mean']:.3f} mm/s\n")
         results_file.write(f"   Mean fish speed when moving > threshold: {dataset['speed_whenMoving_mm_s_mean']:.3f} mm/s\n")
+        results_file.write(f"   Mean fish angular speed: {dataset['angular_speed_rad_s_mean']:.5f} rad/s\n")
         results_file.write(f"   Bout rate: {dataset['bout_rate_bpm']:.1f} bouts/minute\n")
         results_file.write(f"   Mean bout duration: {dataset['bout_duration_s']:.2f} seconds\n")
         results_file.write(f"   Mean inter-bout interval: {dataset['bout_ibi_s']:.2f} seconds\n")
@@ -1507,7 +1519,7 @@ def write_behavior_txt_file(dataset, key_list):
 
 def write_basicMeasurements_txt_file(dataset):
     """
-    Creates a txt file of "basic" speed and distance measurements for
+    Creates a CSV file of "basic" speed and distance measurements for
     a given *single dataset* at each frame.
     Assesses what to write given number of fish. (For example,
             don't attempt inter-fish distance if Nfish==1)
@@ -1516,6 +1528,7 @@ def write_basicMeasurements_txt_file(dataset):
         Head-to-head distance (mm) ["head_head_distance_mm"]
         Closest inter-fish distance (mm) ["closest_distance_mm"]
         Speed of each fish (mm/s); frame-to-frame speed, recorded as 0 for the first frame. ["speed_array_mm_s"]
+        Angular speed of each fish (rad/s) ["angular_speed_array_rad_s"]. 
         Relative orientation, i.e. angle between heading and 
             head-to-head vector, for each fish (radians) ["relative_orientation"]
         Relative orientation, i.e. angle between heading and 
@@ -1534,9 +1547,6 @@ def write_basicMeasurements_txt_file(dataset):
 
     Inputs:
         dataset : dictionary with all dataset info
-        key_list_basic : list of dictionary keys corresponding 
-                         to each measurement to write (some 
-                         are for multiple fish)
 
     Returns:
         N/A
@@ -1562,6 +1572,7 @@ def write_basicMeasurements_txt_file(dataset):
         headers.extend([f"rel_orientation_rad_Fish{j}" for j in range(Nfish)])
     
     headers.extend([f"speed_mm_s_Fish{j}" for j in range(Nfish)])
+    headers.extend([f"angular_speed_rad_s_Fish{j}" for j in range(Nfish)])
     headers.extend([f"r_fromCtr_mm_Fish{j}" for j in range(Nfish)])
     headers.extend(["edge flag", "bad tracking"])
 
@@ -1580,6 +1591,7 @@ def write_basicMeasurements_txt_file(dataset):
             row_parts.extend([f"{dataset['relative_orientation'][j, k].item():.3f}" for k in range(Nfish)])
         
         row_parts.extend([f"{dataset['speed_array_mm_s'][j, k].item():.3f}" for k in range(Nfish)])
+        row_parts.extend([f"{dataset['angular_speed_array_rad_s'][j, k].item():.3f}" for k in range(Nfish)])
         row_parts.extend([f"{dataset['radial_position_mm'][j, k].item():.3f}" for k in range(Nfish)])
         row_parts.extend([f"{EdgeFlag[j]}", f"{BadTrackFlag[j]}"])
         
@@ -1621,10 +1633,12 @@ def write_CSV_Excel_YAML(expt_config, params, dataPath, datasets):
         
 
 
-def mark_behavior_frames_Excel(writer, dataset, key_list, sheet_name):
+def mark_behavior_frames_Excel(writer, dataset, key_list, sheet_name,
+                               mark = 1):
     """
-    Create and fill in a sheet in an existing Excel file, marking all frames 
-    with behaviors found in this dataset.
+    Create and fill in a sheet in an Excel workbook, marking with 
+    “1” a behavior (columns) that occurs in a given frame (rows); 
+    one sheet per dataset. .
     
     Optimized Aug. 2025. Uses numpy arrays and vectorized operation.
     
@@ -1633,7 +1647,10 @@ def mark_behavior_frames_Excel(writer, dataset, key_list, sheet_name):
         dataset (dict): Dictionary with all dataset info.
         key_list (list): List of dictionary keys corresponding to each behavior to write.
         sheet_name (str): Name of the sheet to be created.
-        
+        mark : str or int or bool, default 1
+            The value to place in marked cells. Using True/1 is faster than 
+            the string 'X'.
+            
     Returns:
         N/A
         
@@ -1641,41 +1658,67 @@ def mark_behavior_frames_Excel(writer, dataset, key_list, sheet_name):
     
     maxFrame = int(np.max(dataset["frameArray"]))
     
-    # Pre-allocate numpy array (much faster than DataFrame operations)
-    # Use object dtype to store strings efficiently
     n_behaviors = len(key_list)
-    data_array = np.full((maxFrame, n_behaviors), '', dtype='U17')
+    # data_array = np.full((maxFrame, n_behaviors), '', dtype='U17')
+    # Work in boolean first (fastest). We'll map to 'mark' at the end if needed.
+    data_bool = np.zeros((maxFrame, n_behaviors), dtype=bool)
     
-    # Process all behaviors using vectorized operations
     for col_idx, k in enumerate(key_list):
         behavior_data = dataset[k]["combine_frames"]
-        
+        # Expect shape (2, N): row 0 -> starts (1-based), row 1 -> durations
         # Skip if no events
         if behavior_data.shape[1] == 0:
             continue
-            
+
         # Extract frame ranges
-        start_frames = behavior_data[0, :].astype(int) - 1  # Convert to 0-indexed
-        durations = behavior_data[1, :].astype(int)
+        starts = behavior_data[0, :].astype(np.int64) - 1  # 0-indexed
+        durations = behavior_data[1, :].astype(np.int64)
+
+        # Clamp invalid starts/durations
+        valid = (starts >= 0) & (durations > 0) & (starts < maxFrame)
+        if not np.any(valid):
+            continue
+        starts = starts[valid]
+        durations = durations[valid]
+        # Compute ends and clamp to maxFrame
+        ends = starts + durations
+        np.minimum(ends, maxFrame, out=ends)
+            
+        # Prefix-sum difference array to mark ranges efficiently
+        diff = np.zeros(maxFrame + 1, dtype=np.int32)
+        # Add +1 at starts
+        np.add.at(diff, starts, 1)
+        # Subtract -1 at ends
+        np.add.at(diff, ends, -1)        
         
         # Create boolean mask for all frames that should be marked
-        mask = np.zeros(maxFrame, dtype=bool)
+        mask = np.cumsum(diff[:-1]) > 0
+        data_bool[:, col_idx] = mask
         
-        # Vectorized approach to mark ranges
-        for start, duration in zip(start_frames, durations):
-            end = min(start + duration, maxFrame)  # Ensure we don't exceed bounds
-            if start >= 0 and start < maxFrame:
-                mask[start:end] = True
-        
-        # Apply marking where mask is True
-        data_array[mask, col_idx] = 'X'.center(17)
     
-    # Create DataFrame from pre-populated array (much faster)
-    frames = np.arange(1, maxFrame + 1)
-    df = pd.DataFrame(data_array, columns=key_list)
+    # Prepare DataFrame
+    frames = np.arange(1, maxFrame + 1, dtype=np.int32)
+
+    # If mark is boolean or numeric, write directly (fastest).
+    # If it's a string, convert only marked cells to that string, else empty.
+    if isinstance(mark, bool) or isinstance(mark, (int, np.integer)):
+        df = pd.DataFrame(data_bool.astype(type(mark)), columns=key_list)
+        # If mark is 1 and unmarked should be 0, that's already correct.
+        # If mark is True and unmarked should be False, also correct.
+        pass
+    else:
+        # mark is likely 'X' (string). Create a small object array and fill selectively.
+        df = pd.DataFrame('', index=np.arange(maxFrame), columns=key_list)
+        # Efficient column-wise assignment: where True -> mark
+        for j, col in enumerate(key_list):
+            # np.where returns an array; assign to the column
+            df[col] = np.where(data_bool[:, j], mark, '')
+
     df.insert(0, 'Frame', frames)
-    
-    # Write to Excel in single operation
+
+    # Write once
+    # Tip: Construct your ExcelWriter with engine='xlsxwriter' for speed, e.g.:
+    # with pd.ExcelWriter(path, engine='xlsxwriter', options={'strings_to_numbers': True}) as writer:
     df.to_excel(writer, sheet_name=sheet_name, index=False)
     
 
