@@ -7,13 +7,14 @@
 # First version  : Estelle Trieu 9/19/2022
 # Re-written by : Raghuveer Parthasarathy (2023)
 # version ='2.0' Raghuveer Parthasarathy -- begun May 2023; see notes.
-# last modified: Raghuveer Parthasarathy, Nov. 3, 2025
+# last modified: Raghuveer Parthasarathy, Dec. 31, 2025
 # ---------------------------------------------------1------------------------
 """
 
 import os
 import numpy as np
 import yaml
+from time import perf_counter
 from toolkit import get_Nfish, repair_heading_angles, \
         repair_head_positions, repair_double_length_fish, \
         relink_fish_ids_all_datasets, calc_good_tracking_spans, \
@@ -52,7 +53,9 @@ def main():
         
 
     """
-
+    # Timer
+    t0 = perf_counter()
+    
     cwd = os.getcwd() # Note the current working directory
 
     # for Raghu -- troubleshooting. Don't modify this.
@@ -181,7 +184,8 @@ def main():
     else:
         raise ValueError("Error: Bad Loading Option.")
         
-        
+    t_load = perf_counter()
+    print(f'\n\nData loaded, repaired; elapsed time: {t_load - t0:.2f} seconds')
 
     #%% Identify bad tracking
             
@@ -232,7 +236,6 @@ def main():
                 input('Press enter to indicate acknowlegement: ')
                 
 
-    
     #%% Calculate statistics of continuous spans of good tracking
     for j in range(len(datasets)):
         datasets[j]["good_tracking_spans"] = calc_good_tracking_spans(datasets[j], 
@@ -243,6 +246,9 @@ def main():
     # dictionary that includes durations of edge events, etc.
     datasets = get_edgeRejection_frames_dictionary(datasets, params, 
                                           expt_config['arena_radius_mm'])
+    
+    t_assessTracks = perf_counter()
+    print(f'\n\nBad tracking identified, re-linked; elapsed time: {t_assessTracks - t0:.2f} seconds')
     
     #%% Analysis: Basic characterizations
     
@@ -258,6 +264,9 @@ def main():
     datasets = get_single_fish_characterizations(all_position_data, 
                                                  datasets, CSVcolumns,
                                                  expt_config, params)
+
+    t_single = perf_counter()
+    print(f'\n\nSingle fish characterizations done; elapsed time: {t_single - t0:.2f} seconds')
 
     #%% Analysis: multi-fish characterizations
 
@@ -337,13 +346,9 @@ def main():
                                                    behavior_name = rel_orient_key_final,
                                                    Nframes=datasets[j]['Nframes'])
             
-            
-    #%% Analysis: multi-fish characterizations, ranked by relative orientation
-    # This may be better to include inside the previous loop, where we consider
-    # each dataset separately and apply make_frames_dictionary() to a simple
-    # list of frames, 
+    t_pair = perf_counter()
+    print(f'\n\nPair characterizations done; elapsed time: {t_pair - t0:.2f} seconds')
     
-
             
     #%% Outputs
 
@@ -377,6 +382,10 @@ def main():
     
     # Return to original directory
     os.chdir(cwd)
+
+    t_write = perf_counter()
+    print(f'\n\nOutputs written; elapsed time: {t_write - t0:.2f} seconds')
+
     
     return datasets, all_position_data, CSVcolumns
     
