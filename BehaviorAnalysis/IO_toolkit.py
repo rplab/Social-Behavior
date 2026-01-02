@@ -4,7 +4,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Aug 25 20:59:37 2025
-Last modified Dec. 31, 2025 -- Raghuveer Parthasarathy
+Last modified January 1, 2026 -- Raghuveer Parthasarathy
 
 Description
 -----------
@@ -40,10 +40,9 @@ import tifffile
 import imageio.v3 as iio
 from scipy.stats import binned_statistic_2d
 
-from toolkit import get_Nfish, behaviorFrameCount_all, \
+from toolkit import get_Nfish, \
     combine_all_values_constrained, get_effective_dims, \
-    dilate_frames, get_values_subset
-
+    dilate_frames, get_values_subset, make_frames_dictionary
 
 # Function to get a valid path from the user (base Path or config path)
 def get_basePath():
@@ -1211,7 +1210,8 @@ def write_output_files(params, output_path, datasets):
         datasets : list of dictionaries: all dataset and analysis output
         
     Outputs:
-        None (multiple file outputs)
+        summary_excel_path
+        (and multiple file outputs)
     """
     
     t_writing_all_start = perf_counter()
@@ -1333,7 +1333,9 @@ def write_output_files(params, output_path, datasets):
                     writer.save()
                 except:
                     pass
-        
+        else:
+            print('   *Not* creating Excel file with marked behaviors in each frame.')
+            
         print('   Writing summary text file and basic measurements for each dataset.')
         # For each dataset, summary text file and basic measurements    
         t_writing_summary_start = perf_counter()
@@ -1358,8 +1360,8 @@ def write_output_files(params, output_path, datasets):
             
         # Excel workbook for summary of all behavior counts, durations,
         # relative durations, and relative durations normalized to activity
-        print('   Writing summary file of all behavior counts, durations to ' + 
-              params['allDatasets_ExcelFile'])
+        print('   Writing summary of all behavior counts, durations to ' + 
+              f"   {params['allDatasets_ExcelFile']}")
         initial_keys = ["dataset_name", "fps", "image_scale",
                         "total_time_seconds", "close_pair_fraction", 
                         "speed_mm_s_mean", "speed_whenMoving_mm_s_mean",
@@ -1405,6 +1407,10 @@ def write_output_files(params, output_path, datasets):
                                   datasets, key_list_revised, 
                                   initial_keys_revised, initial_strings_revised)
         
+        t_writing_all_end = perf_counter()
+        print('   Done writing output files. ' + 
+              f'Elapsed time {t_writing_all_end - t_writing_all_start:.1f} s')
+
         # Return the full path for use by add_statistics_to_excel
         return str(summary_excel_path)
         
@@ -1418,10 +1424,6 @@ def write_output_files(params, output_path, datasets):
         except:
             pass
     
-    t_writing_all_end = perf_counter()
-    print('   Done writing output files. ' + 
-          f'Elapsed time {t_writing_all_end - t_writing_all_start:.1f} s')
-
 
 def sanitize_filename(filename):
     """
@@ -1615,7 +1617,7 @@ def write_CSV_Excel_YAML(expt_config, params, dataPath, datasets):
     
     """
     print(f'\nWriting to dataPath: {dataPath}')
-    # Write the output files (CSV, Excel) - THIS WAS MISSING!
+    # Write the output files (CSV, Excel) 
     output_path = os.path.join(dataPath, params['output_subFolder'])
     excel_file_path = write_output_files(params, output_path, datasets)
     
@@ -3806,25 +3808,36 @@ def slice_2D_histogram(z_mean, X, Y, z_unc, slice_axis='x', other_range=None,
 
 
 def revise_datasets(keys_to_modify=["relative_orientation"],
-                   pickleFileName1=None, pickleFileName2=None):
+                    pickleFileName1=None, pickleFileName2=None,
+                    writePickleOutput =  True, writeOtherOutput = False):
     """
-    Load datasets from pickle files, recalculate specified angle values
-    using recalculate_angles(), update the “datasets” variable,
-    and save the revised datasets back to the same pickle files.
-    
-    This function is useful for updating old pickle files after modifications
-    to angle calculation functions (e.g., changing from unsigned to signed angles).
+    Load datasets from pickle files, recalculate some properties,
+    update the “datasets” variable, save the revised datasets back to the 
+    same pickle files (optional, recommended), and re-write CSV, text,
+    and Excel files (optional).
+    The recalculated properties can be:
+      -  angle values using recalculate_angles(), 
+          e.g. to revise after the method changed from unsigned to signed angles
+      - "maintain_proximity", the maintaing-proximity behavior,
+          e.g. to use different ranges.
+      - "angular_speed_rad_s_mean" : mean angular speed averaged over both fish,
+          e.g. to revise after this started to be calculated
     
     Parameters
     ----------
     keys_to_modify : list of str
         List of keys to recalculate. Must be subset of:
-        ["relative_orientation", "bend_angle", "heading_angle"]
+        ["relative_orientation", "bend_angle", "heading_angle", 
+         "maintain_proximity", "angular_speed_rad_s_mean"]
         Default: ["relative_orientation"]
     pickleFileName1 : str or None
         Full path to position data pickle file. If None, will prompt user.
     pickleFileName2 : str or None
         Full path to datasets pickle file. If None, will prompt user.
+    writePickleOutput : if True, write re-calculated output to Pickle files 
+        (Recommended!)
+    writeOtherOutput : if True, write re-calculated output to CSV, txt, 
+        Excel files. Asks user for a new folder to write to.
     
     Returns
     -------
@@ -3849,7 +3862,8 @@ def revise_datasets(keys_to_modify=["relative_orientation"],
     """
     
     # Import here to avoid circular import
-    from behavior_identification import recalculate_angles
+    from behavior_identification import recalculate_angles, get_maintain_proximity_frames
+    from behavior_identification_single import get_mean_speed
     
     print("\n" + "="*70)
     print("REVISING DATASETS: Recalculating angles in pickle files")
@@ -3882,99 +3896,215 @@ def revise_datasets(keys_to_modify=["relative_orientation"],
         original_pickle_dir = None
         original_pickle_filename = None
     
-    # Recalculate angles
-    datasets = recalculate_angles(all_position_data, datasets, CSVcolumns, 
-                                  keys_to_modify=keys_to_modify)
+    # Recalculate angles if any of the "keys_to_modify" are in this set:
+    angle_keys = ["relative_orientation", "bend_angle", "heading_angle"]
+    angle_keys_to_modify = [key for key in keys_to_modify if key in angle_keys]
+    if angle_keys_to_modify:
+        datasets = recalculate_angles(all_position_data, datasets, CSVcolumns, 
+                                  keys_to_modify=angle_keys_to_modify)
+
+    # re-calculate angular speed:
+    if "angular_speed_rad_s_mean" in keys_to_modify:
+        print('Revising mean angular speed.')
+        for j in range(N_datasets):
+            angular_speed_mean_all, _ = \
+                get_mean_speed(datasets[j]["angular_speed_array_rad_s"], 
+                               None, datasets[j]["bad_bodyTrack_frames"]["raw_frames"])
+            # average over fish, since ID is unreliable
+            datasets[j]["angular_speed_rad_s_mean"] = np.mean(angular_speed_mean_all)
     
-    # Save the updated datasets back to pickle
-    print("\n" + "-"*70)
-    print("Saving updated datasets to pickle file...")
-    
-    # Prepare the dictionary to save (same structure as original)
-    variables_dict = {
-        'datasets': datasets,
-        'CSVcolumns': CSVcolumns,
-        'expt_config': expt_config,
-        'params': params,
-        'basePath': basePath,
-        'dataPath': dataPath,
-        'subGroupName': subGroupName
-    }
-    
-    # Determine save location
-    if original_pickle_path is None:
-        # User was prompted during load, need to get the file path
-        print("\n\nWe need to use a dialog box to get the original file path.")
-        print("Select the ORIGINAL datasets pickle file (the one you just loaded).")
-        print("This will be used as the default save location.")
-        print("Note that the dialog box may be hidden behind other windows.")
+    # Recalculate other behaviors; need to specify and write code for each
+    if "maintain_proximity" in keys_to_modify:
+        print('\n\n\nWARNING: maintain_proximity will be recalculated, ')
+        print('   but close proximity will not! \n\n')
+        params = update_parameters("maintain_proximity", params)
+        for j in range(N_datasets):
+            print('Revising maintain_proximity for Dataset: ', 
+                  datasets[j]["dataset_name"])
+            # Initialize empty dictionary
+            pair_behavior_frames = get_maintain_proximity_frames(all_position_data[j], 
+                                              datasets[j], 
+                                              CSVcolumns, params)
+            # Make frames dictionary
+            tuple_of_frames_to_reject = (datasets[j]["edge_frames"]["raw_frames"],
+                  datasets[j]["bad_bodyTrack_frames"]["raw_frames"])
+            datasets[j]['maintain_proximity'] = make_frames_dictionary(pair_behavior_frames,
+                                           tuple_of_frames_to_reject,
+                                           behavior_name = "maintain_proximity",
+                                           Nframes=datasets[j]['Nframes'])
+
+    if writePickleOutput:
+        # Save the updated datasets back to pickle
+        print("\n" + "-"*70)
+        print("Saving updated datasets to pickle file...")
         
-        root = tk.Tk()
-        root.withdraw()
-        original_pickle_path = filedialog.askopenfilename(
-            title="Select original datasets pickle file",
-            filetypes=[("pickle files", "*.pickle")]
-        )
+        # Prepare the dictionary to save (same structure as original)
+        variables_dict = {
+            'datasets': datasets,
+            'CSVcolumns': CSVcolumns,
+            'expt_config': expt_config,
+            'params': params,
+            'basePath': basePath,
+            'dataPath': dataPath,
+            'subGroupName': subGroupName
+        }
         
-        if not original_pickle_path:
-            print("\nNo file selected. Aborting without saving.")
+        # Determine save location
+        if original_pickle_path is None:
+            # User was prompted during load, need to get the file path
+            print("\n\nWe need to use a dialog box to get the original file path.")
+            print("Select the ORIGINAL datasets pickle file (the one you just loaded).")
+            print("This will be used as the default save location.")
+            print("Note that the dialog box may be hidden behind other windows.")
+            
+            root = tk.Tk()
+            root.withdraw()
+            original_pickle_path = filedialog.askopenfilename(
+                title="Select original datasets pickle file",
+                filetypes=[("pickle files", "*.pickle")]
+            )
+            
+            if not original_pickle_path:
+                print("\nNo file selected. Aborting without saving.")
+                return
+            
+            original_pickle_dir = os.path.dirname(original_pickle_path)
+            original_pickle_filename = os.path.basename(original_pickle_path)
+        
+        # Prompt for output pickle filename
+        print(f"\nOriginal datasets file: {original_pickle_path}")
+        print("\nEnter output filename (press Enter to overwrite original file):")
+        print(f"  Default: {original_pickle_filename}")
+        
+        user_filename = input("  Output filename: ").strip()
+        
+        if user_filename == '':
+            # Use original filename (overwrite)
+            save_pickle_filename = original_pickle_filename
+            save_pickle_path = original_pickle_path
+            overwriting = True
+        else:
+            # User provided a new filename
+            save_pickle_filename = user_filename
+            # Make sure it ends with .pickle
+            if not save_pickle_filename.endswith('.pickle'):
+                save_pickle_filename += '.pickle'
+            save_pickle_path = os.path.join(original_pickle_dir, save_pickle_filename)
+            overwriting = (save_pickle_path == original_pickle_path)
+        
+        # Confirm action
+        if overwriting:
+            print(f"\nWill OVERWRITE: {save_pickle_path}")
+            confirm = input("Type 'yes' to confirm overwrite: ")
+        else:
+            print(f"\nWill save to NEW file: {save_pickle_path}")
+            confirm = input("Type 'yes' to confirm: ")
+        
+        if confirm.lower() != 'yes':
+            print("\nAborted. No files were modified.")
             return
         
-        original_pickle_dir = os.path.dirname(original_pickle_path)
-        original_pickle_filename = os.path.basename(original_pickle_path)
+        # Use write_pickle_file to save
+        write_pickle_file(variables_dict, dataPath=original_pickle_dir, 
+                         outputFolderName='', 
+                         pickleFileName=save_pickle_filename)
+        
+        print("\n" + "="*70)
+        print("REVISION COMPLETE")
+        print("="*70)
+        print(f"\nSaved to: {save_pickle_path}")
+        if overwriting:
+            print("  (Original file was overwritten)")
+        else:
+            print("  (New file created, original unchanged)")
+        print(f"Modified keys: {keys_to_modify}")
+        print(f"Number of datasets updated: {N_datasets}")
+        print("\nThe position data pickle file was not modified (read only).")
+        print("="*70 + "\n")
     
-    # Prompt for output filename
-    print(f"\nOriginal datasets file: {original_pickle_path}")
-    print("\nEnter output filename (press Enter to overwrite original file):")
-    print(f"  Default: {original_pickle_filename}")
-    
-    user_filename = input("  Output filename: ").strip()
-    
-    if user_filename == '':
-        # Use original filename (overwrite)
-        save_pickle_filename = original_pickle_filename
-        save_pickle_path = original_pickle_path
-        overwriting = True
-    else:
-        # User provided a new filename
-        save_pickle_filename = user_filename
-        # Make sure it ends with .pickle
-        if not save_pickle_filename.endswith('.pickle'):
-            save_pickle_filename += '.pickle'
-        save_pickle_path = os.path.join(original_pickle_dir, save_pickle_filename)
-        overwriting = (save_pickle_path == original_pickle_path)
-    
-    # Confirm action
-    if overwriting:
-        print(f"\nWill OVERWRITE: {save_pickle_path}")
-        confirm = input("Type 'yes' to confirm overwrite: ")
-    else:
-        print(f"\nWill save to NEW file: {save_pickle_path}")
-        confirm = input("Type 'yes' to confirm: ")
-    
-    if confirm.lower() != 'yes':
-        print("\nAborted. No files were modified.")
-        return
-    
-    # Use write_pickle_file to save
-    write_pickle_file(variables_dict, dataPath=original_pickle_dir, 
-                     outputFolderName='', 
-                     pickleFileName=save_pickle_filename)
-    
-    print("\n" + "="*70)
-    print("REVISION COMPLETE")
-    print("="*70)
-    print(f"\nSaved to: {save_pickle_path}")
-    if overwriting:
-        print("  (Original file was overwritten)")
-    else:
-        print("  (New file created, original unchanged)")
-    print(f"Modified keys: {keys_to_modify}")
-    print(f"Number of datasets updated: {N_datasets}")
-    print("\nThe position data pickle file was not modified (read only).")
-    print("="*70 + "\n")
-    
+    if writeOtherOutput:
+        # Write the output files (CSV, Excel, and YAML (parameters))
+        print(f"\n\nCurrent output path: {dataPath}.")
+        print("STRONGLY RECOMMENDED: Input a new output path, to avoid overwriting!")
+        newOutputPath = input('  Enter the new output path: ')
+        if newOutputPath == '':
+            newOutputPathSure = input('Same path; Are you sure?! (y/n): ')
+            if newOutputPathSure.lower() != 'y':
+                print('Canceling output writing; re-run if you want.')
+                return
+        else:
+            dataPath = newOutputPath
+        write_CSV_Excel_YAML(expt_config, params, dataPath, datasets)
+        
     return None
+
+
+def update_parameters(keyName, params):
+    """
+    Ask the user for updated parameters; presumably called if we're 
+    re-calculating behaviors.
+    Hard-code various options; add to this to enable more behavior revisions
+
+    Parameters
+    ----------
+    keyName : string
+        behavior key to be updated (e.g. "maintain_proximity").
+    params : dict
+        analysis parameters
+
+    Returns
+    -------
+    params
+
+    """
+    
+    if keyName == 'maintain_proximity':
+        """
+        proximity_threshold_mm :list of two items, min and max range to 
+            consider for proximity
+        proximity_distance_measure : what distance measure to use (closest
+                or head_to_head)
+        max_motion_gap_s : maximum gap in matching criterion to allow (s). 
+            At 25 fps, 0.5 s = 12.5 frames.
+        min_proximity_duration_s : min duration that matching criteria 
+                must be met for the behavior to be recorded (s).
+                Leave as zero (or < 1 frame) for no minimum.
+        """
+        
+        inputText = "Enter new min and max proximity thresholds *separated by a space*;\n" + \
+            f"   Blank (Enter) to keep {params['proximity_threshold_mm'][0]} {params['proximity_threshold_mm'][1]}: "
+        inputStr = input(inputText)
+        if inputStr != '':
+            params['proximity_threshold_mm'] = [float(x) for x in inputStr.split()]
+
+        inputText = f"Enter the distance measure: 'closest' or 'head_to_head'; blank for {params['proximity_distance_measure'] }: "
+        inputStr = input(inputText)
+        if inputStr != '':
+            params['proximity_distance_measure'] = inputStr
+        if (params['proximity_distance_measure'] != 'closest') and \
+            (params['proximity_distance_measure'] != 'head_to_head'):
+            print('INVALID OPTION. Using closest distance for "maintaining proximity" measure')
+            params['proximity_distance_measure'] = 'closest'
+
+        inputText = "Enter the maximum gap in matching criterion to allow (s). \n" + \
+            f"blank for {params['max_motion_gap_s']:.3f}: "
+        inputStr = input(inputText)
+        if inputStr != '':
+            params['max_motion_gap_s'] = float(inputStr)
+
+        inputText = "Enter the min duration that matching criteria must be met (s). \n" + \
+            f"blank for {params['min_proximity_duration_s']:.3f}: "
+        inputStr = input(inputText)
+        if inputStr != '':
+            params['min_proximity_duration_s'] = float(inputStr)
+    
+    else:
+        raise ValueError('Invalid behavior key for update_parameters.')
+        
+    print('Parameters updated.')
+
+    return params
+
 
 
 def get_plot_and_CSV_filenames(s, outputFileNameBase, outputFileNameExt, 

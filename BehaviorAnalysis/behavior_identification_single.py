@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Split from behavior_identification.py on July 22, 2024
-Last modified Dec. 31, 2025 -- Raghu Parthasarathy
+Last modified Jan. 1, 2026 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -437,6 +437,8 @@ def get_mean_speed(speed_array_mm_s, isMoving_frames_each, badTrackFrames):
                             probably input from datasets[j]["speed_array_mm_s"]
         isMoving_frames_each : Dictionary containing "is moving" frames
                                 for each fish. Note index = frame no - 1
+                               If None, ignore isMoving criterion and return 
+                               None for speed_mean_moving
         badTrackFrames : frames with bad tracking, probably input as
                          datasets[j]["bad_bodyTrack_frames"]["raw_frames"]
 
@@ -459,11 +461,14 @@ def get_mean_speed(speed_array_mm_s, isMoving_frames_each, badTrackFrames):
     speed_mean_all = np.mean(speed_array_mm_s[good_frames_mask, :], axis=0).reshape(1, Nfish)
     
     # Calculate mean speed for moving frames, excluding bad tracking frames
-    speed_mean_moving = np.zeros((1, Nfish))
-    for j in range(Nfish):
-        moving_frames = set(isMoving_frames_each[j]) - bad_frames_set
-        moving_mask = np.isin(frames, list(moving_frames))
-        speed_mean_moving[0, j] = np.mean(speed_array_mm_s[moving_mask, j])
+    if isMoving_frames_each is not None:
+        speed_mean_moving = np.zeros((1, Nfish))
+        for j in range(Nfish):
+            moving_frames = set(isMoving_frames_each[j]) - bad_frames_set
+            moving_mask = np.isin(frames, list(moving_frames))
+            speed_mean_moving[0, j] = np.mean(speed_array_mm_s[moving_mask, j])
+    else:
+        speed_mean_moving = np.full(shape=(1,Nfish), fill_value=np.nan)
     
     return speed_mean_all, speed_mean_moving
 
