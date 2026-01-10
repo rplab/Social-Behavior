@@ -2825,9 +2825,8 @@ def plot_waterfall_binned_crosscorr(binned_crosscorr_all, bin_centers, t_lag,
             plt.close(fig)
     
 
-
 def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
-                                key_is_a_behavior = False,
+                                key_is_a_behavior=False,
                                 binKeyName='closest_distance_mm',
                                 bin_range=(0.0, 50.0), Nbins=20,
                                 constraintKey=None, constraintRange=None,
@@ -2835,11 +2834,12 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
                                 use_abs_value=False,
                                 use_abs_value_constraint=False,
                                 dilate_minus1=True,
-                                makePlot=True, titleStr=None,
+                                makePlot=True, plot_each_dataset=False,
+                                titleStr=None,
                                 xlabelStr=None, ylabelStr=None,
                                 color='black', xlim=None, ylim=None,
                                 outputFileName=None, closeFigure=False,
-                                outputCSVFileName = None):
+                                outputCSVFileName=None):
     """
     Calculate mean of a quantitative property binned by another property.
     Creates a 1D line plot with error bars.
@@ -2886,6 +2886,8 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
         Dilate bad frames by -1
     makePlot : bool
         If True, create plot
+    plot_each_dataset : bool
+        If True, plot one semi-transparent line per dataset
     titleStr, xlabelStr, ylabelStr : str
         Plot labels
     color : str
@@ -2909,20 +2911,31 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
         Center values of bins
     binned_mean_each_dataset : numpy array (Ndatasets, Nbins)
         Mean for each dataset in each bin
+    binned_mean_each_fish : numpy array (nfish_total, Nbins)
+        Mean for each fish in each bin
     """
-
-    # Set up bins
+    
+    # Set up bins 
     bin_edges = np.linspace(bin_range[0], bin_range[1], Nbins + 1)
     bin_centers = 0.5 * (bin_edges[1:] + bin_edges[:-1])
     
     Ndatasets = len(datasets)
+    
+    # Calculate total number of fish across all datasets
+    nfish_total = sum(dataset["Nfish"] for dataset in datasets)
+    
+    # Initialize arrays
     binned_mean_each_dataset = np.full((Ndatasets, Nbins), np.nan)
+    binned_mean_each_fish = np.full((nfish_total, Nbins), np.nan)
     
     print(f'\nBinning {keyName} by {binKeyName}.... ', end='')
+    
+    fish_counter = 0  # Track global fish index across datasets
     
     for j in range(Ndatasets):
         print(f' {j}... ', end='')
         dataset = datasets[j]
+        Nfish = dataset["Nfish"]
         frames = dataset["frameArray"]
         idx_offset = min(frames)
         if idx_offset != 1:
@@ -2955,18 +2968,14 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
         Ndim_bin = get_effective_dims(bin_data)
         
         # Apply constraints if provided
+        # Get constraint data but don't create mask yet - will do per fish
         if constraintKey is not None and constraintRange is not None:
             constraint_data = get_values_subset(dataset[constraintKey],
                                                keyIdx=constraintIdx,
                                                use_abs_value=use_abs_value_constraint)
             Ndim_constraint = get_effective_dims(constraint_data)
-            
-            constraint_mask = ((constraint_data >= constraintRange[0]) &
-                             (constraint_data <= constraintRange[1]))
-            if constraint_mask.ndim > 1:
-                constraint_mask = constraint_mask.flatten()
         else:
-            constraint_mask = None
+            constraint_data = None
             Ndim_constraint = None
         
         # Remove bad frames
@@ -2974,79 +2983,80 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
                                    np.array(list(bad_frames_set)) - idx_offset,
                                    invert=True)
         
-        # Handle dimension mismatches by tiling (following combine_all_values_constrained logic)
-        # Tile property_data if needed
-        if (Ndim_bin > 1) and (Ndim_property == 1 or (property_data.ndim == 2 and property_data.shape[1] == 1)):
+        # Loop over each fish
+        for k in range(Nfish):
+            # Extract data for this specific fish
             if property_data.ndim == 1:
-                property_data = np.tile(property_data[:, np.newaxis], (1, Ndim_bin))
+                property_data_fish = property_data
             else:
-                property_data = np.tile(property_data, (1, Ndim_bin))
-        
-        # Tile bin_data if needed
-        if (Ndim_property > 1) and (Ndim_bin == 1 or (bin_data.ndim == 2 and bin_data.shape[1] == 1)):
+                property_data_fish = property_data[:, k]
+            
             if bin_data.ndim == 1:
-                bin_data = np.tile(bin_data[:, np.newaxis], (1, Ndim_property))
+                bin_data_fish = bin_data
             else:
-                bin_data = np.tile(bin_data, (1, Ndim_property))
-        
-        # Tile good_frames_mask if needed
-        if (good_frames_mask.ndim == 1) and (get_effective_dims(property_data) > 1):
-            good_frames_mask = np.tile(good_frames_mask[:, np.newaxis], 
-                                      (1, property_data.shape[1]))
-        
-        # Tile constraint_mask if needed
-        if constraint_mask is not None:
-            if (Ndim_constraint == 1) and (good_frames_mask.ndim > 1):
-                constraint_mask = np.tile(constraint_mask[:, np.newaxis], 
-                                         (1, good_frames_mask.shape[1]))
+                bin_data_fish = bin_data[:, k] if bin_data.shape[1] > 1 else bin_data[:, 0]
             
-            if (Ndim_constraint > 1) and (property_data.ndim == 1 or property_data.shape[1] == 1):
-                if property_data.ndim == 1:
-                    property_data = np.tile(property_data[:, np.newaxis], (1, Ndim_constraint))
+            good_frames_mask_fish = good_frames_mask if good_frames_mask.ndim == 1 else good_frames_mask[:, k]
+            
+            # Handle constraint for this fish
+            if constraint_data is not None:
+                # Extract constraint for this specific fish
+                if constraint_data.ndim == 1:
+                    # Constraint is 1D (e.g., inter-fish distance), same for all fish
+                    constraint_data_fish = constraint_data
                 else:
-                    property_data = np.tile(property_data, (1, Ndim_constraint))
-                if good_frames_mask.ndim == 1:
-                    good_frames_mask = np.tile(good_frames_mask[:, np.newaxis], 
-                                              (1, Ndim_constraint))
-        
-        # Flatten all arrays
-        property_data_flat = property_data.flatten()
-        bin_data_flat = bin_data.flatten()
-        good_frames_mask_flat = good_frames_mask.flatten()
-        
-        # Combine masks
-        if constraint_mask is not None:
-            constraint_mask_flat = constraint_mask.flatten()
-            valid_mask = good_frames_mask_flat & constraint_mask_flat
-        else:
-            valid_mask = good_frames_mask_flat
-        
-        # Bin data
-        for bin_idx in range(Nbins):
-            bin_mask = ((bin_data_flat >= bin_edges[bin_idx]) &
-                       (bin_data_flat < bin_edges[bin_idx + 1]))
-            combined_mask = valid_mask & bin_mask
+                    # Constraint is multi-dimensional, extract column k
+                    constraint_data_fish = constraint_data[:, k]
+                
+                # Create mask for this fish's constraint
+                constraint_mask_fish = ((constraint_data_fish >= constraintRange[0]) &
+                                       (constraint_data_fish <= constraintRange[1]))
+                valid_mask = good_frames_mask_fish & constraint_mask_fish
+            else:
+                valid_mask = good_frames_mask_fish
             
-            if np.sum(combined_mask) > 0:
-                binned_mean_each_dataset[j, bin_idx] = np.nanmean(
-                    property_data_flat[combined_mask]
-                )
+            # Bin data for this fish
+            for bin_idx in range(Nbins):
+                bin_mask = ((bin_data_fish >= bin_edges[bin_idx]) &
+                           (bin_data_fish < bin_edges[bin_idx + 1]))
+                combined_mask = valid_mask & bin_mask
+                
+                if np.sum(combined_mask) > 0:
+                    binned_mean_each_fish[fish_counter, bin_idx] = np.nanmean(
+                        property_data_fish[combined_mask]
+                    )
+            
+            fish_counter += 1
+        
+        # Calculate mean over all fish in this dataset
+        fish_start = fish_counter - Nfish
+        fish_end = fish_counter
+        binned_mean_each_dataset[j, :] = np.nanmean(
+            binned_mean_each_fish[fish_start:fish_end, :], axis=0
+        )
     
     print('... done.\n')
     
-    # Calculate overall statistics
+    # Calculate overall statistics across all fish
     binned_mean = np.zeros((Nbins, 3))
-    binned_mean[:, 0] = np.nanmean(binned_mean_each_dataset, axis=0)
-    binned_mean[:, 1] = np.nanstd(binned_mean_each_dataset, axis=0)
-    binned_mean[:, 2] = (np.nanstd(binned_mean_each_dataset, axis=0) /
-                        np.sqrt(np.sum(~np.isnan(binned_mean_each_dataset), axis=0)))
+    binned_mean[:, 0] = np.nanmean(binned_mean_each_fish, axis=0)
+    binned_mean[:, 1] = np.nanstd(binned_mean_each_fish, axis=0)
+    binned_mean[:, 2] = (np.nanstd(binned_mean_each_fish, axis=0) /
+                        np.sqrt(np.sum(~np.isnan(binned_mean_each_fish), axis=0)))
     
     # Plot
     if makePlot:
         fig = plt.figure(figsize=(10, 6))
         plt.errorbar(bin_centers, binned_mean[:, 0], binned_mean[:, 2],
-                    fmt='o-', capsize=5, markersize=8, linewidth=2,
+                    fmt='o-', capsize=7, markersize=12, linewidth=2,
                     color=color, ecolor=color)
+        
+        # Plot each dataset as semi-transparent line
+        if plot_each_dataset:
+            alpha_each = np.max((0.7 / Ndatasets, 0.15))
+            for i in range(Ndatasets):
+                plt.plot(bin_centers, binned_mean_each_dataset[i, :], 
+                        color=color, alpha=alpha_each)
         
         if xlabelStr is None:
             xlabelStr = binKeyName
@@ -3077,12 +3087,20 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
     if outputCSVFileName is not None:
         header_strings = [xlabelStr.replace(',', '_'), 
                           f'{ylabelStr} mean', f'{ylabelStr} std', f'{ylabelStr} s.e.m.']
+        for i in range(Ndatasets):
+            header_strings.append(f'{ylabelStr}_Dataset_{i+1}')
+        
+        list_to_output = [binned_mean[:, 0], binned_mean[:, 1], binned_mean[:, 2]]
+        for i in range(Ndatasets):
+            list_to_output.append(binned_mean_each_dataset[i, :])
+        
         simple_write_CSV(bin_centers, 
-                         [binned_mean[:, 0], binned_mean[:, 1], binned_mean[:, 2]], 
-                         filename =  outputCSVFileName, 
+                         list_to_output, 
+                         filename=outputCSVFileName, 
                          header_strings=header_strings)    
         
-    return binned_mean, bin_centers, binned_mean_each_dataset
+    return binned_mean, bin_centers, binned_mean_each_dataset, binned_mean_each_fish
+
 
     
 def plot_2D_heatmap(Z, X, Y, Z_unc=None,
