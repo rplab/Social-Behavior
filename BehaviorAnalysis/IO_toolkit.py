@@ -2844,7 +2844,7 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
     Calculate mean of a quantitative property binned by another property.
     Creates a 1D line plot with error bars.
     
-    This is analogous to what calculate_IBI_binned_by_distance() does for IBI,
+    This is analogous to what calculate_bout_property_binned_by_distance() does for IBI,
     but works for any quantitative property.
     
     This function can also be used to calculate the probability of a 

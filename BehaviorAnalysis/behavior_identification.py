@@ -1331,6 +1331,297 @@ def get_relative_heading_angle(dataset, CSVcolumns):
 
 
 
+def calculate_bout_property_binned_by_distance(datasets, bout_property = 'IBI',
+                                     distance_key='closest_distance_mm',
+                                     bin_distance_min=0, bin_distance_max=50.0, 
+                                     bin_width=5.0, 
+                                     constraintKey=None, constraintRange=None,
+                                     constraintIdx=None, use_abs_value_constraint=False,
+                                     dilate_minus1=False,
+                                     outlier_std=3.0,
+                                     makePlot=True, plot_each_dataset=False,
+                                     ylim=None, titleStr=None, plotColor='black',
+                                     outputFileName=None, closeFigure=False,
+                                     outputCSVFileName = None):
+    
+    """
+    Calculate mean of a bout property, either inter-bout interval (IBI) 
+    or bout duration, binned by mean inter-fish distance
+    during the interval. 
+    Generalizes and replaces calculate_IBI_binned_by_distance 
+    to use either of these properties.
+    Plot (optional) and write a CSV (optional).
+    
+    Requires Nfish = 2. Calculates property for each fish in each dataset.
+    Returns average over all fish, average for each dataset (averaged over both fish),
+    and individual fish averages.
+    
+    The distance_key is used for binning (primary filter on mean distance 
+                                          during IBI or during bout).
+    Optional: constraintKey/constraintRange provides additional constraint
+    (e.g., only consider IBIs where mean radial position is within some range).
+
+    Returns - average over all fish
+            - average for each dataset (averaged over both fish)
+            - and individual fish averages.
+    Could be used to bin IBI or duration by any other quantitative property also
+            by changing "distance_key", as long as the property
+            has one value per frame, like Nfish==2 inter-fish distance.
+        
+    Parameters
+    ----------
+    datasets : list of dataset dictionaries
+    bout_property : str, must be either 'IBI' or 'duration'
+    distance_key : str, either 'head_head_distance_mm' or 'closest_distance_mm'
+    bin_distance_min, bin_distance_max : float, distance range for binning (mm)
+    bin_width : float, width of distance bins (mm)
+    constraintKey : str or None
+        Additional constraint key (e.g., 'radial_position_mm')
+    constraintRange : tuple or None
+        (min, max) range for additional constraint
+    constraintIdx : int, str, or None
+        Which fish/operation to use for constraint
+    use_abs_value_constraint : bool
+        If True, use absolute value of constraint
+    dilate_minus1 : bool, if True dilate bad frames by -1
+    outlier_std : for each fish's list if durations/IBIs, remove 
+                  values > outlier_std from the mean. (In rare cases, 
+                  very high values, probably due to bad tracking.)
+    makePlot : bool, make a plot if true
+    plot_each_dataset : (bool) if True, plot the property vs. distance for each 
+                  dataset (values averaged over each fish)
+    ylim : tuple, ylimits for plot; None for auto
+    titleStr : string, title for plot
+    outputFileName : string, for saving the plot (default None -- don't save)
+    closeFigure : (bool) if True, if makePlot is True, close the figure
+                        after creating it.
+    outputCSVFileName : if not None, save to a CSV file the following (columns):
+                - plotted "X" positions (bin_centers)
+                - plotted mean "Y" positions (binned_boutProp[:,0] == mean_boutProp)
+                - Standard deviation (binned_boutProp[:,1] == std_boutProp)
+                - Standard error of the mean (binned_boutProp[:,2] == sem_boutProp)
+                - Each individual dataset's mean boutProp (binned_boutProp_each_dataset)
+                  (not each individual fish)
+                (Note that boutProp is bout duration or IBI)
+    
+    Returns
+    -------
+    (Note that boutProp is bout duration or IBI)
+    binned_boutProp : numpy array of shape (n_bins, 3) 
+                 containing [mean_boutProp, std_boutProp, sem_boutProp] for each bin; 
+                 stats are calculated across fish
+    bin_centers : array of bin center distances (mm)
+    binned_boutProp_each_dataset : numpy array of shape (Ndatasets, n_bins)
+             with the mean boutProp for each dataset (averaged over both fish), 
+             in each bin
+    binned_boutProp_each_fish : numpy array of shape (nfish_total, n_bins)
+             with the mean boutProp for each fish, each bin
+
+    """
+    
+    # Check that bout property is bout duration or inter-bout interval
+    # and define strings for output
+    if not ((bout_property.lower() == 'duration') or (bout_property.lower()=='ibi')):
+        raise ValueError('Error! Bout property must be "duration" or "IBI"!')
+    if bout_property.lower() == 'duration':
+        propertyString = 'duration'
+        propertyName = 'bout durations'
+    elif bout_property.lower()=='ibi':
+        propertyString = 'IBI'
+        propertyName = 'inter-bout intervals'
+    else:
+        raise ValueError('Error! Bout property must be "duration" or "IBI"!')
+
+    # Check that Nfish ==2
+    for j in range(len(datasets)):
+        dataset = datasets[j]    
+        Nfish = datasets[j]["Nfish"]
+        if Nfish != 2:
+            raise ValueError("Bout property and distance binning is only supported for Nfish==2")
+
+    # Set up distance bins
+    bins = np.arange(bin_distance_min, bin_distance_max + bin_width, bin_width)
+    bin_centers = bins[:-1] + bin_width / 2
+    n_bins = len(bin_centers)
+    binned_boutProperty= np.zeros((n_bins,))
+    
+    # Number of datasets; initialize array
+    Ndatasets = len(datasets)
+    binned_boutProperty_each_dataset = np.zeros((Ndatasets, n_bins))
+
+    # Number of fish; initialize array
+    nfish_total = len(datasets)*Nfish # Nfish = 2 fish per dataset
+    binned_boutProperty_each_fish = np.zeros((nfish_total, n_bins))
+                        
+    print(f'\nBinning {propertyName} by distance.... ', end='')
+    for j in range(Ndatasets):
+        print(f' {j}... ', end='')
+        dataset = datasets[j]    
+        # Lowest frame number (should be 1)   
+        idx_offset = min(dataset["frameArray"])
+                 
+        # Handle bad tracking frames
+        badTrackFrames = dataset["bad_bodyTrack_frames"]["raw_frames"]
+        if dilate_minus1:
+            dilate_badTrackFrames = dilate_frames(badTrackFrames, 
+                                                  dilate_frames=np.array([-1]))
+            bad_frames_set = set(dilate_badTrackFrames)
+        else:
+            bad_frames_set = set(badTrackFrames)
+
+        for k in range(Nfish):
+            # Initialize lists to collect durations or IBIs for each bin
+            # Each element will be a list of duration/IBI values for that bin
+            bin_boutProperty_lists = [[] for _ in range(n_bins)]
+    
+            # Start frames and durations for bouts (i.e. motion)
+            # Note combine_frames format: 
+            # the first frame of any run of sequential frame numbers 
+            # (row 0 of the array) and the duration of the runs (row 1). 
+            moving_frameInfo = dataset[f"isActive_Fish{k}"]["combine_frames"]
+    
+            # number of bouts and inter-bout intervals for this fish 
+            n_bouts = moving_frameInfo.shape[1]
+            n_ibi = n_bouts-1 
+            if bout_property.lower() == 'duration':
+                n_to_use = n_bouts
+            elif bout_property.lower()=='ibi':
+                n_to_use = n_ibi
+            for jj in range(n_to_use):
+
+                if bout_property.lower() == 'duration':
+                    all_bout_property_frames =  \
+                        np.arange(moving_frameInfo[0,jj],
+                                  moving_frameInfo[0,jj] + moving_frameInfo[1,jj])
+                elif bout_property.lower()=='ibi':
+                    all_bout_property_frames =  \
+                        np.arange(moving_frameInfo[0,jj] + moving_frameInfo[1,jj],
+                                  moving_frameInfo[0,jj+1])
+
+                bout_property_s = (len(all_bout_property_frames)+1) / dataset["fps"]
+                all_bout_property_distances = \
+                    dataset[distance_key][(all_bout_property_frames-idx_offset)]
+                
+                # Replace bad frames with NaN
+                for i in range(len(all_bout_property_frames)):
+                    if (all_bout_property_frames[i]) in bad_frames_set:
+                        all_bout_property_distances[i] = np.nan
+
+                distance_mm = np.nanmean(all_bout_property_distances)
+                
+                # Check additional constraint if provided
+                if constraintKey is not None and constraintRange is not None:
+                    # Get constraint values for this IBI
+                    constraint_data = dataset[constraintKey]
+                    all_bout_property_constraint_values = \
+                        constraint_data[(all_bout_property_frames - idx_offset)]
+                    
+                    # Handle multi-dimensional constraint data
+                    if all_bout_property_constraint_values.ndim > 1:
+                        # Use get_values_subset to extract the right fish/operation
+                        constraint_subset = get_values_subset(
+                            all_bout_property_constraint_values,
+                            keyIdx=constraintIdx,
+                            use_abs_value=use_abs_value_constraint
+                        )
+                    else:
+                        constraint_subset = all_bout_property_constraint_values
+                        if use_abs_value_constraint:
+                            constraint_subset = np.abs(constraint_subset)
+                    
+                    # Calculate mean constraint value during this IBI
+                    mean_constraint_value = np.nanmean(constraint_subset)
+                    
+                    # Check if constraint is satisfied
+                    if use_abs_value_constraint:
+                        if not (constraintRange[0] <= np.abs(mean_constraint_value) <= constraintRange[1]):
+                            continue
+                    else:
+                        if not (constraintRange[0] <= mean_constraint_value <= constraintRange[1]):
+                            continue
+
+                # Find which distance bin this window belongs to
+                bin_idx = np.digitize(distance_mm, bins) - 1
+                # Make sure bin index is valid, and store the IBI value
+                if 0 <= bin_idx < n_bins:
+                    bin_boutProperty_lists[bin_idx].append(bout_property_s)
+
+            # Calculate weighted averages for each bin; neglect NaNs
+            for bin_idx in range(n_bins):
+                if len(bin_boutProperty_lists[bin_idx]) > 1:
+                    # require 2 points, for std. dev.
+                    bin_boutProperty_array = np.stack(bin_boutProperty_lists[bin_idx], axis=0)
+                    valid_pts = abs(bin_boutProperty_array - np.nanmean(bin_boutProperty_array)) \
+                        <= (outlier_std*np.nanstd(bin_boutProperty_array))
+                    binned_boutProperty_each_fish[j*Nfish + k, bin_idx] = \
+                        np.nanmean(bin_boutProperty_array[valid_pts])
+                else:
+                    # No data for this bin
+                    binned_boutProperty_each_fish[j*Nfish + k, bin_idx] = np.nan  
+           
+        # Combine fish IBIs to get average per dataset (simple average, not weighted)
+        binned_boutProperty_each_dataset[j,:] = np.nanmean(binned_boutProperty_each_fish[j*Nfish : j*Nfish + 2, :], axis=0)
+            
+    print('... done.\n')
+    
+    # Average over all fish.
+    binned_boutProperty = np.zeros((n_bins, 3))
+    binned_boutProperty[:,0] = np.nanmean(binned_boutProperty_each_fish, axis=0)
+    binned_boutProperty[:,1] = np.nanstd(binned_boutProperty_each_fish, axis=0)
+    binned_boutProperty[:,2] = np.nanstd(binned_boutProperty_each_fish, axis=0) / np.sqrt(nfish_total)
+    
+    xlabelStr= f'Distance: {distance_key}' # will also use for CSV
+    if makePlot:
+        fig = plt.figure()
+        plt.errorbar(bin_centers, binned_boutProperty[:,0], 
+                     binned_boutProperty[:,2], 
+                     fmt='o', capsize=7, markersize=12,
+                     color = plotColor, ecolor = plotColor)
+
+        if plot_each_dataset:
+            alpha_each = np.max((0.7/Ndatasets, 0.15))
+            for i in range(Ndatasets):
+                plt.plot(bin_centers, binned_boutProperty_each_dataset[i,:], color=plotColor, 
+                            alpha=alpha_each)
+
+        plt.title(titleStr)
+        plt.xlabel(xlabelStr)
+        plt.ylabel(f'Mean {propertyString} (s)')
+        plt.xlim((bin_distance_min, bin_distance_max))
+        if ylim is not None:
+            plt.ylim(ylim)
+
+        if outputFileName != None:
+            plt.savefig(outputFileName, bbox_inches='tight')
+
+        if closeFigure:
+            plt.close(fig)
+            
+    # If only 1 bin, flatten
+    if binned_boutProperty.shape[0]==1:
+        binned_boutProperty = binned_boutProperty.flatten()
+
+    # Output points to CSV (optional)
+    if outputCSVFileName is not None:
+        header_strings = [xlabelStr.replace(',', '_'), 
+                          f'mean_{propertyString} (s)', f'std_{propertyString} (s)',
+                          f'sem_{propertyString} (s)']
+        for j in range(Ndatasets):
+            header_strings.append(f'{propertyString}_Dataset_{j+1}')
+        list_to_output = [binned_boutProperty[:, i] if binned_boutProperty.ndim == 2 \
+                          else binned_boutProperty[i] for i in range(3)]
+        for j in range(Ndatasets):
+            list_to_output.append(binned_boutProperty_each_dataset[j,:],)
+        simple_write_CSV(bin_centers, 
+                         list_to_output, 
+                         filename =  outputCSVFileName, 
+                         header_strings=header_strings)
+        
+    return binned_boutProperty, bin_centers, binned_boutProperty_each_dataset, \
+        binned_boutProperty_each_fish
+
+
+
 
 def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm',
                                      bin_distance_min=0, bin_distance_max=50.0, 
