@@ -1099,7 +1099,7 @@ def main():
     # Get behaviors or properties to include in the ratio plot and the log-log plot
     default_keys_Plot = ['perp_noneSee', 'perp_oneSees', 'perp_bothSee',
                          'contact_any', 
-                         'tail_rubbing', 'maintain_proximity', 
+                         'tail_rubbing_AP', 'tail_rubbing_P', 'maintain_proximity', 
                          'anyPairBehavior', 'Cbend_any',
                          'Rbend_any', 'Jbend_any', 'approaching_any',
                          'fleeing_any', 'isMoving_any', 'isActive_any',

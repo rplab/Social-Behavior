@@ -4,7 +4,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Aug 25 20:59:37 2025
-Last modified January 1, 2026 -- Raghuveer Parthasarathy
+Last modified February 11, 2026 -- Raghuveer Parthasarathy
 
 Description
 -----------
@@ -1241,10 +1241,10 @@ def write_output_files(params, output_path, datasets):
         key_list = ["close_pair", "perp_noneSee", 
                     "perp_oneSees", "perp_bothSee", 
                     "perp_larger_fish_sees", "perp_smaller_fish_sees", 
-                    "contact_any", "contact_head_body", 
+                    "contact_any", "contact_head_body", "contact_tail_tail", 
                     "contact_larger_fish_head", "contact_smaller_fish_head", 
-                    "contact_inferred", "tail_rubbing", "maintain_proximity", 
-                    "anyPairBehavior"]
+                    "contact_inferred", "tail_rubbing_AP", "tail_rubbing_P", 
+                    "maintain_proximity", "anyPairBehavior"]
         for j in range(Nfish):
             key_list.extend([f"Cbend_Fish{j}"])
         key_list.extend(["Cbend_any"])  # formerly had a condition "if Nfish > 1:"
@@ -3604,7 +3604,8 @@ def make_2D_histogram(datasets,
     else:  # default to heatmap
         plot_2D_heatmap(hist, X, Y, Z_unc=hist_sem,
                        titleStr=titleStr, 
-                       xlabelStr=xlabelStr, ylabelStr=ylabelStr, clabelStr='Z',
+                       xlabelStr=xlabelStr, ylabelStr=ylabelStr, 
+                       clabelStr=clabelStr,
                        colorRange=colorRange, cmap=cmap,
                        unit_scaling_for_plot=unit_scaling_for_plot,
                        mask_by_sem_limit=mask_by_sem_limit,
@@ -3839,7 +3840,10 @@ def revise_datasets(keys_to_modify=["relative_orientation"],
       - "maintain_proximity", the maintaing-proximity behavior,
           e.g. to use different ranges.
       - "angular_speed_rad_s_mean" : mean angular speed averaged over both fish,
-          e.g. to revise after this started to be calculated
+          e.g. to revise after this property started to be calculated
+      - "turning_angle_rad" : change in turning angle (-1.0 * change in 
+          heading angle (rad)) for each fish,
+          e.g. to revise after this property started to be calculated
     
     Parameters
     ----------
@@ -3859,8 +3863,7 @@ def revise_datasets(keys_to_modify=["relative_orientation"],
     
     Returns
     -------
-    None
-        Overwrites the original pickle files with updated data.
+    Overwrites the original pickle files with updated data.
     
     Notes
     -----
@@ -3881,8 +3884,8 @@ def revise_datasets(keys_to_modify=["relative_orientation"],
     
     # Import here to avoid circular import
     from behavior_identification import recalculate_angles, get_maintain_proximity_frames
-    from behavior_identification_single import get_mean_speed
-    
+    from behavior_identification_single import get_mean_speed, get_fish_delta_heading_angle
+
     print("\n" + "="*70)
     print("REVISING DATASETS: Recalculating angles in pickle files")
     print("="*70)
@@ -3930,7 +3933,14 @@ def revise_datasets(keys_to_modify=["relative_orientation"],
                                None, datasets[j]["bad_bodyTrack_frames"]["raw_frames"])
             # average over fish, since ID is unreliable
             datasets[j]["angular_speed_rad_s_mean"] = np.mean(angular_speed_mean_all)
-    
+
+    # re-calculate change in heading angle:
+    if "turning_angle_rad" in keys_to_modify:
+        print('Revising turning angle.')
+        for j in range(N_datasets):
+            datasets[j]["turning_angle_rad"] = \
+                -1.0*get_fish_delta_heading_angle(datasets[j], frame_diff = (-1, 1))
+
     # Recalculate other behaviors; need to specify and write code for each
     if "maintain_proximity" in keys_to_modify:
         print('\n\n\nWARNING: maintain_proximity will be recalculated, ')
@@ -4054,7 +4064,7 @@ def revise_datasets(keys_to_modify=["relative_orientation"],
             dataPath = newOutputPath
         write_CSV_Excel_YAML(expt_config, params, dataPath, datasets)
         
-    return None
+    return datasets
 
 
 def update_parameters(keyName, params):

@@ -4,7 +4,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Wed Oct 15 08:59:05 2025
-Last modified Dec. 19, 2025 -- Raghuveer Parthasarathy
+Last modified Feb. 6, 2026 -- Raghuveer Parthasarathy
 
 Description
 -----------
@@ -32,12 +32,12 @@ import numpy as np
 from IO_toolkit import load_and_assign_from_pickle, \
     combine_images_to_tiff, plot_2D_heatmap, slice_2D_histogram
 from behavior_identification import make_pair_fish_plots,  \
-    make_bending_angle_plots, make_pair_1D_v_distance_plots
+    make_bending_angle_plots, make_pair_1D_v_distance_plots, \
+    make_turning_angle_plots
 from behavior_identification_single import make_single_fish_plots
 from toolkit import get_fps 
 from behavior_correlations import plot_behaviorCorrelation,  \
     calc_corr_asymm, plot_corr_asymm, calcDeltaFramesEvents, bin_deltaFrames, calc_pAB, calcBehavCorrAllSets
-import matplotlib.pyplot as plt
 
 #%%
 
@@ -88,8 +88,9 @@ CSVPath = r'2 week old - Sept2025 control pairs in dark vs light New Tracking'
 pickleFileName1 = os.path.join(parentPath, CSVPath, cond_str, 
                                f'{expBaseStr}_{cond_str}_positionData.pickle')
 AnalysisPath = f'{expBaseStr}_{cond_str}_Analysis'
+# Note: should be "_datasets" but probably file path was too long
 pickleFileName2 = os.path.join(parentPath, CSVPath, cond_str, AnalysisPath, 
-                               f'{expBaseStr}_{cond_str}_datasets.pickle')
+                               f'{expBaseStr}_{cond_str}_datas.pickle')
 
 all_expts = load_expt_data(pickleFileName1, pickleFileName2, exptName, 
                            plot_color, all_expts)
@@ -194,19 +195,21 @@ all_expts = load_expt_data(pickleFileName1, pickleFileName2, exptName,
 
 #%% Make single fish plots (a lot!)
 
-
-closeFigures = True
-if closeFigures:
-    print('Single fish plots: Closing Figure Windows.')
-
-for exptName in all_expts.keys():
-    make_single_fish_plots(all_expts[exptName]['datasets'], 
-                       exptName = exptName,
-                       color = all_expts[exptName]['plot_color'], 
-                       outputFileNameBase = f'JUNK{exptName} single_properties',
-                       outputFileNameExt = 'png',
-                       closeFigures = closeFigures,
-                       writeCSVs = False)
+makeSingleFishPlots = False
+if makeSingleFishPlots:
+    
+    closeFigures = True
+    if closeFigures:
+        print('Single fish plots: Closing Figure Windows.')
+    
+    for exptName in all_expts.keys():
+        make_single_fish_plots(all_expts[exptName]['datasets'], 
+                           exptName = exptName,
+                           color = all_expts[exptName]['plot_color'], 
+                           outputFileNameBase = f'JUNK{exptName} single_properties',
+                           outputFileNameExt = 'png',
+                           closeFigures = closeFigures,
+                           writeCSVs = False)
 
 #%% Make all pair plots (a lot!)
 # Only for Nfish ==2
@@ -215,8 +218,13 @@ closeFigures = True
 if closeFigures:
     print('Pair plots: Closing Figure Windows.')
     
+distance_type = 'closest_distance' # or head_head_distance
+#distance_type = 'head_head_distance' 
+
 for exptName in all_expts.keys():
     if all_expts[exptName]['Nfish'] == 2:
+
+        """
         make_pair_fish_plots(all_expts[exptName]['datasets'], 
                              exptName = exptName,
                              color = all_expts[exptName]['plot_color'], 
@@ -224,107 +232,152 @@ for exptName in all_expts.keys():
                              outputFileNameExt = 'png',
                              closeFigures = closeFigures,
                              writeCSVs = False)
-        saved_pair_outputs = make_bending_angle_plots(
+
+        saved_pair_bending_outputs = make_bending_angle_plots(
                              all_expts[exptName]['datasets'], 
                              exptName = exptName,
-                             distance_type = 'head_head_distance',
+                             distance_type = distance_type,
                              bending_threshold_deg = all_expts[exptName]['params']['bend_min_deg'],
                              color = all_expts[exptName]['plot_color'], 
                              outputFileNameBase = f'{exptName} pair_properties', 
                              outputFileNameExt = 'png',
                              closeFigures = closeFigures,
                              writeCSVs = False)
-        all_expts[exptName]["bend_2Dhist_mean"] = saved_pair_outputs[0]
-        all_expts[exptName]["bend_2Dhist_sem"] = saved_pair_outputs[1]
-        all_expts[exptName]["bend_2Dhist_X"] = saved_pair_outputs[2]
-        all_expts[exptName]["bend_2Dhist_Y"] = saved_pair_outputs[3]
-    
+        all_expts[exptName]["bend_2Dhist_mean"] = saved_pair_bending_outputs[0]
+        all_expts[exptName]["bend_2Dhist_sem"] = saved_pair_bending_outputs[1]
+        all_expts[exptName]["bend_2Dhist_X"] = saved_pair_bending_outputs[2]
+        all_expts[exptName]["bend_2Dhist_Y"] = saved_pair_bending_outputs[3]
+
+        """ 
+        saved_pair_turning_outputs = make_turning_angle_plots(
+                             all_expts[exptName]['datasets'], 
+                             exptName = exptName,
+                             distance_type = distance_type,
+                             color = all_expts[exptName]['plot_color'], 
+                             outputFileNameBase = f'{exptName} pair_properties', 
+                             outputFileNameExt = 'png',
+                             closeFigures = closeFigures,
+                             writeCSVs = False)
+        all_expts[exptName]["turn_2Dhist_mean"] = saved_pair_turning_outputs[0]
+        all_expts[exptName]["turn_2Dhist_sem"] = saved_pair_turning_outputs[1]
+        all_expts[exptName]["turn_2Dhist_X"] = saved_pair_turning_outputs[2]
+        all_expts[exptName]["turn_2Dhist_Y"] = saved_pair_turning_outputs[3]    
 #%% Make pair plots of behavior v distance
 # Only for Nfish ==2
 
-closeFigures = True
-if closeFigures:
-    print('Pair plots of behavior v distance: Closing Figure Windows.')
-    
-distanceKey = 'closest_distance_mm'      # can make it be 'head_head_distance_mm'
-for exptName in all_expts.keys():
-    if all_expts[exptName]['Nfish'] == 2:
-        make_pair_1D_v_distance_plots(all_expts[exptName]['datasets'], 
-                                      exptName = exptName,
-                                      distanceKey=distanceKey,
-                                      bin_range=(0.0, 50.0), Nbins=20,
-                                      color = all_expts[exptName]['plot_color'],
-                                      outputFileNameBase = f'{exptName} behavior', 
-                                      outputFileNameExt = 'png',
-                                      closeFigures = closeFigures,
-                                      writeCSVs = False)
+makePairDistancePlots = False
+if makePairDistancePlots:
+    closeFigures = True
+    if closeFigures:
+        print('Pair plots of behavior v distance: Closing Figure Windows.')
+        
+    distanceKey = 'closest_distance_mm'      # can make it be 'head_head_distance_mm'
+    for exptName in all_expts.keys():
+        if all_expts[exptName]['Nfish'] == 2:
+            make_pair_1D_v_distance_plots(all_expts[exptName]['datasets'], 
+                                          exptName = exptName,
+                                          distanceKey=distanceKey,
+                                          bin_range=(0.0, 50.0), Nbins=20,
+                                          color = all_expts[exptName]['plot_color'],
+                                          outputFileNameBase = f'{exptName} behavior', 
+                                          outputFileNameExt = 'png',
+                                          closeFigures = closeFigures,
+                                          writeCSVs = False)
 
 
 #%% Make combination (multipage) images from individual PNGs
 
-fileNameStringsToCombine = ['speed', 'angularSpeed', 'radialpos', 'heading_angle',
-                            'radialAlignment_angle', 'boutSpeed',
-                            'speedAutocorr', 'distance_head_head', 
-                            'distance_closest', 'rel_heading_angle',
-                            'rel_orientation', 'rel_orientation_sum', 
-                            'rel_orientation_abs_sum',
-                            'orientation_distance_2D', 'IBI_v_dist_and_radialpos',
-                            'IBI_v_dist_r_interior', 'IBI_v_dist_r_edge',
-                            'bendAngle_distance_orientation_2D',
-                            'bendAngle_v_orientation_small', 
-                            'bendAngle_v_orientation_small_asymm',
-                            'bendAngle_v_orientation_middle',
-                            'bendAngle_v_orientation_middle_asymm',
-                            'movingSpeed_v_HHdistance_orientation_2D',
-                            'movingSpeed_v_HHdistance_lowOrientation',
-                            'speedCrosscorr', 'speedCrosscorrDistBinned']
-                            
-excludeStrings = ['angular', '', 'IBI', '', 
-                  '', '', '', '',  
-                  '', '', 'sum', 'abs', '', 
-                  '', '', '', '', '', 'asymm', '', 'asymm', '',
-                  '', '', 'DistBinned', '']
-
-if len(fileNameStringsToCombine) != len(excludeStrings):
-    raise ValueError('List lengths not equal for combine_images strings.')
-for s, excl_s in zip(fileNameStringsToCombine, excludeStrings):
-    print(f'Combining {s}')
-    combine_images_to_tiff(filenamestring = s, 
-                           path = r'C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\Code_current', 
-                           ext = 'png', exclude_string=excl_s)
+makeCombinationImages= False
+if makeCombinationImages:
+    fileNameStringsToCombine = ['speed', 'angularSpeed', 'radialpos', 'heading_angle',
+                                'radialAlignment_angle', 'boutSpeed',
+                                'speedAutocorr', 'distance_head_head', 
+                                'distance_closest', 'rel_heading_angle',
+                                'rel_orientation', 'rel_orientation_sum', 
+                                'rel_orientation_abs_sum',
+                                'orientation_distance_2D', 'IBI_v_dist_and_radialpos',
+                                'IBI_v_dist_r_interior', 'IBI_v_dist_r_edge',
+                                'bendAngle_distance_orientation_2D',
+                                'bendAngle_v_orientation_small', 
+                                'bendAngle_v_orientation_small_asymm',
+                                'bendAngle_v_orientation_middle',
+                                'bendAngle_v_orientation_middle_asymm',
+                                'movingSpeed_v_HHdistance_orientation_2D',
+                                'movingSpeed_v_HHdistance_lowOrientation',
+                                'speedCrosscorr', 'speedCrosscorrDistBinned']
+                                
+    excludeStrings = ['angular', '', 'IBI', '', 
+                      '', '', '', '',  
+                      '', '', 'sum', 'abs', '', 
+                      '', '', '', '', '', 'asymm', '', 'asymm', '',
+                      '', '', 'DistBinned', '']
+    
+    if len(fileNameStringsToCombine) != len(excludeStrings):
+        raise ValueError('List lengths not equal for combine_images strings.')
+    for s, excl_s in zip(fileNameStringsToCombine, excludeStrings):
+        print(f'Combining {s}')
+        combine_images_to_tiff(filenamestring = s, 
+                               path = r'C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\Code_current', 
+                               ext = 'png', exclude_string=excl_s)
     
 
-#%% Differences of bending angle
+#%% Differences of turning angle or bending angle
 
-calcDifferences = True
+# distance_type should be defined earlier
 
-if calcDifferences:
+if distance_type == 'closest_distance':
+    distanceStr = 'Closest Distance'
+    ylabelStr = 'Closest Distance (mm)'
+elif distance_type == 'head_head_distance':
+    distanceStr = 'HH Distance'
+    ylabelStr = 'Head-Head Distance (mm)'
+else:
+    raise ValueError('Invalide distance type')
     
-    mask_by_sem_limit_degrees = 4.0 # show points with s.e.m. < this
+calcDifferences = 'turning' # 'turning', 'bending', or 'none' [anything else]
+
+if (calcDifferences == 'turning') or (calcDifferences == 'bending'):
+    
+    if calcDifferences == 'turning':
+        optionString = 'Turning'
+        keyString = 'turn'
+        mask_by_sem_limit_degrees = 8.0 # show points with s.e.m. < this
+        colorRange = (-3*np.pi/180.0, 3*np.pi/180.0)
+        zlim = (-4*np.pi/180, 4*np.pi/180)
+        # Mesh is the same for all datasets
+        X = all_expts['TwoWk_Light']["turn_2Dhist_X"]
+        Y = all_expts['TwoWk_Light']["turn_2Dhist_Y"]
+    elif calcDifferences == 'bending':
+        optionString = 'Bending'
+        keyString = 'bend'
+        mask_by_sem_limit_degrees = 6.0 # show points with s.e.m. < this
+        colorRange = (-6*np.pi/180.0, 6*np.pi/180.0)
+        zlim = (-15*np.pi/180, 15*np.pi/180)
+        # Mesh is the same for all datasets
+        X = all_expts['TwoWk_Light']["bend_2Dhist_X"]
+        Y = all_expts['TwoWk_Light']["bend_2Dhist_Y"]
+    else:
+        raise ValueError('Calc differences must be bending or turning')
+        
     unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
     cmap = 'RdYlBu_r'
     plot_type = 'heatmap'
-    colorRange = (-6*np.pi/180.0, 6*np.pi/180.0)
-    clabelStr= 'Mean Bending Angle (degrees)'
+    clabelStr= f'Mean {optionString} Angle (degrees)'
     xlabelStr = 'Relative Orientation (degrees)'
 
-    # ylabelStr = 'Closest Distance (mm)'
-    outputFileNameBase = 'Difference in Bend Angle, (Closest Distance), '
+    outputFileNameBase = f'Difference in {optionString} Angle, ({distanceStr}), '
 
-    ylabelStr = 'Head-Head Distance (mm)'
-    outputFileNameBase = 'Difference in Bend Angle, (HH Distance), '
-
-    # Mesh is the same for all datasets
-    X = all_expts['TwoWk_Light']["bend_2Dhist_X"]
-    Y = all_expts['TwoWk_Light']["bend_2Dhist_Y"]
+    # ylabelStr = 'Head-Head Distance (mm)'
+    outputFileNameBase = f'Difference in {optionString} Angle, ({distanceStr}), '
 
     # Difference between light and time-shifted light
-    dLight = all_expts['TwoWk_Light']["bend_2Dhist_mean"] - \
-        all_expts['TwoWk_Light_TIMESHIFT0']["bend_2Dhist_mean"]
-    dLight_unc = np.sqrt(all_expts['TwoWk_Light']["bend_2Dhist_sem"]**2 + \
-        all_expts['TwoWk_Light_TIMESHIFT0']["bend_2Dhist_mean"]**2)
-    titleStr = f'Light - TimeShift Light: Bend Angle; unc. < {mask_by_sem_limit_degrees:.1f} deg'
+    dLight = all_expts['TwoWk_Light'][f"{keyString}_2Dhist_mean"] - \
+        all_expts['TwoWk_Light_TIMESHIFT0'][f"{keyString}_2Dhist_mean"]
+    dLight_unc = np.sqrt(all_expts['TwoWk_Light'][f"{keyString}_2Dhist_sem"]**2 + \
+        all_expts['TwoWk_Light_TIMESHIFT0'][f"{keyString}_2Dhist_mean"]**2)
+    titleStr = f'Light - TimeShift Light: {optionString} Angle; unc. < {mask_by_sem_limit_degrees:.1f} deg'
     outputFileName = outputFileNameBase + 'Light - TS0Light.png'
+
     plot_2D_heatmap(dLight, X, Y, Z_unc=dLight_unc,
                    titleStr=titleStr, xlabelStr=xlabelStr, ylabelStr=ylabelStr, 
                    clabelStr=clabelStr, colorRange = colorRange, cmap=cmap,
@@ -333,14 +386,13 @@ if calcDifferences:
                    outputFileName=outputFileName, 
                    closeFigure=False)
 
-    # Slice along bend angle binned by distance and orientation, 
+    # Slice along bend or turn angle binned by distance and orientation, 
     # orientation axis, constrain distance: distance < 2.5 mm
     d_range = (0.0, 2.5)
     xlabelStr = 'Relative Orientation (deg)'
-    titleStr = f'Light - TimeShift Light: Bend Angle for d < {d_range[1]:.2f} mm'
-    zlabelStr = 'Mean Bending Angle (degrees)'
+    titleStr = f'Light - TimeShift Light: {optionString} Angle for d < {d_range[1]:.2f} mm'
+    zlabelStr = f'Mean {optionString} Angle (degrees)'
     xlim = (-np.pi, np.pi)
-    zlim = (-15*np.pi/180, 15*np.pi/180)
     color = 'peru'
     outputFileName = outputFileNameBase + 'Light - TS0Light small distance.png'
     slice_2D_histogram(dLight, X, Y, dLight_unc, 
@@ -352,10 +404,10 @@ if calcDifferences:
                        unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
                        color = color, outputFileName=outputFileName,
                        closeFigure=False)
-    # Slice along bend angle binned by distance and orientation, 
-    # orientation axis, constrain distance: distance 3 to 13 mm mm
-    d_range = (3.0, 13.0)
-    titleStr = f'Light - TimeShift Light: Bend Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
+    # Slice along bend or turn angle binned by distance and orientation, 
+    # orientation axis, constrain distance: distance 5 to 15 mm
+    d_range = (5.0, 15.0)
+    titleStr = f'Light - TimeShift Light: {optionString} Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
     outputFileName = outputFileNameBase + 'Light - TS0Light middle distance.png'
     slice_2D_histogram(dLight, X, Y, dLight_unc, 
                        slice_axis = 'x', other_range = d_range, 
@@ -369,11 +421,11 @@ if calcDifferences:
 
 
     # Difference between light and dark
-    dLightDark = all_expts['TwoWk_Light']["bend_2Dhist_mean"] - \
-        all_expts['TwoWk_Dark']["bend_2Dhist_mean"]
-    dLightDark_unc = np.sqrt(all_expts['TwoWk_Light']["bend_2Dhist_sem"]**2 + \
-        all_expts['TwoWk_Dark']["bend_2Dhist_mean"]**2)
-    titleStr = f'Light - Dark: Bend Angle; unc. < {mask_by_sem_limit_degrees:.1f} deg'
+    dLightDark = all_expts['TwoWk_Light'][f"{keyString}_2Dhist_mean"] - \
+        all_expts['TwoWk_Dark'][f"{keyString}_2Dhist_mean"]
+    dLightDark_unc = np.sqrt(all_expts['TwoWk_Light'][f"{keyString}_2Dhist_sem"]**2 + \
+        all_expts['TwoWk_Dark'][f"{keyString}_2Dhist_mean"]**2)
+    titleStr = f'Light - Dark: {optionString} Angle; unc. < {mask_by_sem_limit_degrees:.1f} deg'
     outputFileName = outputFileNameBase + 'Light - Dark.png'
         
     plot_2D_heatmap(dLightDark, X, Y, Z_unc=dLightDark_unc,
@@ -383,14 +435,13 @@ if calcDifferences:
                    mask_by_sem_limit = mask_by_sem_limit_degrees*np.pi/180.0,
                    outputFileName=outputFileName, 
                    closeFigure=False)
-    # Slice along bend angle binned by distance and orientation, 
+    # Slice along bend or turn angle binned by distance and orientation, 
     # orientation axis, constrain distance: distance < 2.5 mm
     d_range = (0.0, 2.5)
     xlabelStr = 'Relative Orientation (deg)'
-    titleStr = f'Light - Dark: Bend Angle for d < {d_range[1]:.2f} mm'
-    zlabelStr = 'Mean Bending Angle (degrees)'
+    titleStr = f'Light - Dark: {optionString} Angle for d < {d_range[1]:.2f} mm'
+    zlabelStr = f'Mean {optionString} Angle (degrees)'
     xlim = (-np.pi, np.pi)
-    zlim = (-15*np.pi/180, 15*np.pi/180)
     color = 'darkseagreen'
     outputFileName = outputFileNameBase + 'Light - Dark small distance.png'
     slice_2D_histogram(dLightDark, X, Y, dLightDark_unc, 
@@ -402,10 +453,10 @@ if calcDifferences:
                        unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
                        color = color, outputFileName=outputFileName,
                        closeFigure=False)
-    # Slice along bend angle binned by distance and orientation, 
-    # orientation axis, constrain distance: distance 3 to 13 mm mm
-    d_range = (3.0, 13.0)
-    titleStr = f'Light - Dark: Bend Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
+    # Slice along bend or turn angle binned by distance and orientation, 
+    # orientation axis, constrain distance: distance 5 to 15 mm
+    d_range = (0.0, 2.5)
+    titleStr = f'Light - Dark: {optionString} Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
     outputFileName = outputFileNameBase + 'Light - Dark middle distance.png'
     slice_2D_histogram(dLightDark, X, Y, dLightDark_unc, 
                        slice_axis = 'x', other_range = d_range, 
@@ -418,11 +469,11 @@ if calcDifferences:
                        closeFigure=False)
     
     # Difference between dark and time-shifted dark
-    dDark = all_expts['TwoWk_Dark']["bend_2Dhist_mean"] - \
-        all_expts['TwoWk_Dark_TIMESHIFT0']["bend_2Dhist_mean"]
-    dDark_unc = np.sqrt(all_expts['TwoWk_Dark']["bend_2Dhist_sem"]**2 + \
-        all_expts['TwoWk_Dark_TIMESHIFT0']["bend_2Dhist_mean"]**2)
-    titleStr = f'Difference in Bend Angle: Dark - TimeShift Dark; unc. < {mask_by_sem_limit_degrees:.1f} deg'
+    dDark = all_expts['TwoWk_Dark'][f"{keyString}_2Dhist_mean"] - \
+        all_expts['TwoWk_Dark_TIMESHIFT0'][f"{keyString}_2Dhist_mean"]
+    dDark_unc = np.sqrt(all_expts['TwoWk_Dark'][f"{keyString}_2Dhist_sem"]**2 + \
+        all_expts['TwoWk_Dark_TIMESHIFT0'][f"{keyString}_2Dhist_mean"]**2)
+    titleStr = f'Difference in {optionString} Angle: Dark - TimeShift Dark; unc. < {mask_by_sem_limit_degrees:.1f} deg'
     outputFileName = outputFileNameBase + 'Dark - TS0Dark.png'
     plot_2D_heatmap(dDark, X, Y, Z_unc=dDark_unc,
                    titleStr=titleStr, xlabelStr=xlabelStr, ylabelStr=ylabelStr, 
@@ -432,14 +483,13 @@ if calcDifferences:
                    outputFileName=outputFileName, 
                    closeFigure=False)
 
-    # Slice along bend angle binned by distance and orientation, 
+    # Slice along bend or turn angle binned by distance and orientation, 
     # orientation axis, constrain distance: distance < 2.5 mm
     d_range = (0.0, 2.5)
     xlabelStr = 'Relative Orientation (deg)'
-    titleStr = f'Dark - Timeshift Dark: Bend Angle for d < {d_range[1]:.2f} mm'
-    zlabelStr = 'Mean Bending Angle (degrees)'
+    titleStr = f'Dark - Timeshift Dark: {optionString} Angle for d < {d_range[1]:.2f} mm'
+    zlabelStr = f'Mean {optionString} Angle (degrees)'
     xlim = (-np.pi, np.pi)
-    zlim = (-15*np.pi/180, 15*np.pi/180)
     color = 'blue'
     outputFileName = outputFileNameBase + 'Dark - TS0Dark small distance.png'
     slice_2D_histogram(dDark, X, Y, dDark_unc, 
@@ -451,10 +501,10 @@ if calcDifferences:
                        unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
                        color = color, outputFileName=outputFileName,
                        closeFigure=False)
-    # Slice along bend angle binned by distance and orientation, 
-    # orientation axis, constrain distance: distance 3 to 13 mm mm
-    d_range = (3.0, 13.0)
-    titleStr = f'Dark - Timeshift Dark: Bend Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
+    # Slice along bend or turn angle binned by distance and orientation, 
+    # orientation axis, constrain distance: distance 5 to 15 mm
+    d_range = (5.0, 15.0)
+    titleStr = f'Dark - Timeshift Dark: {optionString} Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
     outputFileName = outputFileNameBase + 'Dark - TS0Dark middle distance.png'
     slice_2D_histogram(dDark, X, Y, dDark_unc, 
                        slice_axis = 'x', other_range = d_range, 
@@ -475,8 +525,8 @@ calculateCorrelations = False
 if calculateCorrelations:
     
     behavior_key_list = ['perp_noneSee', 'perp_oneSees', 'perp_bothSee', 
-                         'contact_any', 'tail_rubbing', 'maintain_proximity', 
-                         'approaching_Fish0', 'approaching_Fish1', 
+                         'contact_any', 'tail_rubbing_AP', 'tail_rubbing_P', 
+                         'maintain_proximity', 'approaching_Fish0', 'approaching_Fish1', 
                          'fleeing_Fish0', 'fleeing_Fish1', 
                          'approaching_Fish_lowRelOrient0',  'approaching_Fish_lowRelOrient1', 
                          'fleeing_Fish_lowRelOrient0',  'fleeing_Fish_lowRelOrient1', 
@@ -487,7 +537,10 @@ if calculateCorrelations:
                          'Jbend_Fish_lowRelOrient0', 'Jbend_Fish_lowRelOrient1', 
                          'Rbend_Fish_lowRelOrient0',  'Rbend_Fish_lowRelOrient1']
     behavior_key_list_subset1 = ['maintain_proximity', 'approaching_Fish_lowRelOrient0', 'approaching_Fish_lowRelOrient1', 'fleeing_Fish_lowRelOrient0', 'fleeing_Fish_lowRelOrient1', 'isBending_Fish_lowRelOrient0', 'isBending_Fish_lowRelOrient1', 'isMoving_Fish_lowRelOrient0', 'isMoving_Fish_lowRelOrient1']
-    behavior_key_list_subset2 = ['perp_noneSee', 'perp_oneSees', 'perp_bothSee', 'contact_any', 'tail_rubbing', 'maintain_proximity', 'Cbend_Fish_lowRelOrient0', 'Cbend_Fish_lowRelOrient1']
+    behavior_key_list_subset2 = ['perp_noneSee', 'perp_oneSees', 'perp_bothSee', 
+                                 'contact_any', 'tail_rubbing_AP', 'tail_rubbing_P',
+                                 'maintain_proximity', 'Cbend_Fish_lowRelOrient0', 
+                                 'Cbend_Fish_lowRelOrient1']
     behavior_key_list_subset = behavior_key_list_subset1 + behavior_key_list_subset2
     
     binWidthFrames = 1 # bin size for delays (number of frames)

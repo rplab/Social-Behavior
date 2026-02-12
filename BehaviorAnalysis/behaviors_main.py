@@ -197,6 +197,7 @@ def main():
                                                  params, CSVcolumns, tol=0.001)
     
     #%% Re-link all fish based on whole-body distance minimizing
+    print('\nRe-linking...')
     all_position_data, datasets = relink_fish_ids_all_datasets(all_position_data,
                                                      datasets, CSVcolumns)
     # Re-calculate fish lengths 
@@ -206,7 +207,7 @@ def main():
                              datasets[j]["image_scale"], CSVcolumns)
         
     #%% Time-shift one of the fish
-    time_shift_fish_idx = None # set to None to avoid shifting
+    time_shift_fish_idx = 0 # set to None to avoid shifting
     if time_shift_fish_idx is not None:
         print('\n\n***************************')
         caution_check = input(f'\nARE YOU SURE you want to time-shift fish {time_shift_fish_idx}? (y/n): ')
@@ -283,7 +284,9 @@ def main():
                          'perp_smaller_fish_sees', 
                          'contact_any', 'contact_head_body', 
                          'contact_larger_fish_head', 'contact_smaller_fish_head',
-                         'contact_inferred', 'tail_rubbing', 'maintain_proximity',
+                         'contact_tail_tail',
+                         'contact_inferred', 'tail_rubbing_AP', 'tail_rubbing_P',
+                         'maintain_proximity',
                          'approaching_Fish0', 'approaching_Fish1',
                          'approaching_any', 'approaching_all',
                          'fleeing_Fish0', 'fleeing_Fish1',

@@ -6,7 +6,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Raghuveer Parthasarathy, Dec. 18, 2025
+Last modified by Raghuveer Parthasarathy, Feb. 11, 2026
 
 Description
 -----------
@@ -1858,7 +1858,9 @@ def get_behavior_key_list(datasets):
 
 def select_items_dialog(behavior_key_list, default_keys=['perp_noneSee', 
         'perp_oneSees', 'perp_bothSee', 'contact_any', 'contact_head_body', 
-        'contact_inferred', 'tail_rubbing', 'maintain_proximity', 
+        'contact_tail_tail',
+        'contact_inferred', 'tail_rubbing_AP', 'tail_rubbing_P', 
+        'maintain_proximity', 
         'Cbend_Fish0', 'Cbend_Fish1', 
         'Jbend_Fish0', 'Jbend_Fish1', 'Rbend_Fish0', 'Rbend_Fish1', 
         'isActive_any', 'isMoving_any', 'approaching_Fish0', 

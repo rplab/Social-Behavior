@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified December 25, 2025 -- Raghu Parthasarathy
+Last modified February 11, 2026 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -31,8 +31,7 @@ from IO_toolkit import plot_probability_distr, plot_2D_heatmap, \
     plot_function_allSets, plot_waterfall_binned_crosscorr, \
     calculate_property_1Dbinned, \
     get_plot_and_CSV_filenames, simple_write_CSV
-from behavior_identification_single import average_bout_trajectory_allSets, \
-    calc_bend_angle
+from behavior_identification_single import calc_bend_angle
 from scipy.stats import skew
 import itertools
 from scipy.ndimage import binary_closing, binary_opening
@@ -167,7 +166,8 @@ def get_basic_two_fish_characterizations(all_position_data, datasets, CSVcolumns
     return datasets
 
     
-def get_interfish_distance(position_data, CSVcolumns, image_scale):
+def get_interfish_distance(position_data, CSVcolumns, image_scale, 
+                           body_column_offset = 0):
     """
     Get the inter-fish distance (calculated both as the distance 
         between head positions and as the closest distance)
@@ -176,11 +176,17 @@ def get_interfish_distance(position_data, CSVcolumns, image_scale):
         position_data : all position data for this dataset, from all_position_data[j]
         CSVcolumns : CSV column information (dictionary)
         image_scale : scale, um/px; from dataset["image_scale"]
+        body_column_offset  : start at this body column position, e.g. to only
+                              consider the tail (offset 6 for the last 4 of 10 pts)
     Output
         head_head_distance_mm : head-head distance (mm), Nframes x 1 array 
         closest_distance_mm : closest distance (mm), Nframes x 1 array
     """
     
+    # Check that offset is valid.
+    if body_column_offset > (CSVcolumns["body_Ncolumns"] - 1):
+        raise ValueError(f'Error in get_interfish_distance, body_column_offset = {body_column_offset} is too large!' )
+
     # head-head distance
     head_x = position_data[:,CSVcolumns["head_column_x"],:] # x, both fish
     head_y = position_data[:,CSVcolumns["head_column_y"],:] # y, both fish
@@ -190,8 +196,10 @@ def get_interfish_distance(position_data, CSVcolumns, image_scale):
     head_head_distance_mm = (np.sqrt(dx**2 + dy**2))*image_scale/1000.0
     
     # body-body distance, for all pairs of points
-    body_x = position_data[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
-    body_y = position_data[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
+    startColx = CSVcolumns["body_column_x_start"] + body_column_offset
+    startColy = CSVcolumns["body_column_y_start"] + body_column_offset
+    body_x = position_data[:, startColx:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
+    body_y = position_data[:, startColy:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
     closest_distance_mm = np.zeros((body_x.shape[0],1))
     for idx in range(body_x.shape[0]):
         d0 = np.subtract.outer(body_x[idx,:,0], body_x[idx,:,1]) # all pairs of subtracted x positions
@@ -249,7 +257,7 @@ def extract_pair_behaviors(pair_behavior_frames, position_data, dataset,
                 perp_noneSee, perp_oneSees, 
                 perp_bothSee, contact_any, contact_head_body, 
                 contact_larger_fish_head, contact_smaller_fish_head,
-                contact_inferred, tail_rubbing, maintain_proximity, 
+                contact_inferred, tail_rubbing_AP, tail_rubbing_P, maintain_proximity, 
                 approaching_Fish0, approaching_Fish1, approaching_any, 
                 approaching_all,
                 fleeing_Fish0, fleeing_Fish1, fleeing_any, fleeing_all
@@ -289,6 +297,7 @@ def extract_pair_behaviors(pair_behavior_frames, position_data, dataset,
     pair_behavior_frames['contact_head_body'] = contact_dict["head-body"]
     pair_behavior_frames['contact_larger_fish_head'] = contact_dict["larger_fish_head_contact"]
     pair_behavior_frames['contact_smaller_fish_head'] = contact_dict["smaller_fish_head_contact"]
+    pair_behavior_frames['contact_tail_tail'] = contact_dict["tail-tail"]
     pair_behavior_frames['contact_inferred'] = \
         get_inferred_contact_frames(position_data, dataset, CSVcolumns, 
                         params["contact_inferred_window"],                                  
@@ -303,7 +312,8 @@ def extract_pair_behaviors(pair_behavior_frames, position_data, dataset,
     # Tail-rubbing
     tailrub_maxTailDist_px = params["tailrub_maxTailDist_mm"]*1000/dataset["image_scale"]
 
-    pair_behavior_frames['tail_rubbing'] = get_tail_rubbing_frames(body_x, body_y, 
+    pair_behavior_frames['tail_rubbing_AP'], pair_behavior_frames['tail_rubbing_P'] = \
+        get_tail_rubbing_frames(body_x, body_y, 
                                           dataset["head_head_distance_mm"], 
                                           dataset["heading_angle"], 
                                           params["tail_rub_ws"], 
@@ -346,7 +356,9 @@ def extract_pair_behaviors(pair_behavior_frames, position_data, dataset,
 
 
                             
-def get_contact_frames(position_data, dataset, CSVcolumns, contact_distance_threshold_mm):
+def get_contact_frames(position_data, dataset, CSVcolumns, 
+                       contact_distance_threshold_mm, 
+                       N_tail_points = 4):
     """
     Returns a dictionary of window frames for contact between two fish, 
     which can be close distance between any fish body positions or 
@@ -363,12 +375,17 @@ def get_contact_frames(position_data, dataset, CSVcolumns, contact_distance_thre
                   and all positions
         CSVcolumns : CSV column parameters
         contact_distance_threshold_mm: the contact distance threshold, *mm*
+        N_tail_points : number of posterior points to consider as the tail
+                    Default 4 (of 10)
         image_scale : um/px, from datasets[j]["image_scale"]
 
     Returns:
         contact_dict (dictionary): a dictionary of arrays of different 
-            contact types: any_contact, head-body contact (a subset)
-            larger or smaller fish head contact (a subset)
+            contact types: 
+                any_contact, 
+                head-body contact (a subset)
+                    larger or smaller fish head contact (a subset of head-body)
+                tail-tail (a subset)
     """
     
     # body_x and _y are the body positions, each of size Nframes x 10 x Nfish
@@ -377,8 +394,16 @@ def get_contact_frames(position_data, dataset, CSVcolumns, contact_distance_thre
     
     contact_dict = {"any_contact": [], "head-body": [], 
                     "larger_fish_head_contact": [], 
-                    "smaller_fish_head_contact": []}
+                    "smaller_fish_head_contact": [],
+                    "tail-tail": []}
 
+    # Assess tail-tail contact
+    body_column_offset = CSVcolumns["body_Ncolumns"] - N_tail_points
+    _, tail_tail_closest_distance_mm = get_interfish_distance(position_data, 
+                                                              CSVcolumns, 
+                                                              dataset["image_scale"], 
+                                                              body_column_offset = body_column_offset)
+    
     for idx in range(body_x.shape[0]):
 
         # Any contact: look at closest element of distance matrix between
@@ -404,6 +429,11 @@ def get_contact_frames(position_data, dataset, CSVcolumns, contact_distance_thre
                     contact_dict["larger_fish_head_contact"].append(idx+1)
                 else:
                     contact_dict["smaller_fish_head_contact"].append(idx+1)
+
+        # Tail-tail contact: look at closest element of distance matrix between
+        # tail points, previously calculated (in this function)
+        if tail_tail_closest_distance_mm[idx] < contact_distance_threshold_mm:
+            contact_dict["tail-tail"].append(idx+1)
 
     return contact_dict
 
@@ -691,6 +721,7 @@ def get_tail_rubbing_frames(body_x, body_y, head_separation,
                         cos_theta_antipar, tailRub_maxHeadDist): 
     """
     Returns an array of tail-rubbing window frames.
+    Two types: fish oriented antiparallel, and parallel
 
     Args:
         body_x (array): a 3D array of x positions along the 10 body markers, 
@@ -705,11 +736,15 @@ def get_tail_rubbing_frames(body_x, body_y, head_separation,
         window_size (int): number of frames for which tail-rubbing criterion must be met
         tailRub_maxTailDist (float): tail distance threshold for the two fish. *px*
         cos_theta_antipar (float): antiparallel orientation upper bound for cos(theta) 
+                        Note the -1.0*cos_theta_antipar is the lower bound for parallel orientation
+                        Typically cos_theta_antipar = -0.8
         tailRub_maxHeadDist (float): head distance threshold for the 
                          two fish. *mm*
 
     Returns:
-        tail_rubbing_frames: a 1D array of tail-rubbing window frames
+        tuple of 
+        tail_rubbing_AP_frames: a 1D array of anti-parallel tail-rubbing window frames
+        tail_rubbing_P_frames: a 1D array of parallel tail-rubbing window frames
     """
     
     N_postPoints = 4 # number of posterior-most body markers 
@@ -737,24 +772,35 @@ def get_tail_rubbing_frames(body_x, body_y, head_separation,
     # cos(angle between headings) for each frame
     # Should be antiparallel, so cos(theta) < threshold 
     #   (ideally cos(theta)==-1)
+    # Also consider parallel orientation
     cos_theta = np.cos(fish_angle_data[:,0] - fish_angle_data[:,1])
-    angle_criterion = (cos_theta < cos_theta_antipar).flatten()
+    angle_criterion_AP = (cos_theta < cos_theta_antipar).flatten()
+    angle_criterion_P = (cos_theta > (-1.0*cos_theta_antipar)).flatten()
 
     # Assess head separation, for each frame
     head_separation_criterion = (head_separation < tailRub_maxHeadDist).flatten()
     
     # All criteria (and), in each frame
-    all_criteria_frame = np.logical_and(close_tails, angle_criterion, head_separation_criterion)
-    all_criteria_window = np.zeros(all_criteria_frame.shape, dtype=bool) # initialize to false
+    all_criteria_AP_frame = np.logical_and(close_tails, 
+                                           np.logical_and(angle_criterion_AP,
+                                                          head_separation_criterion))
+    all_criteria_P_frame = np.logical_and(close_tails, 
+                                           np.logical_and(angle_criterion_P,
+                                                          head_separation_criterion))
+    all_criteria_AP_window = np.zeros(all_criteria_AP_frame.shape, dtype=bool) # initialize to false
+    all_criteria_P_window = np.zeros(all_criteria_P_frame.shape, dtype=bool) # initialize to false
     # Check that criteria are met through the frame window. 
     # Will loop rather than doing some clever Boolean product of offset arrays
-    for j in range(all_criteria_frame.shape[0]-window_size+1):
-        all_criteria_window[j] =  all_criteria_frame[j:j+window_size].all()
+    for j in range(all_criteria_AP_frame.shape[0]-window_size+1):
+        all_criteria_AP_window[j] =  all_criteria_AP_frame[j:j+window_size].all()
+    for j in range(all_criteria_P_frame.shape[0]-window_size+1):
+        all_criteria_P_window[j] =  all_criteria_P_frame[j:j+window_size].all()
 
-    tail_rubbing_frames = np.array(np.where(all_criteria_window==True))[0,:].flatten() + 1
+    tail_rubbing_AP_frames = np.array(np.where(all_criteria_AP_window==True))[0,:].flatten() + 1
+    tail_rubbing_P_frames  = np.array(np.where(all_criteria_P_window==True))[0,:].flatten() + 1
     # Not sure why the [0,:] is needed, but otherwise returns additional zeros.
     
-    return tail_rubbing_frames
+    return tail_rubbing_AP_frames, tail_rubbing_P_frames
 
 
 def get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params):
@@ -1623,253 +1669,6 @@ def calculate_bout_property_binned_by_distance(datasets, bout_property = 'IBI',
 
 
 
-def calculate_IBI_binned_by_distance(datasets, distance_key='closest_distance_mm',
-                                     bin_distance_min=0, bin_distance_max=50.0, 
-                                     bin_width=5.0, 
-                                     constraintKey=None, constraintRange=None,
-                                     constraintIdx=None, use_abs_value_constraint=False,
-                                     dilate_minus1=False,
-                                     outlier_std=3.0,
-                                     makePlot=True, plot_each_dataset=False,
-                                     ylim=None, titleStr=None, plotColor='black',
-                                     outputFileName=None, closeFigure=False,
-                                     outputCSVFileName = None):
-    
-    """
-    Calculate mean inter-bout interval (IBI) binned by mean inter-fish distance
-    during the interval. Plot (optional) and write a CSV (optional).
-    
-    Requires Nfish = 2. Calculates IBI for each fish in each dataset.
-    Returns average over all fish, average for each dataset (averaged over both fish),
-    and individual fish averages.
-    
-    The distance_key is used for binning (primary filter on mean distance during IBI).
-    Optional: constraintKey/constraintRange provides additional constraint
-    (e.g., only consider IBIs where mean radial position is within some range).
-
-    Returns - average over all fish
-            - average for each dataset (averaged over both fish)
-            - and individual fish averages.
-    Could be used to bin IBI by any other quantitative property also
-            by changing "distance_key", as long as the property
-            has one value per frame, like Nfish==2 inter-fish distance.
-        
-    Parameters
-    ----------
-    datasets : list of dataset dictionaries
-    distance_key : str, either 'head_head_distance_mm' or 'closest_distance_mm'
-    bin_distance_min, bin_distance_max : float, distance range for binning (mm)
-    bin_width : float, width of distance bins (mm)
-    constraintKey : str or None
-        Additional constraint key (e.g., 'radial_position_mm')
-    constraintRange : tuple or None
-        (min, max) range for additional constraint
-    constraintIdx : int, str, or None
-        Which fish/operation to use for constraint
-    use_abs_value_constraint : bool
-        If True, use absolute value of constraint
-    dilate_minus1 : bool, if True dilate bad frames by -1
-    outlier_std : for each fish's list if IBIs, remove IBI values > outlier_std
-                  from the mean. (In rare cases, very high values, probably
-                  due to bad tracking.)
-    makePlot : bool, make a plot if true
-    plot_each_dataset : (bool) if True, plot the IBI vs. distance for each 
-                  dataset (values averaged over each fish)
-    ylim : tuple, ylimits for plot; None for auto
-    titleStr : string, title for plot
-    outputFileName : string, for saving the plot (default None -- don't save)
-    closeFigure : (bool) if True, if makePlot is True, close the figure
-                        after creating it.
-    outputCSVFileName : if not None, save to a CSV file the following (columns):
-                - plotted "X" positions (bin_centers)
-                - plotted mean "Y" positions (binned_IBI[:,0] == mean_IBI)
-                - Standard deviation (binned_IBI[:,1] == std_IBI)
-                - Standard error of the mean (binned_IBI[:,2] == sem_IBI)
-                - Each individual dataset's mean IBI (binned_IBI_each_dataset)
-                  (not each individual fish)
-    
-    Returns
-    -------
-    binned_IBI : numpy array of shape (n_bins, 3) 
-                 containing [mean_IBI, std_IBI, sem_IBI] for each bin; 
-                 stats are calculated across fish
-    bin_centers : array of bin center distances (mm)
-    binned_IBI_each_dataset : numpy array of shape (Ndatasets, n_bins)
-             with the mean IBI for each dataset (averaged over both fish), 
-             in each bin
-    binned_IBI_each_fish : numpy array of shape (nfish_total, n_bins)
-             with the mean IBI for each fish, each bin
-
-    """
-    
-    # Check that Nfish ==2
-    for j in range(len(datasets)):
-        dataset = datasets[j]    
-        Nfish = datasets[j]["Nfish"]
-        if Nfish != 2:
-            raise ValueError("IBI and distance binning is only supported for Nfish==2")
-
-    # Set up distance bins
-    bins = np.arange(bin_distance_min, bin_distance_max + bin_width, bin_width)
-    bin_centers = bins[:-1] + bin_width / 2
-    n_bins = len(bin_centers)
-    binned_IBI = np.zeros((n_bins,))
-    
-    # Number of datasets; initialize array
-    Ndatasets = len(datasets)
-    binned_IBI_each_dataset = np.zeros((Ndatasets, n_bins))
-
-    # Number of fish; initialize array
-    nfish_total = len(datasets)*Nfish # Nfish = 2 fish per dataset
-    binned_IBI_each_fish = np.zeros((nfish_total, n_bins))
-                        
-    print('\nBinning inter-bout intervals by distance.... ', end='')
-    for j in range(Ndatasets):
-        print(f' {j}... ', end='')
-        dataset = datasets[j]    
-        # Lowest frame number (should be 1)   
-        idx_offset = min(dataset["frameArray"])
-                 
-        # Handle bad tracking frames
-        badTrackFrames = dataset["bad_bodyTrack_frames"]["raw_frames"]
-        if dilate_minus1:
-            dilate_badTrackFrames = dilate_frames(badTrackFrames, 
-                                                  dilate_frames=np.array([-1]))
-            bad_frames_set = set(dilate_badTrackFrames)
-        else:
-            bad_frames_set = set(badTrackFrames)
-
-        for k in range(Nfish):
-            # Initialize lists to collect IBIs for each bin
-            # Each element will be a list of IBI values for that bin
-            bin_IBI_lists = [[] for _ in range(n_bins)]
-    
-            # Start frames and durations for bouts (i.e. motion)
-            moving_frameInfo = dataset[f"isActive_Fish{k}"]["combine_frames"]
-    
-            # number of inter-bout intervals for this fish 
-            n_ibi = moving_frameInfo.shape[1]-1 
-            for jj in range(n_ibi):
-                all_ibi_frames = np.arange(moving_frameInfo[0,jj] + moving_frameInfo[1,jj],
-                                           moving_frameInfo[0,jj+1])
-                ibi_s = (len(all_ibi_frames)+1) / dataset["fps"]
-                all_ibi_distances = dataset[distance_key][(all_ibi_frames-idx_offset)]
-                
-                # Replace bad frames with NaN
-                for i in range(len(all_ibi_frames)):
-                    if (all_ibi_frames[i]) in bad_frames_set:
-                        all_ibi_distances[i] = np.nan
-
-                distance_mm = np.nanmean(all_ibi_distances)
-                
-                # Check additional constraint if provided
-                if constraintKey is not None and constraintRange is not None:
-                    # Get constraint values for this IBI
-                    constraint_data = dataset[constraintKey]
-                    all_ibi_constraint_values = constraint_data[(all_ibi_frames - idx_offset)]
-                    
-                    # Handle multi-dimensional constraint data
-                    if all_ibi_constraint_values.ndim > 1:
-                        # Use get_values_subset to extract the right fish/operation
-                        constraint_subset = get_values_subset(
-                            all_ibi_constraint_values,
-                            keyIdx=constraintIdx,
-                            use_abs_value=use_abs_value_constraint
-                        )
-                    else:
-                        constraint_subset = all_ibi_constraint_values
-                        if use_abs_value_constraint:
-                            constraint_subset = np.abs(constraint_subset)
-                    
-                    # Calculate mean constraint value during this IBI
-                    mean_constraint_value = np.nanmean(constraint_subset)
-                    
-                    # Check if constraint is satisfied
-                    if use_abs_value_constraint:
-                        if not (constraintRange[0] <= np.abs(mean_constraint_value) <= constraintRange[1]):
-                            continue
-                    else:
-                        if not (constraintRange[0] <= mean_constraint_value <= constraintRange[1]):
-                            continue
-
-                # Find which distance bin this window belongs to
-                bin_idx = np.digitize(distance_mm, bins) - 1
-                # Make sure bin index is valid, and store the IBI value
-                if 0 <= bin_idx < n_bins:
-                    bin_IBI_lists[bin_idx].append(ibi_s)
-
-            # Calculate weighted averages for each bin; neglect NaNs
-            for bin_idx in range(n_bins):
-                if len(bin_IBI_lists[bin_idx]) > 1:
-                    # require 2 points, for std. dev.
-                    bin_IBI_array = np.stack(bin_IBI_lists[bin_idx], axis=0)
-                    valid_pts = abs(bin_IBI_array - np.nanmean(bin_IBI_array)) \
-                        <= (outlier_std*np.nanstd(bin_IBI_array))
-                    binned_IBI_each_fish[j*Nfish + k, bin_idx] = \
-                        np.nanmean(bin_IBI_array[valid_pts])
-                else:
-                    # No data for this bin
-                    binned_IBI_each_fish[j*Nfish + k, bin_idx] = np.nan  
-           
-        # Combine fish IBIs to get average per dataset (simple average, not weighted)
-        binned_IBI_each_dataset[j,:] = np.nanmean(binned_IBI_each_fish[j*Nfish : j*Nfish + 2, :], axis=0)
-            
-    print('... done.\n')
-    
-    # Average over all fish.
-    binned_IBI = np.zeros((n_bins, 3))
-    binned_IBI[:,0] = np.nanmean(binned_IBI_each_fish, axis=0)
-    binned_IBI[:,1] = np.nanstd(binned_IBI_each_fish, axis=0)
-    binned_IBI[:,2] = np.nanstd(binned_IBI_each_fish, axis=0) / np.sqrt(nfish_total)
-    
-    xlabelStr= f'Distance: {distance_key}' # will also use for CSV
-    if makePlot:
-        fig = plt.figure()
-        plt.errorbar(bin_centers, binned_IBI[:,0], binned_IBI[:,2], 
-                     fmt='o', capsize=7, markersize=12,
-                     color = plotColor, ecolor = plotColor)
-
-        if plot_each_dataset:
-            alpha_each = np.max((0.7/Ndatasets, 0.15))
-            for i in range(Ndatasets):
-                plt.plot(bin_centers, binned_IBI_each_dataset[i,:], color=plotColor, 
-                            alpha=alpha_each)
-
-        plt.title(titleStr)
-        plt.xlabel(xlabelStr)
-        plt.ylabel('Mean IBI (s)')
-        plt.xlim((bin_distance_min, bin_distance_max))
-        if ylim is not None:
-            plt.ylim(ylim)
-
-        if outputFileName != None:
-            plt.savefig(outputFileName, bbox_inches='tight')
-
-        if closeFigure:
-            plt.close(fig)
-            
-    # If only 1 bin, flatten
-    if binned_IBI.shape[0]==1:
-        binned_IBI = binned_IBI.flatten()
-
-    # Output points to CSV (optional)
-    if outputCSVFileName is not None:
-        header_strings = [xlabelStr.replace(',', '_'), 
-                          'mean_IBI (s)', 'std_IBI (s)', 'sem_IBI (s)']
-        for j in range(Ndatasets):
-            header_strings.append(f'IBI_Dataset_{j+1}')
-        list_to_output = [binned_IBI[:, i] if binned_IBI.ndim == 2 \
-                          else binned_IBI[i] for i in range(3)]
-        for j in range(Ndatasets):
-            list_to_output.append(binned_IBI_each_dataset[j,:],)
-        simple_write_CSV(bin_centers, 
-                         list_to_output, 
-                         filename =  outputCSVFileName, 
-                         header_strings=header_strings)
-        
-    return binned_IBI, bin_centers, binned_IBI_each_dataset, binned_IBI_each_fish
-
-
 
 def calculate_IBI_binned_by_2D_keys(datasets, 
                                      key1='closest_distance_mm',
@@ -2105,7 +1904,6 @@ def calculate_IBI_binned_by_2D_keys(datasets,
     binned_IBI[:, :, 0] = np.nanmean(binned_IBI_each_fish, axis=0)  # mean
     binned_IBI[:, :, 1] = np.nanstd(binned_IBI_each_fish, axis=0)   # std
     binned_IBI[:, :, 2] = np.nanstd(binned_IBI_each_fish, axis=0) / np.sqrt(nfish_total)  # sem
-    
     
     
     if makePlot:
@@ -2706,7 +2504,7 @@ def make_pair_1D_v_distance_plots(datasets, exptName = '',
                                             f'_{keyName}_v_{distance_abbrev}distance', 
                                             outputFileNameBase, 
                                             outputFileNameExt, writeCSVs)
-    _, _, _ = calculate_property_1Dbinned(datasets, 
+    _, _, _, _ = calculate_property_1Dbinned(datasets, 
                                           keyName= keyName, 
                                           key_is_a_behavior = True, 
                                           binKeyName=distanceKey,
@@ -2726,7 +2524,7 @@ def make_pair_1D_v_distance_plots(datasets, exptName = '',
     outputFileName, outputCSVFileName = get_plot_and_CSV_filenames(f'_{keyName}_v_{distance_abbrev}distance', 
                                             outputFileNameBase, 
                                             outputFileNameExt, writeCSVs)
-    _, _, _ = calculate_property_1Dbinned(datasets, 
+    _, _, _, _ = calculate_property_1Dbinned(datasets, 
                                           keyName= keyName, 
                                           key_is_a_behavior = True, 
                                           binKeyName=distanceKey,
@@ -2746,7 +2544,7 @@ def make_pair_1D_v_distance_plots(datasets, exptName = '',
     outputFileName, outputCSVFileName = get_plot_and_CSV_filenames(f'_{keyName}_v_{distance_abbrev}distance', 
                                             outputFileNameBase, 
                                             outputFileNameExt, writeCSVs)
-    _, _, _ = calculate_property_1Dbinned(datasets, 
+    _, _, _, _ = calculate_property_1Dbinned(datasets, 
                                           keyName= keyName, 
                                           key_is_a_behavior = True, 
                                           binKeyName=distanceKey,
@@ -2766,7 +2564,7 @@ def make_pair_1D_v_distance_plots(datasets, exptName = '',
     outputFileName, outputCSVFileName = get_plot_and_CSV_filenames(f'_{keyName}_v_{distance_abbrev}distance', 
                                             outputFileNameBase, 
                                             outputFileNameExt, writeCSVs)
-    _, _, _ = calculate_property_1Dbinned(datasets, 
+    _, _, _, _ = calculate_property_1Dbinned(datasets, 
                                           keyName= keyName, 
                                           key_is_a_behavior = True, 
                                           binKeyName=distanceKey,
@@ -2786,7 +2584,7 @@ def make_pair_1D_v_distance_plots(datasets, exptName = '',
     outputFileName, outputCSVFileName = get_plot_and_CSV_filenames(f'_{keyName}_v_{distance_abbrev}distance', 
                                             outputFileNameBase, 
                                             outputFileNameExt, writeCSVs)
-    _, _, _ = calculate_property_1Dbinned(datasets, 
+    _, _, _, _ = calculate_property_1Dbinned(datasets, 
                                           keyName= keyName, 
                                           key_is_a_behavior = True, 
                                           binKeyName=distanceKey,
@@ -2828,7 +2626,6 @@ def make_bending_angle_plots(datasets, exptName = '', distance_type = None,
                 Input in degrees. 
         distance_type : string, either closest_distance or head_head_distance
                 Default is None; user should think about this!
-        plot_each_dataset : (bool) if True, plot the prob. distr. for each array               
         color: plot color (uses alpha for indiv. dataset colors)
         plot_type_2D : str, 'heatmap' or 'line_plots'
                     Which plotting function make_2D_histogram() will use
@@ -3072,6 +2869,272 @@ def make_bending_angle_plots(datasets, exptName = '', distance_type = None,
     
     return saved_pair_outputs
 
+
+
+def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
+                             turning_threshold_deg = 0.0,
+                             color = 'black',
+                             plot_type_2D = 'heatmap',
+                             outputFileNameBase = 'pair_fish', 
+                             outputFileNameExt = 'png',
+                             closeFigures = False,
+                             writeCSVs = False):
+    
+    """
+    Makes several useful plots of Turning angle properties for 
+    of pairs of fish.
+        
+    Inputs:
+        datasets : dictionaries for each dataset
+        exptName : (string) Experiment name, to append to titles.
+        turning_threshold_deg : (float) for a plot of mean turning angle
+                constrained to abs(angle) > threshold, use this threshold.
+                Input in degrees. 
+        distance_type : string, either closest_distance or head_head_distance
+                Default is None; user should think about this!
+        color: plot color (uses alpha for indiv. dataset colors)
+        plot_type_2D : str, 'heatmap' or 'line_plots'
+                    Which plotting function make_2D_histogram() will use
+                    ('heatmap' or 'line_plots')
+        outputFileNameBase : base file name for figure output; if None,
+                             won't save a figure file
+        outputFileNameExt : extension for figure output (e.g. 'eps' or 'png')
+        closeFigures : (bool) if True, close a figure after creating it.
+        writeCSVs : (bool) Used by various functions; if true, output plotted 
+                            points to a CSV file. See code for filenames
+
+    Outputs:
+        saved_pair_outputs : list, containing
+            0 : turn_2Dhist_mean, mean 2D turning angle histogram
+            1 : turn_2Dhist_std, std dev for 2D turning angle histogram
+            2: bin positions ("X") for head_head_distance_mm for 2D turning angle histogram
+            3: bin positions ("Y") for relative orientation for 2D turning angle histogram
+
+    To do:
+        Redundant code for slicing, symmetrization. Probably not worth cleaning up.
+        
+    """
+    
+    # Make sure of distance measure being used
+    if not (distance_type==None or distance_type == 'closest_distance' or \
+            distance_type == 'head_head_distance'):
+        print('\nDistance measure must be "closest_distance" or "head_head_distance".\n')
+        distance_type = None
+    if distance_type == None:
+        distance_type_choice = 0
+        while not ((distance_type_choice  == 1) or (distance_type_choice  == 2)):
+            distance_type_choice = int(input('Choose distance measure ' + 
+                                             '\n  (1) closest_distance ' + 
+                                             '\n  (2) head_head_distance' +
+                                             '\nEnter "1" or "2": '))
+        if distance_type_choice==1:
+            distance_type = 'closest_distance'
+        else:
+            distance_type = 'head_head_distance'
+
+    # Strings for file output, labels
+    if distance_type == 'closest_distance':
+        distance_file_string = 'closestDistance'
+        distanceLabelStr = 'Closest Distance (mm)'
+    elif distance_type == 'head_head_distance':
+        distance_file_string = 'headHeadDistance'
+        distanceLabelStr = 'Head-Head Distance (mm)'
+    else:
+        raise ValueError('Invalid distance type')
+    
+        
+    saved_pair_outputs = []
+
+    
+    verifyPairs = True
+    for j in range(len(datasets)):
+        if datasets[j]["Nfish"] != 2:
+            verifyPairs = False
+    if verifyPairs==False:
+        raise ValueError('Error in make_pair_fish_plots; Nfish must be 2 !')
+
+
+    # 2D plot of mean turning angle vs. relative orientation and distance
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + \
+            f'_turnAngle_{distance_file_string}_orientation_2D' + \
+                '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    mask_by_sem_limit_degrees = 2.0 # show points with s.e.m. < this
+    use_abs_value = (False, False)
+    titleStr = f'{exptName}: Turn Angle; unc. < {mask_by_sem_limit_degrees:.1f} deg'
+    # Save the output 2D histograms, for use later.
+    turn_2Dhist_mean, X, Y, turn_2Dhist_sem = make_2D_histogram(
+        datasets,
+        keyNames = ('relative_orientation', f'{distance_type}_mm'),
+        keyIdx = (None, None), 
+        use_abs_value = use_abs_value,
+        keyNameC = 'turning_angle_rad', keyIdxC = None,
+        colorRange = (-5*np.pi/180.0, 5*np.pi/180.0),
+        dilate_minus1= False, 
+        bin_ranges = ((-np.pi, np.pi), (0.0, 30.0)), Nbins = (19,15), 
+        titleStr = titleStr,
+        clabelStr= 'Mean Turning Angle (degrees)',
+        xlabelStr = 'Relative Orientation (degrees)',
+        ylabelStr = distanceLabelStr, 
+        mask_by_sem_limit = mask_by_sem_limit_degrees*np.pi/180.0,
+        unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+        cmap = 'RdYlBu_r', 
+        plot_type = plot_type_2D,
+        outputFileName = outputFileName,
+        closeFigure = closeFigures)
+    saved_pair_outputs.append(turn_2Dhist_mean)
+    saved_pair_outputs.append(turn_2Dhist_sem)
+    saved_pair_outputs.append(X)
+    saved_pair_outputs.append(Y)
+
+    # Slice turning angle binned by distance and orientation, along the
+    # orientation axis, distance slice: distance < 2.5 mm
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + f'_turnAngle_v_orientation_small_{distance_file_string}' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    d_range = (0.0, 2.5)
+    xlabelStr = 'Relative Orientation (deg)'
+    titleStr = f'{exptName}: Turn Angle for d < {d_range[1]:.2f} mm'
+    zlabelStr = 'Mean Turning Angle (degrees)'
+    xlim = (-np.pi, np.pi)
+    zlim = (-15*np.pi/180, 15*np.pi/180)
+    color = color
+    slice_2D_histogram(turn_2Dhist_mean, X, Y, turn_2Dhist_sem, 
+                       slice_axis = 'x', other_range = d_range, 
+                       titleStr = titleStr, xlabelStr = xlabelStr, 
+                       zlabelStr = zlabelStr,
+                       ylabelStr = distanceLabelStr, zlim = zlim, xlim = xlim, 
+                       plot_z_zero_line = True,
+                       plot_vert_zero_line = True,
+                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                       color = color, outputFileName=outputFileName,
+                       closeFigure=closeFigures)
+
+    # Symmetrize the above turning angle / relative orientation graph,
+    # taking theta[theta > 0] - theta[theta < 0]
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + f'_turnAngle_v_orientation_small_{distance_file_string}_asymm' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    midXind = int((X.shape[0] - 1)/2.0)
+    if np.abs(X[midXind, 0]) > 1e-6:
+        print('"X" array is not centered at zero. Will not symmetrize.')
+    else:
+        turn_2Dhist_mean_symm = 0.5*(turn_2Dhist_mean[midXind:,:] - 
+                                     np.flipud(turn_2Dhist_mean[:(midXind+1),:]))
+        turn_2Dhist_sem_symm = np.sqrt(turn_2Dhist_sem[midXind:,:]**2 +
+                                       np.flipud(turn_2Dhist_sem[:(midXind+1),:])**2)/np.sqrt(2)
+        X_symm = X[midXind:,:]
+        Y_symm = Y[midXind:,:]
+        slice_2D_histogram(turn_2Dhist_mean_symm, X_symm, Y_symm,
+                           turn_2Dhist_sem_symm, 
+                           slice_axis = 'x', other_range = d_range, 
+                           titleStr = titleStr, xlabelStr = f'|{xlabelStr}|', 
+                           zlabelStr = zlabelStr + ' toward Other',
+                           ylabelStr = distanceLabelStr, zlim = zlim, 
+                           xlim = (0.0, xlim[1]), 
+                           plot_z_zero_line = True,
+                           plot_vert_zero_line = False,
+                           unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                           color = color, outputFileName=outputFileName,
+                           closeFigure=closeFigures)
+
+    # Slice along turn angle binned by distance and orientation, 
+    # orientation axis, constrain distance: 5 mm < distance < 15 mm
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + f'_turnAngle_v_orientation_middle_{distance_file_string}' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    d_range = (5.0, 15.0)
+    xlabelStr = 'Relative Orientation (deg)'
+    titleStr = f'{exptName}: Turning Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
+    zlabelStr = 'Mean Turning Angle (degrees)'
+    xlim = (-np.pi, np.pi)
+    zlim = (-15*np.pi/180, 15*np.pi/180)
+    color = color
+    slice_2D_histogram(turn_2Dhist_mean, X, Y, turn_2Dhist_sem, 
+                       slice_axis = 'x', other_range = d_range, 
+                       titleStr = titleStr, xlabelStr = xlabelStr, 
+                       zlabelStr = zlabelStr,
+                       ylabelStr = distanceLabelStr, zlim = zlim, xlim = xlim, 
+                       plot_z_zero_line = True,
+                       plot_vert_zero_line = True,
+                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                       color = color, outputFileName=outputFileName,
+                       closeFigure=closeFigures)
+
+    # Symmetrize the above turning angle / relative orientation graph,
+    # taking theta[theta > 0] - theta[theta < 0]
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + f'_turnAngle_v_orientation_middle_{distance_file_string}_asymm' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    midXind = int((X.shape[0] - 1)/2.0)
+    if np.abs(X[midXind, 0]) > 1e-6:
+        print('"X" array is not centered at zero. Will not symmetrize.')
+    else:
+        turn_2Dhist_mean_symm = 0.5*(turn_2Dhist_mean[midXind:,:] - 
+                                     np.flipud(turn_2Dhist_mean[:(midXind+1),:]))
+        turn_2Dhist_sem_symm = np.sqrt(turn_2Dhist_sem[midXind:,:]**2 +
+                                       np.flipud(turn_2Dhist_sem[:(midXind+1),:])**2)/np.sqrt(2)
+        X_symm = X[midXind:,:]
+        Y_symm = Y[midXind:,:]
+        slice_2D_histogram(turn_2Dhist_mean_symm, X_symm, Y_symm,
+                           turn_2Dhist_sem_symm, 
+                           slice_axis = 'x', other_range = d_range, 
+                           titleStr = titleStr, xlabelStr = f'|{xlabelStr}|', 
+                           zlabelStr = zlabelStr + ' toward Other',
+                           ylabelStr = distanceLabelStr, zlim = zlim, 
+                           xlim = (0.0, xlim[1]), 
+                           plot_z_zero_line = True,
+                           plot_vert_zero_line = False,
+                           unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                           color = color, outputFileName=outputFileName,
+                           closeFigure=closeFigures)
+
+    
+    # 2D plot of mean turning angle vs. relative orientation and distance,
+    # Constrained to turning angle > minimum threshold for "turning"
+    if turning_threshold_deg > 0.0:
+        if outputFileNameBase is not None:
+            outputFileName = outputFileNameBase + \
+                f'_turnAngle_above{turning_threshold_deg:.0f}deg_{distance_file_string}_orientation_2D' + \
+                    '.' + outputFileNameExt
+        else:
+            outputFileName = None
+        mask_by_sem_limit_degrees = 8.0 # show points with s.e.m. < this
+        use_abs_value = (False, False)
+        titleStr = f'{exptName}: Turn Angle >{turning_threshold_deg:.0f}deg; unc. < {mask_by_sem_limit_degrees:.1f}deg'
+        # Save the output 2D histograms, for use later.
+        turn_2Dhist_mean, X, Y, turn_2Dhist_sem = make_2D_histogram(
+            datasets,
+            keyNames = ('relative_orientation', f'{distance_type}_mm'),
+            keyIdx = (None, None), 
+            use_abs_value = use_abs_value,
+            keyNameC = 'turning_angle_rad', keyIdxC = None,
+            colorRange = (-45*np.pi/180.0, 45*np.pi/180.0),
+            dilate_minus1= False, 
+            constraintKey = 'turning_angle_rad', 
+            constraintRange = ((np.pi/180.0)*turning_threshold_deg, np.inf), 
+            constraintIdx = None, use_abs_value_constraint = True,
+            bin_ranges = ((-np.pi, np.pi), (0.0, 30.0)), Nbins = (19,15), 
+            titleStr = titleStr,
+            clabelStr= 'Mean Turning Angle (degrees)',
+            xlabelStr = 'Relative Orientation (degrees)',
+            ylabelStr = distanceLabelStr, 
+            mask_by_sem_limit = mask_by_sem_limit_degrees*np.pi/180.0,
+            unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+            cmap = 'RdYlBu_r', 
+            plot_type = plot_type_2D,
+            outputFileName = outputFileName,
+            closeFigure = closeFigures)    
+    
+    return saved_pair_outputs
+
+
 def make_rel_orient_rank_key(dataset, behavior_key_string):
     """
     Create new behavior keys based on relative orientation rank ordering
@@ -3092,7 +3155,7 @@ def make_rel_orient_rank_key(dataset, behavior_key_string):
                 Note that this only needs "raw frames", since the behavior dictionary
                 will be made later. Must contain either "rel_orient_rankIdx"
                 or 'relative_orientation' keys.
-    behavior_key_string : string, base behavior name (e.g., "Rbend_Fish")
+    behavior_key_string : string, base behavior name (e.g., "Rturn_Fish")
         The function will look for keys like "{behavior_key_string}{k}" where k
         are the fish indices found in rel_orient_rankIdx
     

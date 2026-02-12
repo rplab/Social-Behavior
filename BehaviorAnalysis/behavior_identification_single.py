@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Split from behavior_identification.py on July 22, 2024
-Last modified Jan. 1, 2026 -- Raghu Parthasarathy
+Last modified Feb. 1, 2026 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -116,9 +116,13 @@ def get_single_fish_characterizations(all_position_data, datasets, CSVcolumns,
             get_isMoving_frames(datasets[j], 
                                 params["motion_speed_threshold_mm_second"])
 
-        # Get the angular speed of each fish in each frame (frame-to-frame
-        # change in heading angle, abs. val., rad/s); 0 for first frame
+        # Get the heading angle change between the next and previous frames
+        # (signed, rad, in [-pi, pi]) 0 for first and last frames, 
+        # and the angular speed of each fish 
+        # (abs. val., rad/s), in each frame; 0 for first frame
         # Nframes x 2 array
+        datasets[j]["turning_angle_rad"] = \
+            -1.0*get_fish_delta_heading_angle(datasets[j], frame_diff = (-1, 1))
         datasets[j]["angular_speed_array_rad_s"] = \
             get_fish_angular_speeds(datasets[j])
         
@@ -277,19 +281,18 @@ def get_single_fish_characterizations(all_position_data, datasets, CSVcolumns,
             getTailAngle(all_position_data[j], CSVcolumns, 
                          datasets[j]["heading_angle"])
        
-        # For each dataset, exclude bad tracking frames from calculation of
-        # the mean fish length. 
-        # Also use Gaussian mixture model to get mean fish length (in good frames)
         print('Removing bad frames from stats for fish length, for Dataset: ', 
               datasets[j]["dataset_name"])
-        goodIdx = np.where(np.in1d(datasets[j]["frameArray"], 
-                                   datasets[j]["bad_bodyTrack_frames"]["raw_frames"], 
-                                   invert=True))[0]
+        # np.isin is a bit faster than np.in1d
+        goodIdx = ~np.isin(datasets[j]["frameArray"], 
+                           datasets[j]["bad_bodyTrack_frames"]["raw_frames"])
         goodLengthArray = datasets[j]["fish_length_array_mm"][goodIdx]
         datasets[j]["fish_length_mm_mean"] = np.mean(goodLengthArray)
         print(f'   Mean fish length: {datasets[j]["fish_length_mm_mean"]:.3f} mm')
+        
+        # Use Gaussian mixture model to get mean fish length (in good frames)
         # Fit gmm
-        datasets[j]["fish_length_mm_gmm_mean"] = get_fish_lengths_mean_gmm(datasets[j]) 
+        # datasets[j]["fish_length_mm_gmm_mean"] = get_fish_lengths_mean_gmm(datasets[j]) 
 
     return datasets
 
@@ -368,6 +371,47 @@ def get_fish_speeds(position_data, CSVcolumns, image_scale, fps):
     
     return speed_array_mm_s
 
+def get_fish_delta_heading_angle(dataset, frame_diff = (-1, 0)):
+    """
+    Get the difference in heading angle between frames, signed, for 
+        each fish in each frame, in [0, pi]
+    Allows variable difference in frames to consider, default 1 (adjacent frames)
+    Assign to the later frame; zeros for the first frame.
+        (More generally: zeros for the first frame_diff frames)
+    Input:
+        dataset : single dictionary containing the analysis data, including
+                    key "heading_angle"
+        frame_diff : tuple indicating frame offsets to consider, so that
+                    delta_heading_angle[j] = 
+                       heading_angle[j+frame_diff[1]] - heading_angle[j+frame_diff[0]]
+                    Default (-1, 0). 
+                       If a single integer value, make a tuple
+                       that's (0, this value)
+
+    Output
+        delta_heading_angle_rad  : (rad) Nframes x Nfish array
+    """
+    
+    if type(frame_diff) != tuple:
+        frame_diff = (0, frame_diff)
+    
+    if frame_diff[0] > 0:
+        raise ValueError('frame_diff[0] must be negative or zero.')
+
+    # To make Nframes x Nfish with 0s for invalid frames (typically the first frame)
+   
+    delta_heading_angle_rad = np.zeros_like(dataset["heading_angle"])
+
+    delta_heading_angle_rad[-frame_diff[0]:(dataset["heading_angle"].shape[0] - frame_diff[1]), :] = \
+        dataset["heading_angle"][(frame_diff[1] - frame_diff[0]):, :] - \
+            dataset["heading_angle"][:(-frame_diff[1] + frame_diff[0]), :] 
+    
+    # wrap to [-pi, pi]
+    delta_heading_angle_rad = (delta_heading_angle_rad + np.pi) % (2.0*np.pi) - np.pi
+    
+    return delta_heading_angle_rad
+    
+
 def get_fish_angular_speeds(dataset):
     """
     Get the angular speed of each fish in each frame (abs val of frame-to-frame
@@ -377,16 +421,13 @@ def get_fish_angular_speeds(dataset):
         dataset : single dictionary containing the analysis data, including
                     keys "heading_angle" and "fps"
     Output
-        angular_speed_array_rad_s  : (mm/s) Nframes x Nfish array
+        angular_speed_array_rad_s  : (rad/s) Nframes x Nfish array
     """
-    delta_angle = np.diff(dataset["heading_angle"], axis=0)
-    # wrap to [-pi, pi]
-    delta_angle = (delta_angle + np.pi) % (2.0*np.pi) - np.pi
-    angular_speed_rad_fr = np.abs(delta_angle)
+    delta_angle = get_fish_delta_heading_angle(dataset, frame_diff = (-1, 0))
     
-    angular_speed_array_rad_s = angular_speed_rad_fr * dataset["fps"]
+    angular_speed_array_rad_s = np.abs(delta_angle) * dataset["fps"]
     # to make Nframes x Nfish set as 0 for the first frame
-    angular_speed_array_rad_s = np.append(np.zeros((1, angular_speed_rad_fr.shape[1])), 
+    angular_speed_array_rad_s = np.append(np.zeros((1, angular_speed_array_rad_s.shape[1])), 
                                  angular_speed_array_rad_s, axis=0)
     
     return angular_speed_array_rad_s
@@ -711,7 +752,7 @@ def calc_bend_angle(position_data, CSVcolumns, M=None):
     Calculate the bending angle for each fish in each frame, as
     the best-fit line from points (x[M], y[M]) to (x[0], y[0]) 
     and the best-fit line from points (x[M], y[M]) to (x[-1], y[-1]), 
-    Return the angle between these points in the range [0, pi].
+    Return the angle between these points in the range [-pi, pi].
     
     Bend angle defined as pi minus opening angle, 
     so that a straight fish has angle 0.
