@@ -2834,7 +2834,8 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
                                 use_abs_value=False,
                                 use_abs_value_constraint=False,
                                 dilate_minus1=True,
-                                makePlot=True, plot_each_dataset=False,
+                                makePlot=True, plot_each_dataset=True,
+                                plot_sem_band=False,
                                 titleStr=None,
                                 xlabelStr=None, ylabelStr=None,
                                 color='black', xlim=None, ylim=None,
@@ -2888,6 +2889,8 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
         If True, create plot
     plot_each_dataset : bool
         If True, plot one semi-transparent line per dataset
+    plot_sem_band : bool
+        If True, plot a shaded band at +/- 1 s.e.m.
     titleStr, xlabelStr, ylabelStr : str
         Plot labels
     color : str
@@ -3050,7 +3053,16 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
         plt.errorbar(bin_centers, binned_mean[:, 0], binned_mean[:, 2],
                     fmt='o-', capsize=7, markersize=12, linewidth=2,
                     color=color, ecolor=color)
-        
+
+        # Plot sem as shaded band
+        alpha_sem = 0.4
+        if plot_sem_band:
+            plt.fill_between(bin_centers, 
+                             binned_mean[:, 0] - binned_mean[:, 2], 
+                             binned_mean[:, 0] + binned_mean[:, 2], 
+                             color=color, 
+                             alpha=alpha_sem, label='s.e.m.')        
+
         # Plot each dataset as semi-transparent line
         if plot_each_dataset:
             alpha_each = np.max((0.7 / Ndatasets, 0.15))
