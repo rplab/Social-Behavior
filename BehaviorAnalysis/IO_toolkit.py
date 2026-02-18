@@ -43,7 +43,8 @@ from scipy.stats import binned_statistic_2d
 from toolkit import get_Nfish, \
     combine_all_values_constrained, get_effective_dims, \
     dilate_frames, get_values_subset, make_frames_dictionary
-from behavior_identification_single import get_fish_angular_speeds
+# Note: get_fish_angular_speeds is imported locally inside the function that
+# uses it (to avoid a circular import with behavior_identification_single).
 
 # Function to get a valid path from the user (base Path or config path)
 def get_basePath():
@@ -2425,7 +2426,6 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
            prob_dist_each_sem, Nsets_total
 
 
-
     
 def plot_behavior_probability_bin_by_property(bin_centers, counts, 
                                     behavior_key_for_title, property_key_for_label,
@@ -3955,6 +3955,7 @@ def revise_datasets(keys_to_modify=["relative_orientation"],
 
     # re-calculate  angular speed:
     if "angular_speed_array_rad_s" in keys_to_modify:
+        from behavior_identification_single import get_fish_angular_speeds
         print('Revising angular speed array.')
         for j in range(N_datasets):
             datasets[j]["angular_speed_array_rad_s"] = \
