@@ -2840,6 +2840,7 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
                                 titleStr=None,
                                 xlabelStr=None, ylabelStr=None,
                                 color='black', xlim=None, ylim=None,
+                                unit_scaling_for_plot = [1.0, 1.0],
                                 outputFileName=None, closeFigure=False,
                                 outputCSVFileName=None):
     """
@@ -2902,6 +2903,11 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
         Save figure to this file
     closeFigure : bool
         Close figure after creating
+    unit_scaling_for_plot : list of 2 floats (for x, y); 
+                for plots only, multiply values by unit_scaling_for_plot,  
+                for example to convert radians to degrees.
+                Note that xlim, ylim should *not* incorporate this; the code takes
+                care of changing the limits
     outputCSVFileName : if not None, save to a CSV file the following (columns):
                 - plotted "X" positions (bin_centers)
                 - plotted mean "Y" positions (binned_mean[:,0])
@@ -3050,16 +3056,18 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
     # Plot
     if makePlot:
         fig = plt.figure(figsize=(10, 6))
-        plt.errorbar(bin_centers, binned_mean[:, 0], binned_mean[:, 2],
+        plt.errorbar(bin_centers*unit_scaling_for_plot[0], 
+                     binned_mean[:, 0]*unit_scaling_for_plot[1], 
+                     binned_mean[:, 2]*unit_scaling_for_plot[1],
                     fmt='o-', capsize=7, markersize=12, linewidth=2,
                     color=color, ecolor=color)
 
         # Plot sem as shaded band
         alpha_sem = 0.4
         if plot_sem_band:
-            plt.fill_between(bin_centers, 
-                             binned_mean[:, 0] - binned_mean[:, 2], 
-                             binned_mean[:, 0] + binned_mean[:, 2], 
+            plt.fill_between(bin_centers*unit_scaling_for_plot[0], 
+                             (binned_mean[:, 0] - binned_mean[:, 2])*unit_scaling_for_plot[1], 
+                             (binned_mean[:, 0] + binned_mean[:, 2])*unit_scaling_for_plot[1], 
                              color=color, 
                              alpha=alpha_sem, label='s.e.m.')        
 
@@ -3067,8 +3075,9 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
         if plot_each_dataset:
             alpha_each = np.max((0.7 / Ndatasets, 0.15))
             for i in range(Ndatasets):
-                plt.plot(bin_centers, binned_mean_each_dataset[i, :], 
-                        color=color, alpha=alpha_each)
+                plt.plot(bin_centers*unit_scaling_for_plot[0], 
+                         binned_mean_each_dataset[i, :]*unit_scaling_for_plot[1], 
+                         color=color, alpha=alpha_each)
         
         if xlabelStr is None:
             xlabelStr = binKeyName
@@ -3083,9 +3092,15 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
         plt.grid(True, alpha=0.3)
         
         if xlim is not None:
-            plt.xlim(xlim)
+            xlim_plot = np.zeros_like(np.array(xlim))
+            for j in range(len(xlim)):
+                xlim_plot[j] = unit_scaling_for_plot[0]*xlim[j]
+            plt.xlim(xlim_plot)
         if ylim is not None:
-            plt.ylim(ylim)
+            ylim_plot = np.zeros_like(np.array(ylim))
+            for j in range(len(ylim)):
+                ylim_plot[j] = unit_scaling_for_plot[1]*ylim[j]
+            plt.ylim(ylim_plot)
         
         if outputFileName is not None:
             plt.savefig(outputFileName, bbox_inches='tight')
