@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Split from behavior_identification.py on July 22, 2024
-Last modified Feb. 1, 2026 -- Raghu Parthasarathy
+Last modified Feb. 17, 2026 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -399,7 +399,6 @@ def get_fish_delta_heading_angle(dataset, frame_diff = (-1, 0)):
         raise ValueError('frame_diff[0] must be negative or zero.')
 
     # To make Nframes x Nfish with 0s for invalid frames (typically the first frame)
-   
     delta_heading_angle_rad = np.zeros_like(dataset["heading_angle"])
 
     delta_heading_angle_rad[-frame_diff[0]:(dataset["heading_angle"].shape[0] - frame_diff[1]), :] = \
@@ -416,7 +415,7 @@ def get_fish_angular_speeds(dataset):
     """
     Get the angular speed of each fish in each frame (abs val of frame-to-frame
         difference in heading angle), in [0, pi]
-    Assign to the later frame; zeros for the first frame.
+    Assign to the later frame; zeros for the first frame. (Done by get_fish_delta_heading_angle())
     Input:
         dataset : single dictionary containing the analysis data, including
                     keys "heading_angle" and "fps"
@@ -426,9 +425,6 @@ def get_fish_angular_speeds(dataset):
     delta_angle = get_fish_delta_heading_angle(dataset, frame_diff = (-1, 0))
     
     angular_speed_array_rad_s = np.abs(delta_angle) * dataset["fps"]
-    # to make Nframes x Nfish set as 0 for the first frame
-    angular_speed_array_rad_s = np.append(np.zeros((1, angular_speed_array_rad_s.shape[1])), 
-                                 angular_speed_array_rad_s, axis=0)
     
     return angular_speed_array_rad_s
 

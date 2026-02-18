@@ -4,7 +4,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Aug 25 20:59:37 2025
-Last modified February 11, 2026 -- Raghuveer Parthasarathy
+Last modified February 17, 2026 -- Raghuveer Parthasarathy
 
 Description
 -----------
@@ -43,6 +43,7 @@ from scipy.stats import binned_statistic_2d
 from toolkit import get_Nfish, \
     combine_all_values_constrained, get_effective_dims, \
     dilate_frames, get_values_subset, make_frames_dictionary
+from behavior_identification_single import get_fish_angular_speeds
 
 # Function to get a valid path from the user (base Path or config path)
 def get_basePath():
@@ -2965,7 +2966,6 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
 
         bin_data = get_values_subset(dataset[binKeyName], keyIdx=None,
                                      use_abs_value=False)
-        
         # Determine effective dimensions
         Ndim_property = get_effective_dims(property_data)
         Ndim_bin = get_effective_dims(bin_data)
@@ -2985,7 +2985,7 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
         good_frames_mask = np.isin(frames - idx_offset,
                                    np.array(list(bad_frames_set)) - idx_offset,
                                    invert=True)
-        
+
         # Loop over each fish
         for k in range(Nfish):
             # Extract data for this specific fish
@@ -3856,6 +3856,8 @@ def revise_datasets(keys_to_modify=["relative_orientation"],
       - "turning_angle_rad" : change in turning angle (-1.0 * change in 
           heading angle (rad)) for each fish,
           e.g. to revise after this property started to be calculated
+      - "angular_speed_array_rad_s" : angular speed,
+          correcting an offset error (minor)
     
     Parameters
     ----------
@@ -3936,7 +3938,14 @@ def revise_datasets(keys_to_modify=["relative_orientation"],
         datasets = recalculate_angles(all_position_data, datasets, CSVcolumns, 
                                   keys_to_modify=angle_keys_to_modify)
 
-    # re-calculate angular speed:
+    # re-calculate  angular speed:
+    if "angular_speed_array_rad_s" in keys_to_modify:
+        print('Revising angular speed array.')
+        for j in range(N_datasets):
+            datasets[j]["angular_speed_array_rad_s"] = \
+                get_fish_angular_speeds(datasets[j])
+
+    # re-calculate mean angular speed:
     if "angular_speed_rad_s_mean" in keys_to_modify:
         print('Revising mean angular speed.')
         for j in range(N_datasets):
