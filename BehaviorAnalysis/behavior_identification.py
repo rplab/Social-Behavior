@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified February 11, 2026 -- Raghu Parthasarathy
+Last modified February 18, 2026 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -1385,7 +1385,8 @@ def calculate_bout_property_binned_by_distance(datasets, bout_property = 'IBI',
                                      constraintIdx=None, use_abs_value_constraint=False,
                                      dilate_minus1=False,
                                      outlier_std=3.0,
-                                     makePlot=True, plot_each_dataset=False,
+                                     makePlot=True, 
+                                     plot_sem_band = False, plot_each_dataset=False,
                                      ylim=None, titleStr=None, plotColor='black',
                                      outputFileName=None, closeFigure=False,
                                      outputCSVFileName = None):
@@ -1434,6 +1435,8 @@ def calculate_bout_property_binned_by_distance(datasets, bout_property = 'IBI',
                   values > outlier_std from the mean. (In rare cases, 
                   very high values, probably due to bad tracking.)
     makePlot : bool, make a plot if true
+    plot_sem_band : bool
+        If True, plot a shaded band at +/- 1 s.e.m.
     plot_each_dataset : (bool) if True, plot the property vs. distance for each 
                   dataset (values averaged over each fish)
     ylim : tuple, ylimits for plot; None for auto
@@ -1624,11 +1627,20 @@ def calculate_bout_property_binned_by_distance(datasets, bout_property = 'IBI',
                      fmt='o', capsize=7, markersize=12,
                      color = plotColor, ecolor = plotColor)
 
+        # Plot sem as shaded band
+        alpha_sem = 0.4
+        if plot_sem_band:
+            plt.fill_between(bin_centers, 
+                             (binned_boutProperty[:,0] - binned_boutProperty[:,2]), 
+                             (binned_boutProperty[:,0] + binned_boutProperty[:,2]), 
+                             color=plotColor, 
+                             alpha=alpha_sem, label='s.e.m.')      
+        # Plot each dataset as semi-transparent line
         if plot_each_dataset:
             alpha_each = np.max((0.7/Ndatasets, 0.15))
             for i in range(Ndatasets):
-                plt.plot(bin_centers, binned_boutProperty_each_dataset[i,:], color=plotColor, 
-                            alpha=alpha_each)
+                plt.plot(bin_centers, binned_boutProperty_each_dataset[i,:], 
+                         color=plotColor, alpha=alpha_each)
 
         plt.title(titleStr)
         plt.xlabel(xlabelStr)
