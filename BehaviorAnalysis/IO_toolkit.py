@@ -4,7 +4,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Aug 25 20:59:37 2025
-Last modified February 17, 2026 -- Raghuveer Parthasarathy
+Last modified February 20, 2026 -- Raghuveer Parthasarathy
 
 Description
 -----------
@@ -1367,7 +1367,7 @@ def write_output_files(params, output_path, datasets):
         initial_keys = ["dataset_name", "fps", "image_scale",
                         "total_time_seconds", "close_pair_fraction", 
                         "speed_mm_s_mean", "speed_whenMoving_mm_s_mean",
-                        "angular_speed_rad_s_mean",
+                        "angular_speed_rad_s_mean", "angular_speed_whenMoving_rad_s_mean",
                         "bout_rate_bpm", "bout_duration_s", "bout_ibi_s",
                         "fish_length_Delta_mm_mean", 
                         "head_head_distance_mm_mean", "closest_distance_mm_mean",
@@ -1505,6 +1505,7 @@ def write_behavior_txt_file(dataset, key_list):
         results_file.write(f"   Mean fish speed: {dataset['speed_mm_s_mean']:.3f} mm/s\n")
         results_file.write(f"   Mean fish speed when moving > threshold: {dataset['speed_whenMoving_mm_s_mean']:.3f} mm/s\n")
         results_file.write(f"   Mean fish angular speed: {dataset['angular_speed_rad_s_mean']:.5f} rad/s\n")
+        results_file.write(f"   Mean fish angular speed when moving > threshold: {dataset['angular_speed_whenMoving_rad_s_mean']:.5f} rad/s\n")
         results_file.write(f"   Bout rate: {dataset['bout_rate_bpm']:.1f} bouts/minute\n")
         results_file.write(f"   Mean bout duration: {dataset['bout_duration_s']:.2f} seconds\n")
         results_file.write(f"   Mean inter-bout interval: {dataset['bout_ibi_s']:.2f} seconds\n")

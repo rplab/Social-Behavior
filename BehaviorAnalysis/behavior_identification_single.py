@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Split from behavior_identification.py on July 22, 2024
-Last modified Feb. 17, 2026 -- Raghu Parthasarathy
+Last modified Feb. 20, 2026 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -264,6 +264,7 @@ def get_single_fish_characterizations(all_position_data, datasets, CSVcolumns,
                            isMoving_frames_each, datasets[j]["bad_bodyTrack_frames"]["raw_frames"])
         # average over fish, since ID is unreliable
         datasets[j]["angular_speed_rad_s_mean"] = np.mean(angular_speed_mean_all)
+        datasets[j]["angular_speed_whenMoving_rad_s_mean"] = np.mean(angular_speed_mean_moving)
 
         # Bout statistics.
         bouts_N, bout_duration_s,  bout_rate_bpm, bout_ibi_s = \
