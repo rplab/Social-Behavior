@@ -4,7 +4,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Mon Aug 25 20:59:37 2025
-Last modified February 20, 2026 -- Raghuveer Parthasarathy
+Last modified February 24, 2026 -- Raghuveer Parthasarathy
 
 Description
 -----------
@@ -1372,13 +1372,11 @@ def write_output_files(params, output_path, datasets):
                         "fish_length_Delta_mm_mean", 
                         "head_head_distance_mm_mean", "closest_distance_mm_mean",
                         "AngleXCorr_mean"]
-        initial_strings = ["Dataset", "Frames per sec", 
-                           "Image scale (um/px)",
+        initial_strings = ["Dataset", "Frames per sec",  "Image scale (um/px)",
                            "Total Time (s)", "Fraction of time in proximity", 
                            "Mean speed (mm/s)", "Mean moving speed (mm/s)", 
-                           "Mean angular speed (rad/s)",
-                           "Mean bout rate (/min)", "Mean bout duration (s)",
-                           "Mean inter-bout interval (s)",
+                           "Mean angular speed (rad/s)", "Mean moving angular speed (mm/s)",
+                           "Mean bout rate (/min)", "Mean bout duration (s)", "Mean inter-bout interval (s)",
                            "Mean difference in fish lengths (mm)", 
                            "Mean head-head dist (mm)", "Mean closest distance (mm)",
                            "AngleXCorr_mean"]
