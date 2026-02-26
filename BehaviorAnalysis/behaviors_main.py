@@ -207,7 +207,7 @@ def main():
                              datasets[j]["image_scale"], CSVcolumns)
         
     #%% Time-shift one of the fish
-    time_shift_fish_idx = 0 # set to None to avoid shifting
+    time_shift_fish_idx = None # set to None to avoid shifting
     if time_shift_fish_idx is not None:
         print('\n\n***************************')
         caution_check = input(f'\nARE YOU SURE you want to time-shift fish {time_shift_fish_idx}? (y/n): ')
@@ -282,7 +282,7 @@ def main():
         behavior_keys = ['perp_noneSee', 'perp_oneSees', 
                          'perp_bothSee', 'perp_larger_fish_sees',
                          'perp_smaller_fish_sees', 
-                         'contact_any', 'contact_head_body', 
+                         'contact_any', 'contact_head_head', 'contact_head_body', 
                          'contact_larger_fish_head', 'contact_smaller_fish_head',
                          'contact_tail_tail',
                          'contact_inferred', 'tail_rubbing_AP', 'tail_rubbing_P',

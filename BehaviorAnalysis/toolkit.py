@@ -1857,7 +1857,8 @@ def get_behavior_key_list(datasets):
     
 
 def select_items_dialog(behavior_key_list, default_keys=['perp_noneSee', 
-        'perp_oneSees', 'perp_bothSee', 'contact_any', 'contact_head_body', 
+        'perp_oneSees', 'perp_bothSee', 'contact_any', 
+        'contact_head_head', 'contact_head_body', 
         'contact_tail_tail',
         'contact_inferred', 'tail_rubbing_AP', 'tail_rubbing_P', 
         'maintain_proximity', 

@@ -5,7 +5,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First versions created By  : Estelle Trieu, 5/26/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified February 18, 2026 -- Raghu Parthasarathy
+Last modified February 25, 2026 -- Raghu Parthasarathy
 
 Description
 -----------
@@ -255,8 +255,9 @@ def extract_pair_behaviors(pair_behavior_frames, position_data, dataset,
             and each value is a numpy array of frames identified for that behavior:
             Keys defined outside this function; should be:
                 perp_noneSee, perp_oneSees, 
-                perp_bothSee, contact_any, contact_head_body, 
+                perp_bothSee, contact_any, contact_head_head, contact_head_body, 
                 contact_larger_fish_head, contact_smaller_fish_head,
+                contact_tail_tail,
                 contact_inferred, tail_rubbing_AP, tail_rubbing_P, maintain_proximity, 
                 approaching_Fish0, approaching_Fish1, approaching_any, 
                 approaching_all,
@@ -295,6 +296,7 @@ def extract_pair_behaviors(pair_behavior_frames, position_data, dataset,
                                 params["contact_distance_threshold_mm"])
     pair_behavior_frames['contact_any'] = contact_dict["any_contact"]
     pair_behavior_frames['contact_head_body'] = contact_dict["head-body"]
+    pair_behavior_frames['contact_head_head'] = contact_dict["head-head"]
     pair_behavior_frames['contact_larger_fish_head'] = contact_dict["larger_fish_head_contact"]
     pair_behavior_frames['contact_smaller_fish_head'] = contact_dict["smaller_fish_head_contact"]
     pair_behavior_frames['contact_tail_tail'] = contact_dict["tail-tail"]
@@ -383,8 +385,9 @@ def get_contact_frames(position_data, dataset, CSVcolumns,
         contact_dict (dictionary): a dictionary of arrays of different 
             contact types: 
                 any_contact, 
-                head-body contact (a subset)
-                    larger or smaller fish head contact (a subset of head-body)
+                head-body contact. Includes subsets
+                    head-head contact
+                    larger or smaller fish head contact
                 tail-tail (a subset)
     """
     
@@ -392,7 +395,7 @@ def get_contact_frames(position_data, dataset, CSVcolumns,
     body_x = position_data[:, CSVcolumns["body_column_x_start"]:(CSVcolumns["body_column_x_start"]+CSVcolumns["body_Ncolumns"]), :]
     body_y = position_data[:, CSVcolumns["body_column_y_start"]:(CSVcolumns["body_column_y_start"]+CSVcolumns["body_Ncolumns"]), :]
     
-    contact_dict = {"any_contact": [], "head-body": [], 
+    contact_dict = {"any_contact": [], "head-head": [], "head-body": [], 
                     "larger_fish_head_contact": [], 
                     "smaller_fish_head_contact": [],
                     "tail-tail": []}
@@ -405,11 +408,17 @@ def get_contact_frames(position_data, dataset, CSVcolumns,
                                                               body_column_offset = body_column_offset)
     
     for idx in range(body_x.shape[0]):
-
+        # looping through each frame. Assess the variety of contact types
+        
         # Any contact: look at closest element of distance matrix between
         # body points, previously calculated
         if dataset["closest_distance_mm"][idx] < contact_distance_threshold_mm:
             contact_dict["any_contact"].append(idx+1)
+
+        # Head-head contact -- these frames will also be in head-body contact
+        d_head1_head2 = np.sqrt((body_x[idx,0,0] - body_x[idx,0,1])**2 + 
+                                (body_y[idx,0,0] - body_y[idx,0,1])**2)
+        fish_hh_contact = d_head1_head2 < contact_distance_threshold_mm*1000/dataset["image_scale"]
         
         # Head-body contact
         d_head1_body2 = np.sqrt((body_x[idx,0,0] - body_x[idx,:,1])**2 + 
@@ -419,6 +428,10 @@ def get_contact_frames(position_data, dataset, CSVcolumns,
         fish1_hb_contact = np.min(d_head1_body2) < contact_distance_threshold_mm*1000/dataset["image_scale"]
         fish2_hb_contact = np.min(d_head2_body1) < contact_distance_threshold_mm*1000/dataset["image_scale"]
         
+        if fish_hh_contact:
+            # these will also be in head-body, and "any"
+            contact_dict["head-head"].append(idx+1)
+            
         if fish1_hb_contact or fish2_hb_contact:
             contact_dict["head-body"].append(idx+1)
             # Note that "any contact" will be automatically satisfied.
