@@ -2,7 +2,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Fri May 23 18:53:58 2025
-Last modified August 17, 2025 -- Raghuveer Parthasarathy
+Last modified March 1, 2026 -- Raghuveer Parthasarathy
 
 Description
 -----------
@@ -32,9 +32,9 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch
 
 class FishVisualizer:
-    def __init__(self, position_data, heading_angles, dh_vec_px, 
+    def __init__(self, position_data, heading_angles, dh_vec_px,
                  body_column_x_start, body_column_y_start, body_Ncolumns,
-                 additional_info=None):
+                 additional_info=None, flipY=True):
         """
         Interactive fish position visualizer
         
@@ -54,6 +54,10 @@ class FishVisualizer:
             Number of body points per fish
         additional_info : numpy.ndarray, optional
             Shape (Nframes, Nfish) - additional information to display
+        flipY : bool, optional
+            If True (default), invert the sign of y-coordinates in plots,
+            so that y increases upward (e.g. y=300 displays as y=-300).
+            Use when the dataset defines y as increasing downward.
         """
         self.position_data = position_data
         self.heading_angles = heading_angles
@@ -62,7 +66,8 @@ class FishVisualizer:
         self.body_column_y_start = body_column_y_start
         self.body_Ncolumns = body_Ncolumns
         self.additional_info = additional_info
-        
+        self.flipY = flipY
+
         self.Nframes, self.M, self.Nfish = position_data.shape
         self.current_frame = 0
         self.show_text = 0  # 0: no text, 1: angles, 2: additional_info (if available)
@@ -82,6 +87,10 @@ class FishVisualizer:
             # Fallback if window title setting fails
             pass
         
+        # Disable matplotlib's built-in 's' save dialog so our handler takes over
+        if 's' in plt.rcParams['keymap.save']:
+            plt.rcParams['keymap.save'].remove('s')
+
         # Connect events
         self.fig.canvas.mpl_connect('key_press_event', self.on_key_press)
         self.fig.canvas.mpl_connect('button_press_event', self.on_click)
@@ -106,7 +115,9 @@ class FishVisualizer:
         
         x_pos = self.position_data[frame, x_cols, fish_idx]
         y_pos = self.position_data[frame, y_cols, fish_idx]
-        
+        if self.flipY:
+            y_pos = -y_pos
+
         return x_pos, y_pos
     
     def clear_plot_elements(self):
@@ -158,6 +169,8 @@ class FishVisualizer:
                 arrow_length = 20  # Adjust as needed
                 dx = arrow_length * np.cos(heading_angle)
                 dy = arrow_length * np.sin(heading_angle)
+                if self.flipY:
+                    dy = -dy
                 
                 arrow = FancyArrowPatch((x_pos[0], y_pos[0]),
                                       (x_pos[0] + dx, y_pos[0] + dy),
@@ -205,7 +218,7 @@ class FishVisualizer:
                     self.dh_arrows.append(dh_arrow)
         
         # Update title and adjust view
-        self.ax.set_title(f'Frame Index {frame} (0-{self.Nframes - 1})')
+        self.ax.set_title(f'Frame {frame+1}; Index {frame}, Range (0-{self.Nframes - 1})')
         
         # Handle autoscaling vs fixed limits
         if self.autoscale:
@@ -253,6 +266,11 @@ class FishVisualizer:
         elif event.key == 'z':  # Toggle autoscaling
             self.autoscale = not self.autoscale
             print(f"Autoscaling: {'ON' if self.autoscale else 'OFF'}")
+        elif event.key == 's':  # Save current figure
+            filename = f'fish_position_plot_idx{self.current_frame}.png'
+            self.fig.savefig(filename)
+            print(f"Saved figure: {filename}")
+            return  # No need to replot
         else:
             print(f"Unrecognized key: {event.key}")
             return  # Don't update plot for unrecognized keys
@@ -298,6 +316,7 @@ class FishVisualizer:
         print("  p: +1000 frames w: -1000 frames")
         print("  v: toggle angle display (none / heading / additional info)")
         print("  z: toggle autoscaling (on/off)")
+        print("  s: save current figure as fish_position_plot_idx<N>.png")
         print("")
         print("Alternative programmatic controls:")
         print("  vis.next_frame(n)    # Go forward n frames")
@@ -320,8 +339,8 @@ class FishVisualizer:
         plt.show()
 
 def visualize_fish_data(position_data, heading_angles, dh_vec_px,
-                       body_column_x_start, body_column_y_start, body_Ncolumns, 
-                       additional_info = None):
+                       body_column_x_start, body_column_y_start, body_Ncolumns,
+                       additional_info=None, flipY=True):
     """
     Create and show interactive fish visualization
     
@@ -339,16 +358,21 @@ def visualize_fish_data(position_data, heading_angles, dh_vec_px,
         Starting column index for y positions
     body_Ncolumns : int
         Number of body points per fish
-    additional_info : numpy array of the same shape as heading_angles; 
+    additional_info : numpy array of the same shape as heading_angles;
         additional_info can be, for example, relative orientation of fish.
-        
+    flipY : bool, optional
+        If True (default), invert the sign of y-coordinates in plots,
+        so that y increases upward (e.g. y=300 displays as y=-300).
+        Use when the dataset defines y as increasing downward.
+
     Returns:
     --------
     FishVisualizer : The visualizer object for programmatic control
     """
     visualizer = FishVisualizer(position_data, heading_angles, dh_vec_px,
-                               body_column_x_start, body_column_y_start, 
-                               body_Ncolumns, additional_info = additional_info)
+                               body_column_x_start, body_column_y_start,
+                               body_Ncolumns, additional_info=additional_info,
+                               flipY=flipY)
     visualizer.show()
     return visualizer
 
