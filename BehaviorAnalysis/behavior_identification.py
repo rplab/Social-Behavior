@@ -2024,7 +2024,9 @@ def calculate_interfish_bout_lags(datasets):
     return interfish_bout_lags_s
     
 
-def make_pair_fish_plots(datasets, exptName = '', color = 'black',
+def make_pair_fish_plots(datasets, exptName = '', 
+                         distance_type = 'closest_distance',
+                         color = 'black',
                          plot_type_2D = 'heatmap',
                          outputFileNameBase = 'pair_fish', 
                          outputFileNameExt = 'png',
@@ -2041,6 +2043,8 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
     Inputs:
         datasets : dictionaries for each dataset
         exptName : (string) Experiment name, to append to titles.
+        distance_type : (string) : either 'closest_distance' or 'head_head_distance',
+                        used to make labels for some of the plots
         color: plot color (uses alpha for indiv. dataset colors)
         plot_type_2D : str, 'heatmap' or 'line_plots'
                     Which plotting function make_2D_histogram() will use
@@ -2063,6 +2067,21 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
             verifyPairs = False
     if verifyPairs==False:
         raise ValueError('Error in make_pair_fish_plots; Nfish must be 2 !')
+
+    # distance_type is not always used, but if it is, these may be useful:
+    if distance_type == 'closest_distance':
+        distanceKey = 'closest_distance_mm'
+        distanceStr = 'Closest Distance'
+        distancelabelStr = 'Closest Distance (mm)'
+        shortDistanceStr = 'ClDist'
+    elif distance_type == 'head_head_distance':
+        distanceKey = 'head_head_distance_mm'
+        distanceStr = 'HH Distance'
+        distancelabelStr = 'Head-Head Distance (mm)'
+        shortDistanceStr = 'HHDist'
+    else:
+        raise ValueError('Invalide distance type')
+    
     
     # head-head distance histogram
     head_head_mm_all = combine_all_values_constrained(datasets, 
@@ -2146,7 +2165,38 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                                   outputFileName = outputFileName,
                                   closeFigure = closeFigures,
                                   outputCSVFileName = outputCSVFileName)
-
+    
+    # Relative orientation angle histogram constrained by inter-fish distance
+    dRange=(0.0, 15.0)
+    relative_orientation_angle_all_constr = combine_all_values_constrained(
+        datasets, 
+                                                 keyName='relative_orientation',
+                                                 keyIdx = None,
+                                                 use_abs_value = False,
+                                                 constraintKey=distanceKey,
+                                                 constraintRange=dRange,
+                                                 constraintIdx = None,
+                                                 dilate_minus1 = False)
+    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames( \
+        f'_rel_orientation_{shortDistanceStr}_{dRange[0]:.1f}_{dRange[1]:.1f}mm', 
+        outputFileNameBase, outputFileNameExt, writeCSVs)
+    bin_width = np.pi/30
+    plot_probability_distr(relative_orientation_angle_all_constr, 
+                                  bin_width = bin_width,
+                                  bin_range=[None, None], 
+                                  color = color,
+                                  yScaleType = 'linear',
+                                  plot_each_dataset = False,
+                                  plot_sem_band = True,
+                                  polarPlot = True,
+                                  titleStr = f'{exptName}: Rel. Orient. Angle,' +
+                                     f'{shortDistanceStr}_{dRange[0]:.1f}_{dRange[1]:.1f}mm',
+                                  ylim = (0, 0.4),
+                                  outputFileName = outputFileName,
+                                  closeFigure = closeFigures,
+                                  outputCSVFileName = outputCSVFileName)
+    
+    
     # Sum of relative orientation angles histogram
     relative_orientation_sum_all = combine_all_values_constrained(datasets, 
                                                  keyName='relative_orientation_sum', 
@@ -2190,7 +2240,7 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                            outputFileName = outputFileName,
                            closeFigure = closeFigures,
                            outputCSVFileName = outputCSVFileName)
-
+    
     """
     # 2D histogram of heading alignment and head-head distance
     if outputFileNameBase is not None:
@@ -2212,22 +2262,27 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                           closeFigure = closeFigures)
     """
 
-    # 2D histogram of abs(relative orientation) and head-head distance
+    # 2D histogram of abs(relative orientation) and distance (whichever 
+    # distance type specified earier)
     if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + '_orientation_distance_2D' + '.' + outputFileNameExt
+        outputFileName = outputFileNameBase + \
+            f'_orientation_{shortDistanceStr}_2D' + '.' + outputFileNameExt
     else:
         outputFileName = None
     # use heatmap as plot type; for 2D histogram slicing along Y is not helpful
-    make_2D_histogram(datasets, keyNames = ('head_head_distance_mm', 
-                                            'relative_orientation'), 
+    make_2D_histogram(datasets, keyNames = (distanceKey, 'relative_orientation'), 
                           keyIdx = (None, None), 
                           use_abs_value = (False, True),
                           dilate_minus1=False, bin_ranges=((0.0, 50.0), 
                                                            (0.0, 3.142)), 
-                          Nbins=(20,20), cmap = 'viridis',
+                          Nbins=(20,20), 
+                          unit_scaling_for_plot = [1.0, 180.0/np.pi, 1.0],
+                          xlabelStr = distancelabelStr, 
+                          ylabelStr = 'Rel. Orientation (deg)',
+                          cmap = 'viridis',
                           colorRange = (0.0, 0.0075),
                           clabelStr = 'Probability',
-                          titleStr = f'{exptName}: abs(Rel. orient.) and hh distance', 
+                          titleStr = f'{exptName}: abs(Rel. orient.) and {shortDistanceStr}', 
                           plot_type = 'heatmap',
                           outputFileName = outputFileName,
                           closeFigure = closeFigures)
@@ -2304,6 +2359,7 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
         outputFileName = f'{exptName}_IBI_v_r.png',
         closeFigure = closeFigures)
     """
+    
     
     # Inter-bout interval (IBI) binned by inter-fish distance *and* 
     # radial position
@@ -2470,7 +2526,8 @@ def make_pair_fish_plots(datasets, exptName = '', color = 'black',
                                     titleStr=f'{exptName}: Closest Distance-Binned Cross-correlation',
                                     outputFileName=outputFileName,
                                     closeFigure = closeFigures)
-
+    
+    
     return None
 
 
@@ -3015,17 +3072,17 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
     saved_pair_outputs.append(Y)
 
     # Slice turning angle binned by distance and orientation, along the
-    # orientation axis, distance slice: distance < 2.5 mm
+    # orientation axis, distance slice: distance < 5.0 mm
     if outputFileNameBase is not None:
         outputFileName = outputFileNameBase + f'_turnAngle_v_orientation_small_{distance_file_string}' + '.' + outputFileNameExt
     else:
         outputFileName = None
-    d_range = (0.0, 2.5)
+    d_range = (0.0, 5.0)
     xlabelStr = 'Relative Orientation (deg)'
     titleStr = f'{exptName}: Turn Angle for d < {d_range[1]:.2f} mm'
     zlabelStr = 'Mean Turning Angle (degrees)'
     xlim = (-np.pi, np.pi)
-    zlim = (-15*np.pi/180, 15*np.pi/180)
+    zlim = (-5*np.pi/180, 5*np.pi/180)
     color = color
     slice_2D_histogram(turn_2Dhist_mean, X, Y, turn_2Dhist_sem, 
                        slice_axis = 'x', other_range = d_range, 
@@ -3038,6 +3095,7 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
                        color = color, outputFileName=outputFileName,
                        closeFigure=closeFigures)
 
+    """
     # Symmetrize the above turning angle / relative orientation graph,
     # taking theta[theta > 0] - theta[theta < 0]
     if outputFileNameBase is not None:
@@ -3066,7 +3124,8 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
                            unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
                            color = color, outputFileName=outputFileName,
                            closeFigure=closeFigures)
-
+    """
+    
     # Slice along turn angle binned by distance and orientation, 
     # orientation axis, constrain distance: 5 mm < distance < 15 mm
     if outputFileNameBase is not None:
@@ -3078,7 +3137,7 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
     titleStr = f'{exptName}: Turning Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
     zlabelStr = 'Mean Turning Angle (degrees)'
     xlim = (-np.pi, np.pi)
-    zlim = (-15*np.pi/180, 15*np.pi/180)
+    zlim = (-5*np.pi/180, 5*np.pi/180)
     color = color
     slice_2D_histogram(turn_2Dhist_mean, X, Y, turn_2Dhist_sem, 
                        slice_axis = 'x', other_range = d_range, 
@@ -3091,6 +3150,7 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
                        color = color, outputFileName=outputFileName,
                        closeFigure=closeFigures)
 
+    """
     # Symmetrize the above turning angle / relative orientation graph,
     # taking theta[theta > 0] - theta[theta < 0]
     if outputFileNameBase is not None:
@@ -3119,7 +3179,7 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
                            unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
                            color = color, outputFileName=outputFileName,
                            closeFigure=closeFigures)
-
+    """
     
     # 2D plot of mean turning angle vs. relative orientation and distance,
     # Constrained to turning angle > minimum threshold for "turning"
