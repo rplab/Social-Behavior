@@ -286,7 +286,7 @@ def main():
                          'contact_larger_fish_head', 'contact_smaller_fish_head',
                          'contact_tail_tail',
                          'contact_inferred', 'tail_rubbing_AP', 'tail_rubbing_P',
-                         'maintain_proximity',
+                         'maintain_proximity_1', 'maintain_proximity_2',
                          'approaching_Fish0', 'approaching_Fish1',
                          'approaching_any', 'approaching_all',
                          'fleeing_Fish0', 'fleeing_Fish1',

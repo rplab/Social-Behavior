@@ -13,7 +13,7 @@ Author:   Raghuveer Parthasarathy
 Version ='2.0': 
 First version created by  : Estelle Trieu, 9/7/2022
 Major modifications by Raghuveer Parthasarathy, May-July 2023
-Last modified by Raghuveer Parthasarathy, November 29, 2025
+Last modified by Raghuveer Parthasarathy, March 12, 2026
 
 Module containing functions for handling data files, configuration
 files, and output files -- reading and writing.
@@ -276,27 +276,30 @@ def check_analysis_parameters(params):
         "approach_cos_angle_thresh": 0.5,
         "approach_min_frame_duration": [2,2],
         "motion_speed_threshold_mm_second": 9,
-        "proximity_threshold_mm": [5.0, 15.0],
-        "proximity_distance_measure": 'closest',
+        "proximity_1_threshold_mm": [5.0, 15.0],
+        "proximity_1_distance_measure": 'closest',
+        "proximity_2_threshold_mm": [5.0, 15.0],
+        "proximity_2_distance_measure": 'closest',
         "output_subFolder": 'Analysis',
         "allDatasets_ExcelFile": 'behavior_counts.xlsx', 
         "allDatasets_markFrames_ExcelFile":  'behaviors_in_each_frame.xlsx'
         # "another_key": default_value,
     }
     
-    # if "proximity_threshold_mm" is just a single number, make the range
+    # if a proximity threshold is just a single number, make the range
     #    0.0 to that number (see Dec. 2025 notes)
-    if type(params["proximity_threshold_mm"])==int or \
-       type(params["proximity_threshold_mm"])==float:
-           params["proximity_threshold_mm"] = [0.0, params["proximity_threshold_mm"]]
-        
-    if 'proximity_distance_measure' not in params:
-        print('Using closest distance for "maintaining proximity" measure')
-        params['proximity_distance_measure'] = 'closest_distance'
-    if (params['proximity_distance_measure'] != 'closest') and \
-        (params['proximity_distance_measure'] != 'head_to_head'):
-        print('INVALID OPTION. Using closest distance for "maintaining proximity" measure')
-        params['proximity_distance_measure'] = 'closest'
+    for prox_key in ("proximity_1_threshold_mm", "proximity_2_threshold_mm"):
+        if prox_key in params:
+            if type(params[prox_key]) == int or type(params[prox_key]) == float:
+                params[prox_key] = [0.0, params[prox_key]]
+
+    for prox_key in ("proximity_1_distance_measure", "proximity_2_distance_measure"):
+        if prox_key not in params:
+            print(f'Using closest distance for "{prox_key}"')
+            params[prox_key] = 'closest'
+        if (params[prox_key] != 'closest') and (params[prox_key] != 'head_to_head'):
+            print(f'INVALID OPTION for {prox_key}. Using closest distance.')
+            params[prox_key] = 'closest'
         
     # If 'allDatasets_markFrames_ExcelFile' is empty or None, set to None
     if "allDatasets_markFrames_ExcelFile" not in params:
@@ -1240,14 +1243,14 @@ def write_output_files(params, output_path, datasets):
         # behaviors (events) to write. (Superset)
         Nfish = datasets[0]["Nfish"] # number of fish, take from the first set;
                                  # don't bother checking if same for all
-        key_list = ["close_pair", "perp_noneSee", 
-                    "perp_oneSees", "perp_bothSee", 
-                    "perp_larger_fish_sees", "perp_smaller_fish_sees", 
-                    "contact_any", "contact_head_head", "contact_head_body", 
-                    "contact_tail_tail", 
-                    "contact_larger_fish_head", "contact_smaller_fish_head", 
-                    "contact_inferred", "tail_rubbing_AP", "tail_rubbing_P", 
-                    "maintain_proximity", "anyPairBehavior"]
+        key_list = ["perp_noneSee",
+                    "perp_oneSees", "perp_bothSee",
+                    "perp_larger_fish_sees", "perp_smaller_fish_sees",
+                    "contact_any", "contact_head_head", "contact_head_body",
+                    "contact_tail_tail",
+                    "contact_larger_fish_head", "contact_smaller_fish_head",
+                    "contact_inferred", "tail_rubbing_AP", "tail_rubbing_P",
+                    "maintain_proximity_1", "maintain_proximity_2", "anyPairBehavior"]
         for j in range(Nfish):
             key_list.extend([f"Cbend_Fish{j}"])
         key_list.extend(["Cbend_any"])  # formerly had a condition "if Nfish > 1:"
@@ -1366,20 +1369,20 @@ def write_output_files(params, output_path, datasets):
         print('   Writing summary of all behavior counts, durations to ' + 
               f"   {params['allDatasets_ExcelFile']}")
         initial_keys = ["dataset_name", "fps", "image_scale",
-                        "total_time_seconds", "close_pair_fraction", 
+                        "total_time_seconds",
                         "speed_mm_s_mean", "speed_whenMoving_mm_s_mean",
                         "angular_speed_rad_s_mean", "angular_speed_whenMoving_rad_s_mean",
                         "bout_rate_bpm", "bout_duration_s", "bout_ibi_s",
-                        "fish_length_Delta_mm_mean", 
+                        "fish_length_Delta_mm_mean",
                         "head_head_distance_mm_mean", "closest_distance_mm_mean",
                         "AngleXCorr_mean"]
         initial_strings = ["Dataset", "Frames per sec",  "Image scale (um/px)",
-                           "Total Time (s)", "Fraction of time in proximity", 
-                           "Mean speed (mm/s)", "Mean moving speed (mm/s)", 
-                           "Mean angular speed (rad/s)", 
+                           "Total Time (s)",
+                           "Mean speed (mm/s)", "Mean moving speed (mm/s)",
+                           "Mean angular speed (rad/s)",
                            "Mean moving angular speed (rad/s)",
                            "Mean bout rate (/min)", "Mean bout duration (s)", "Mean inter-bout interval (s)",
-                           "Mean difference in fish lengths (mm)", 
+                           "Mean difference in fish lengths (mm)",
                            "Mean head-head dist (mm)", "Mean closest distance (mm)",
                            "AngleXCorr_mean"]
 
@@ -1513,7 +1516,6 @@ def write_behavior_txt_file(dataset, key_list):
             results_file.write(f"   Mean difference in fish length: {dataset['fish_length_Delta_mm_mean']:.3f} mm\n")
             results_file.write(f"   Mean head-to-head distance: {dataset['head_head_distance_mm_mean']:.3f} mm\n")
             results_file.write(f"   Mean closest distance: {dataset['closest_distance_mm_mean']:.3f} mm\n")
-            results_file.write(f"   Fraction of time in proximity: {dataset['close_pair_fraction']:.3f}\n")
         for k in key_list:
             outString = f'{k} N_events: {dataset[k]["combine_frames"].shape[1]}\n' + \
                     f'{k} Total N_frames: {dataset[k]["total_duration"]}\n' + \
@@ -3707,7 +3709,10 @@ def slice_2D_histogram(z_mean, X, Y, z_unc, slice_axis='x', other_range=None,
     """
     
     # Calculate weights (inverse variance weighting)
-    weights = 1.0 / (z_unc ** 2)
+    if z_unc is not None:
+        weights = 1.0 / (z_unc ** 2)
+    else:
+        weights = np.ones_like(z_mean)
     
     # Handle inf values (where z_unc= 0)
     weights = np.where(np.isfinite(weights), weights, np.nan)
@@ -3865,8 +3870,8 @@ def revise_datasets(keys_to_modify=["relative_orientation"],
     The recalculated properties can be:
       -  angle values using recalculate_angles(), 
           e.g. to revise after the method changed from unsigned to signed angles
-      - "maintain_proximity", the maintaing-proximity behavior,
-          e.g. to use different ranges.
+      - "maintain_proximity_1" or "maintain_proximity_2", the maintaining-proximity
+          behaviors, e.g. to use different ranges.
       - "angular_speed_rad_s_mean" : mean angular speed averaged over both fish,
           e.g. to revise after this property started to be calculated
       - "turning_angle_rad" : change in turning angle (-1.0 * change in 
@@ -3879,8 +3884,8 @@ def revise_datasets(keys_to_modify=["relative_orientation"],
     ----------
     keys_to_modify : list of str
         List of keys to recalculate. Must be subset of:
-        ["relative_orientation", "bend_angle", "heading_angle", 
-         "maintain_proximity", "angular_speed_rad_s_mean"]
+        ["relative_orientation", "bend_angle", "heading_angle",
+         "maintain_proximity_1", "maintain_proximity_2", "angular_speed_rad_s_mean"]
         Default: ["relative_orientation"]
     pickleFileName1 : str or None
         Full path to position data pickle file. If None, will prompt user.
@@ -3980,24 +3985,25 @@ def revise_datasets(keys_to_modify=["relative_orientation"],
                 -1.0*get_fish_delta_heading_angle(datasets[j], frame_diff = (-1, 1))
 
     # Recalculate other behaviors; need to specify and write code for each
-    if "maintain_proximity" in keys_to_modify:
-        print('\n\n\nWARNING: maintain_proximity will be recalculated, ')
-        print('   but close proximity will not! \n\n')
-        params = update_parameters("maintain_proximity", params)
-        for j in range(N_datasets):
-            print('Revising maintain_proximity for Dataset: ', 
-                  datasets[j]["dataset_name"])
-            # Initialize empty dictionary
-            pair_behavior_frames = get_maintain_proximity_frames(all_position_data[j], 
-                                              datasets[j], 
-                                              CSVcolumns, params)
-            # Make frames dictionary
-            tuple_of_frames_to_reject = (datasets[j]["edge_frames"]["raw_frames"],
-                  datasets[j]["bad_bodyTrack_frames"]["raw_frames"])
-            datasets[j]['maintain_proximity'] = make_frames_dictionary(pair_behavior_frames,
-                                           tuple_of_frames_to_reject,
-                                           behavior_name = "maintain_proximity",
-                                           Nframes=datasets[j]['Nframes'])
+    for prox_num in (1, 2):
+        prox_key = f"maintain_proximity_{prox_num}"
+        if prox_key in keys_to_modify:
+            print(f'\nRecalculating {prox_key}.')
+            params = update_parameters(prox_key, params)
+            for j in range(N_datasets):
+                print(f'Revising {prox_key} for Dataset: ', datasets[j]["dataset_name"])
+                pair_behavior_frames = get_maintain_proximity_frames(
+                                              all_position_data[j],
+                                              datasets[j],
+                                              CSVcolumns, params,
+                                              threshold_mm=params[f"proximity_{prox_num}_threshold_mm"],
+                                              distance_measure=params[f"proximity_{prox_num}_distance_measure"])
+                tuple_of_frames_to_reject = (datasets[j]["edge_frames"]["raw_frames"],
+                      datasets[j]["bad_bodyTrack_frames"]["raw_frames"])
+                datasets[j][prox_key] = make_frames_dictionary(pair_behavior_frames,
+                                               tuple_of_frames_to_reject,
+                                               behavior_name = prox_key,
+                                               Nframes=datasets[j]['Nframes'])
 
     if writePickleOutput:
         # Save the updated datasets back to pickle
@@ -4114,7 +4120,7 @@ def update_parameters(keyName, params):
     Parameters
     ----------
     keyName : string
-        behavior key to be updated (e.g. "maintain_proximity").
+        behavior key to be updated (e.g. "maintain_proximity_1" or "maintain_proximity_2").
     params : dict
         analysis parameters
 
@@ -4124,33 +4130,24 @@ def update_parameters(keyName, params):
 
     """
     
-    if keyName == 'maintain_proximity':
-        """
-        proximity_threshold_mm :list of two items, min and max range to 
-            consider for proximity
-        proximity_distance_measure : what distance measure to use (closest
-                or head_to_head)
-        max_motion_gap_s : maximum gap in matching criterion to allow (s). 
-            At 25 fps, 0.5 s = 12.5 frames.
-        min_proximity_duration_s : min duration that matching criteria 
-                must be met for the behavior to be recorded (s).
-                Leave as zero (or < 1 frame) for no minimum.
-        """
-        
-        inputText = "Enter new min and max proximity thresholds *separated by a space*;\n" + \
-            f"   Blank (Enter) to keep {params['proximity_threshold_mm'][0]} {params['proximity_threshold_mm'][1]}: "
-        inputStr = input(inputText)
-        if inputStr != '':
-            params['proximity_threshold_mm'] = [float(x) for x in inputStr.split()]
+    if keyName in ('maintain_proximity_1', 'maintain_proximity_2'):
+        prox_num = keyName[-1]  # '1' or '2'
+        thresh_key = f'proximity_{prox_num}_threshold_mm'
+        dist_key = f'proximity_{prox_num}_distance_measure'
 
-        inputText = f"Enter the distance measure: 'closest' or 'head_to_head'; blank for {params['proximity_distance_measure'] }: "
+        inputText = f"Enter new min and max proximity thresholds for proximity_{prox_num} *separated by a space*;\n" + \
+            f"   Blank (Enter) to keep {params[thresh_key][0]} {params[thresh_key][1]}: "
         inputStr = input(inputText)
         if inputStr != '':
-            params['proximity_distance_measure'] = inputStr
-        if (params['proximity_distance_measure'] != 'closest') and \
-            (params['proximity_distance_measure'] != 'head_to_head'):
-            print('INVALID OPTION. Using closest distance for "maintaining proximity" measure')
-            params['proximity_distance_measure'] = 'closest'
+            params[thresh_key] = [float(x) for x in inputStr.split()]
+
+        inputText = f"Enter the distance measure for proximity_{prox_num}: 'closest' or 'head_to_head'; blank for {params[dist_key]}: "
+        inputStr = input(inputText)
+        if inputStr != '':
+            params[dist_key] = inputStr
+        if (params[dist_key] != 'closest') and (params[dist_key] != 'head_to_head'):
+            print(f'INVALID OPTION for {dist_key}. Using closest distance.')
+            params[dist_key] = 'closest'
 
         inputText = "Enter the maximum gap in matching criterion to allow (s). \n" + \
             f"blank for {params['max_motion_gap_s']:.3f}: "
@@ -4163,7 +4160,7 @@ def update_parameters(keyName, params):
         inputStr = input(inputText)
         if inputStr != '':
             params['min_proximity_duration_s'] = float(inputStr)
-    
+
     else:
         raise ValueError('Invalid behavior key for update_parameters.')
         

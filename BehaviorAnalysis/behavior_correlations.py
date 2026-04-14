@@ -58,9 +58,9 @@ def calc_correlations_with_defaults():
                          'Rbend_Fish1', 'Jbend_Fish0', 'Jbend_Fish1', 
                          'perp_noneSee', 'perp_oneSees', 'perp_bothSee', 
                          'contact_any', 'tail_rubbing_AP', 'tail_rubbing_P',
-                         'maintain_proximity',
-                         'approaching_Fish0', 'approaching_Fish1', 
-                         'approaching_any', 
+                         'maintain_proximity_1', 'maintain_proximity_2',
+                         'approaching_Fish0', 'approaching_Fish1',
+                         'approaching_any',
                          'fleeing_Fish0', 'fleeing_Fish1', 'fleeing_any']
     
     # Check that these keys are in datasets[0]
@@ -94,8 +94,8 @@ def calc_correlations_with_defaults():
                          'Rbend_Fish1', 'Jbend_Fish0', 'Jbend_Fish1', 
                          'perp_noneSee', 'perp_oneSees', 'perp_bothSee', 
                          'contact_any', 'tail_rubbing_AP', 'tail_rubbing_P',
-                         'maintain_proximity', 
-                         'approaching_Fish0', 'approaching_Fish1', 
+                         'maintain_proximity_1', 'maintain_proximity_2',
+                         'approaching_Fish0', 'approaching_Fish1',
                          'fleeing_Fish0', 'fleeing_Fish1']
     # Check that these keys are in datasets[0]
     filtered_list = [key for key in behavior_key_list_subset if key in datasets[0]]

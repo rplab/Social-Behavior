@@ -76,25 +76,6 @@ def get_basic_two_fish_characterizations(all_position_data, datasets, CSVcolumns
         datasets[j]["head_head_vec_px"] = \
             calc_head_head_vector(all_position_data[j], CSVcolumns)
 
-        # Get frames in which the inter-fish distance is small (i.e. less
-        # than the threshold value of the "proximity_threshold_mm" parameter)
-        close_pair_frames =  get_close_pair_frames(datasets[j]["closest_distance_mm"],
-                                                  datasets[j]["frameArray"], 
-                                                  proximity_threshold_mm = \
-                                                      min(params["proximity_threshold_mm"]))
-        # make a dictionary containing frames, removing frames with 
-        # "bad" elements. Also makes a 2xN array of initial frames and durations, 
-        # as usual for these behavior dictionaries
-        badTrackFrames = np.array(datasets[j]["bad_bodyTrack_frames"]["raw_frames"]).astype(int)
-        datasets[j]["close_pair"] = make_frames_dictionary(close_pair_frames,
-                                      badTrackFrames,
-                                      behavior_name = "close_pair",
-                                      Nframes=datasets[j]['Nframes'])
-        # Fraction of time that the pairs are close (excluding bad tracking)
-        datasets[j]["close_pair_fraction"] = len(datasets[j]["close_pair"]["edit_frames"]) \
-                                             / (datasets[j]['Nframes'] - 
-                                                len(datasets[j]["bad_bodyTrack_frames"]["raw_frames"]))
-
         # Relative orientation of fish (angle between heading and
         # connecting vector). Nframes x Nfish==2 array; radians
         # Also the fish indexes in each frame ordered by relative 
@@ -211,32 +192,6 @@ def get_interfish_distance(position_data, CSVcolumns, image_scale,
 
 
 
-def get_close_pair_frames(distance_mm, frameArray, proximity_threshold_mm):
-    """ 
-    Find frames in which the fish are close to each other (closest distance <
-        proximity_threshold_mm)
-    Note that inter-fish distance has previously been calculated 
-    Inputs:
-        distance_mm: inter-fish distance array , mm
-                    (either dataset["closest_distance_mm"]
-                     or dataset["head_head_distance_mm"]: the inter-fish distance calculated as the closest distance between any inter-fish positions in each frame; mm; array of length Nframes)
-        frameArray : Array of frames for this dataset
-        proximity_threshold_mm : proximity threshold, mm
-    Output : 
-        close_pair_frames : numpy array of frames in which inter-fish 
-                            distance is < threshold
-    """
-
-    # Check that frameArray and distance have the same size
-    if len(distance_mm) != len(frameArray):
-        raise ValueError("Error: inter-fish distance and frameArray don't have the same size.")
-
-    close_pair_frames = frameArray.flatten()[distance_mm.flatten() < 
-                                             proximity_threshold_mm]
-    return close_pair_frames
-
-
-    
 def extract_pair_behaviors(pair_behavior_frames, position_data, dataset, 
                            params, CSVcolumns): 
     """
@@ -258,8 +213,9 @@ def extract_pair_behaviors(pair_behavior_frames, position_data, dataset,
                 perp_bothSee, contact_any, contact_head_head, contact_head_body, 
                 contact_larger_fish_head, contact_smaller_fish_head,
                 contact_tail_tail,
-                contact_inferred, tail_rubbing_AP, tail_rubbing_P, maintain_proximity, 
-                approaching_Fish0, approaching_Fish1, approaching_any, 
+                contact_inferred, tail_rubbing_AP, tail_rubbing_P,
+                maintain_proximity_1, maintain_proximity_2,
+                approaching_Fish0, approaching_Fish1, approaching_any,
                 approaching_all,
                 fleeing_Fish0, fleeing_Fish1, fleeing_any, fleeing_all
             
@@ -344,9 +300,15 @@ def extract_pair_behaviors(pair_behavior_frames, position_data, dataset,
 
     t1_6 = perf_counter()
     print(f'   t1_6 start maintaining proximity analysis: {t1_6 - t1_start:.2f} seconds')
-    # Maintaining proximity
-    pair_behavior_frames['maintain_proximity'] = \
-        get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params)
+    # Maintaining proximity (two measures)
+    pair_behavior_frames['maintain_proximity_1'] = \
+        get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params,
+                                      threshold_mm=params["proximity_1_threshold_mm"],
+                                      distance_measure=params["proximity_1_distance_measure"])
+    pair_behavior_frames['maintain_proximity_2'] = \
+        get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params,
+                                      threshold_mm=params["proximity_2_threshold_mm"],
+                                      distance_measure=params["proximity_2_distance_measure"])
 
     
     t1_end = perf_counter()
@@ -816,9 +778,10 @@ def get_tail_rubbing_frames(body_x, body_y, head_separation,
     return tail_rubbing_AP_frames, tail_rubbing_P_frames
 
 
-def get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params):
+def get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params,
+                                   threshold_mm, distance_measure):
     """
-    Returns an array of frames for "maintaining proximity" events, 
+    Returns an array of frames for "maintaining proximity" events,
     in which fish maintain proximity while moving, over some duration
 
     Args:
@@ -826,34 +789,33 @@ def get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params):
         dataset : dataset dictionary of all behavior information for a given expt.
             contains "heading_angle"
         CSVcolumns: information on what the columns of position_data are
-        params : dictionary of all analysis parameters -- will use speed 
+        params : dictionary of all analysis parameters -- will use speed
             and proximity thresholds. Includes:
-            proximity_threshold_mm :list of two items, min and max range to 
-                consider for proximity
-            proximity_distance_measure : what distance measure to use (closest
-                    or head_to_head)
-            max_motion_gap_s : maximum gap in matching criterion to allow (s). 
+            max_motion_gap_s : maximum gap in matching criterion to allow (s).
                 At 25 fps, 0.5 s = 12.5 frames.
-            min_proximity_duration_s : min duration that matching criteria 
+            min_proximity_duration_s : min duration that matching criteria
                     must be met for the behavior to be recorded (s).
                     Leave as zero (or < 1 frame) for no minimum.
+        threshold_mm : list of two items [min, max], the distance range (mm)
+            to consider for proximity
+        distance_measure : what distance measure to use; 'closest' or 'head_to_head'
 
     Returns:
         maintain_proximity_frames: a 1D array of frames in which the
             maintaining proximity conditions are met.
 
     """
-    
-    if params["proximity_distance_measure"] == 'closest':
+
+    if distance_measure == 'closest':
         distance_key = "closest_distance_mm"
-    elif params["proximity_distance_measure"] == 'head_to_head':
+    elif distance_measure == 'head_to_head':
         distance_key = "head_head_distance_mm"
     else:
         raise ValueError('Invalid distance measure!')
-            
+
     # Criteria, evaluated in each frame.
-    speed_criterion = np.any(dataset["speed_array_mm_s"] > 
-                             params["motion_speed_threshold_mm_second"], 
+    speed_criterion = np.any(dataset["speed_array_mm_s"] >
+                             params["motion_speed_threshold_mm_second"],
                              axis=1)
 
     # Closing to remove small gaps
@@ -863,9 +825,9 @@ def get_maintain_proximity_frames(position_data, dataset, CSVcolumns, params):
 
     # Distance
     distance_criterion = (dataset[distance_key].flatten() > \
-                          params["proximity_threshold_mm"][0]) & \
+                          threshold_mm[0]) & \
                          (dataset[distance_key].flatten() < \
-                          params["proximity_threshold_mm"][1])
+                          threshold_mm[1])
                              
     all_criteria = speed_criterion_closed & distance_criterion
 
@@ -2082,7 +2044,7 @@ def make_pair_fish_plots(datasets, exptName = '',
     else:
         raise ValueError('Invalide distance type')
     
-    
+    """
     # head-head distance histogram
     head_head_mm_all = combine_all_values_constrained(datasets, 
                                                      keyName='head_head_distance_mm', 
@@ -2240,7 +2202,7 @@ def make_pair_fish_plots(datasets, exptName = '',
                            outputFileName = outputFileName,
                            closeFigure = closeFigures,
                            outputCSVFileName = outputCSVFileName)
-    
+    """
     """
     # 2D histogram of heading alignment and head-head distance
     if outputFileNameBase is not None:
@@ -2360,7 +2322,7 @@ def make_pair_fish_plots(datasets, exptName = '',
         closeFigure = closeFigures)
     """
     
-    
+    """
     # Inter-bout interval (IBI) binned by inter-fish distance *and* 
     # radial position
     if outputFileNameBase is not None:
@@ -2527,7 +2489,7 @@ def make_pair_fish_plots(datasets, exptName = '',
                                     outputFileName=outputFileName,
                                     closeFigure = closeFigures)
     
-    
+    """
     return None
 
 
@@ -2688,11 +2650,11 @@ def make_bending_angle_plots(datasets, exptName = '', distance_type = None,
                              bending_threshold_deg = 0.0,
                              color = 'black',
                              plot_type_2D = 'heatmap',
-                             outputFileNameBase = 'pair_fish', 
+                             cmap = 'RdYlBu_r', 
+                             outputFileNameBase = 'bending_angle', 
                              outputFileNameExt = 'png',
                              closeFigures = False,
                              writeCSVs = False):
-    
     
     """
     Makes several useful plots of bending angle properties for 
@@ -2796,7 +2758,7 @@ def make_bending_angle_plots(datasets, exptName = '', distance_type = None,
         ylabelStr = distanceLabelStr, 
         mask_by_sem_limit = mask_by_sem_limit_degrees*np.pi/180.0,
         unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
-        cmap = 'RdYlBu_r', 
+        cmap = cmap,
         plot_type = plot_type_2D,
         outputFileName = outputFileName,
         closeFigure = closeFigures)
@@ -2957,7 +2919,8 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
                              turning_threshold_deg = 0.0,
                              color = 'black',
                              plot_type_2D = 'heatmap',
-                             outputFileNameBase = 'pair_fish', 
+                             cmap = 'RdYlBu_r', 
+                             outputFileNameBase = 'turning_angle', 
                              outputFileNameExt = 'png',
                              closeFigures = False,
                              writeCSVs = False):
@@ -2978,6 +2941,7 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
         plot_type_2D : str, 'heatmap' or 'line_plots'
                     Which plotting function make_2D_histogram() will use
                     ('heatmap' or 'line_plots')
+        cmap : colormap to use for heatmap
         outputFileNameBase : base file name for figure output; if None,
                              won't save a figure file
         outputFileNameExt : extension for figure output (e.g. 'eps' or 'png')
@@ -3053,16 +3017,16 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
         keyIdx = (None, None), 
         use_abs_value = use_abs_value,
         keyNameC = 'turning_angle_rad', keyIdxC = None,
-        colorRange = (-5*np.pi/180.0, 5*np.pi/180.0),
+        colorRange = (-2.5*np.pi/180.0, 2.5*np.pi/180.0),
         dilate_minus1= False, 
-        bin_ranges = ((-np.pi, np.pi), (0.0, 30.0)), Nbins = (19,15), 
+        bin_ranges = ((-np.pi, np.pi), (0.0, 50.0)), Nbins = (11,15), 
         titleStr = titleStr,
         clabelStr= 'Mean Turning Angle (degrees)',
         xlabelStr = 'Relative Orientation (degrees)',
         ylabelStr = distanceLabelStr, 
         mask_by_sem_limit = mask_by_sem_limit_degrees*np.pi/180.0,
         unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
-        cmap = 'RdYlBu_r', 
+        cmap = cmap, 
         plot_type = plot_type_2D,
         outputFileName = outputFileName,
         closeFigure = closeFigures)
@@ -3181,6 +3145,7 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
                            closeFigure=closeFigures)
     """
     
+    """
     # 2D plot of mean turning angle vs. relative orientation and distance,
     # Constrained to turning angle > minimum threshold for "turning"
     if turning_threshold_deg > 0.0:
@@ -3216,7 +3181,180 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
             plot_type = plot_type_2D,
             outputFileName = outputFileName,
             closeFigure = closeFigures)    
+    """
     
+    return saved_pair_outputs
+
+
+def make_relative_orientation_plots(datasets, exptName = '', 
+                                    distance_type = None,
+                             color = 'black',
+                             plot_type_2D = 'heatmap',
+                             cmap = 'RdYlBu_r', 
+                             outputFileNameBase = 'rel_orient', 
+                             outputFileNameExt = 'png',
+                             closeFigures = False,
+                             writeCSVs = False):
+    
+    """
+    Makes useful plots of relative orientation properties for 
+    of pairs of fish.
+        
+    Inputs:
+        datasets : dictionaries for each dataset
+        exptName : (string) Experiment name, to append to titles.
+        distance_type : string, either closest_distance or head_head_distance
+                Default is None; user should think about this!
+        color: plot color (uses alpha for indiv. dataset colors)
+        plot_type_2D : str, 'heatmap' or 'line_plots'
+                    Which plotting function make_2D_histogram() will use
+                    ('heatmap' or 'line_plots')
+        cmap : colormap to use for heatmap
+        outputFileNameBase : base file name for figure output; if None,
+                             won't save a figure file
+        outputFileNameExt : extension for figure output (e.g. 'eps' or 'png')
+        closeFigures : (bool) if True, close a figure after creating it.
+        writeCSVs : (bool) Used by various functions; if true, output plotted 
+                            points to a CSV file. See code for filenames
+
+    Outputs:
+        saved_pair_outputs : list, containing
+            0 : relOrient_2Dhist_mean, mean 2D relative orientation histogram
+            1 : relOrient_2Dhist_std, std dev for 2D relative orientation histogram
+            2: bin positions ("X") for distance for 2D relative orientation histogram
+            3: bin positions ("Y") for relative orientation for 2D relative orientation histogram
+
+    To do:
+        Redundant code for slicing, symmetrization. Probably not worth cleaning up.
+        
+    """
+    
+    # Make sure of distance measure being used
+    if not (distance_type==None or distance_type == 'closest_distance' or \
+            distance_type == 'head_head_distance'):
+        print('\nDistance measure must be "closest_distance" or "head_head_distance".\n')
+        distance_type = None
+    if distance_type == None:
+        distance_type_choice = 0
+        while not ((distance_type_choice  == 1) or (distance_type_choice  == 2)):
+            distance_type_choice = int(input('Choose distance measure ' + 
+                                             '\n  (1) closest_distance ' + 
+                                             '\n  (2) head_head_distance' +
+                                             '\nEnter "1" or "2": '))
+        if distance_type_choice==1:
+            distance_type = 'closest_distance'
+        else:
+            distance_type = 'head_head_distance'
+
+    # Strings for file output, labels
+    if distance_type == 'closest_distance':
+        distanceKey = 'closest_distance_mm'
+        distanceStr = 'Closest Distance'
+        distanceLabelStr = 'Closest Distance (mm)'
+        shortDistanceStr = 'ClDist'
+        distance_file_string = 'closestDistance'
+    elif distance_type == 'head_head_distance':
+        distanceKey = 'head_head_distance_mm'
+        distanceStr = 'HH Distance'
+        distanceLabelStr = 'Head-Head Distance (mm)'
+        shortDistanceStr = 'HHDist'
+        distance_file_string = 'headHeadDistance'
+    else:
+        raise ValueError('Invalide distance type')
+        
+    saved_pair_outputs = []
+
+    
+    verifyPairs = True
+    for j in range(len(datasets)):
+        if datasets[j]["Nfish"] != 2:
+            verifyPairs = False
+    if verifyPairs==False:
+        raise ValueError('Error in make_pair_fish_plots; Nfish must be 2 !')
+
+    # 2D plot of mean turning angle vs. relative orientation and distance
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + \
+            f'_relative_orientation_{shortDistanceStr}_2D' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    titleStr = f'{exptName}: Relative Orientation'
+    # Save the output 2D histograms, for use later.
+    # use heatmap as plot type; for 2D histogram slicing along Y is not helpful
+    relOrient_2Dhist_mean, X, Y, relOrient_2Dhist_std = make_2D_histogram(
+        datasets, 
+        keyNames = ('relative_orientation', distanceKey), 
+        keyIdx = (None, None), 
+        use_abs_value = (True, False),
+        dilate_minus1=False, 
+        bin_ranges=((0.0, 3.142), (0.0, 30.0)), 
+        Nbins=(11,15), 
+        unit_scaling_for_plot = [180.0/np.pi, 1.0, 1.0],
+        xlabelStr = 'Rel. Orientation (deg)',
+        ylabelStr = distanceLabelStr, 
+        cmap = cmap,
+        colorRange = (0.0, 0.0075),
+        clabelStr = 'Probability',
+        titleStr = f'{exptName}: abs(Rel. orient.) and {shortDistanceStr}', 
+        plot_type = plot_type_2D,
+        outputFileName = outputFileName,
+        closeFigure = closeFigures)
+
+    saved_pair_outputs.append(relOrient_2Dhist_mean)
+    saved_pair_outputs.append(relOrient_2Dhist_std)
+    saved_pair_outputs.append(X)
+    saved_pair_outputs.append(Y)
+
+    # Slice turning angle binned by distance and orientation, along the
+    # orientation axis, distance slice: distance < 5.0 mm
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + f'_P_rel_orientation_middle_{distance_file_string}' + '.' + outputFileNameExt
+        outputFileName = outputFileNameBase + f'_P_rel_orientation_small_{distance_file_string}' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    d_range = (0.0, 5.0)
+    xlabelStr = 'Relative Orientation (deg)'
+    titleStr = f'{exptName}: P(Rel. Orientation) for d < {d_range[1]:.2f} mm'
+    zlabelStr = 'Probability (not normalized)'
+    xlim = (-np.pi, np.pi)
+    zlim = (0.0, 0.02)
+    color = color
+    slice_2D_histogram(relOrient_2Dhist_mean, X, Y, relOrient_2Dhist_std, 
+                       slice_axis = 'x', other_range = d_range, 
+                       titleStr = titleStr, xlabelStr = xlabelStr, 
+                       zlabelStr = zlabelStr,
+                       ylabelStr = distanceLabelStr, zlim = zlim, xlim = xlim, 
+                       plot_z_zero_line = True,
+                       plot_vert_zero_line = True,
+                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 1.0],
+                       color = color, outputFileName=outputFileName,
+                       closeFigure=closeFigures)
+
+    
+    # Slice along turn angle binned by distance and orientation, 
+    # orientation axis, constrain distance: 5 mm < distance < 15 mm
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + f'_P_rel_orientation_middle_{distance_file_string}' + '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    d_range = (5.0, 15.0)
+    xlabelStr = 'Relative Orientation (deg)'
+    titleStr = f'{exptName}: P(Rel. Orientation) for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
+    zlabelStr = 'Probability (not normalized)'
+    xlim = (-np.pi, np.pi)
+    zlim = (0.0, 0.02)
+    color = color
+    slice_2D_histogram(relOrient_2Dhist_mean, X, Y, relOrient_2Dhist_std, 
+                       slice_axis = 'x', other_range = d_range, 
+                       titleStr = titleStr, xlabelStr = xlabelStr, 
+                       zlabelStr = zlabelStr,
+                       ylabelStr = distanceLabelStr, zlim = zlim, xlim = xlim, 
+                       plot_z_zero_line = True,
+                       plot_vert_zero_line = True,
+                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 1.0],
+                       color = color, outputFileName=outputFileName,
+                       closeFigure=closeFigures)
+
     return saved_pair_outputs
 
 
