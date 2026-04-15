@@ -2919,6 +2919,7 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
                              turning_threshold_deg = 0.0,
                              color = 'black',
                              plot_type_2D = 'heatmap',
+                             Nbins = (19,15),
                              cmap = 'RdYlBu_r', 
                              outputFileNameBase = 'turning_angle', 
                              outputFileNameExt = 'png',
@@ -2941,6 +2942,7 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
         plot_type_2D : str, 'heatmap' or 'line_plots'
                     Which plotting function make_2D_histogram() will use
                     ('heatmap' or 'line_plots')
+        Nbins : tuple, Number of bins in the rel orientation and distance axes
         cmap : colormap to use for heatmap
         outputFileNameBase : base file name for figure output; if None,
                              won't save a figure file
@@ -2991,13 +2993,12 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
         
     saved_pair_outputs = []
 
-    
     verifyPairs = True
     for j in range(len(datasets)):
         if datasets[j]["Nfish"] != 2:
             verifyPairs = False
     if verifyPairs==False:
-        raise ValueError('Error in make_pair_fish_plots; Nfish must be 2 !')
+        raise ValueError('Error in make_turning_angle_plots; Nfish must be 2 !')
 
 
     # 2D plot of mean turning angle vs. relative orientation and distance
@@ -3019,7 +3020,7 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
         keyNameC = 'turning_angle_rad', keyIdxC = None,
         colorRange = (-2.5*np.pi/180.0, 2.5*np.pi/180.0),
         dilate_minus1= False, 
-        bin_ranges = ((-np.pi, np.pi), (0.0, 50.0)), Nbins = (11,15), 
+        bin_ranges = ((-np.pi, np.pi), (0.0, 50.0)), Nbins = Nbins, 
         titleStr = titleStr,
         clabelStr= 'Mean Turning Angle (degrees)',
         xlabelStr = 'Relative Orientation (degrees)',
