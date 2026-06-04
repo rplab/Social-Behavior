@@ -276,7 +276,8 @@ if __name__ == '__main__':
                                  outputFileNameBase = f'{exptName}', 
                                  outputFileNameExt = 'svg',
                                  closeFigures = closeFigures,
-                                 writeCSVs = False)
+                                 outputCSVFileName = f'relOrient_{exptName}.csv',
+                                 makeSlicePlots = False)
             all_expts[exptName]["relOrient_2Dhist_mean"] = saved_relOrientation_outputs[0]
             all_expts[exptName]["relOrient_2Dhist_sem"] = saved_relOrientation_outputs[1]
             all_expts[exptName]["relOrient_2Dhist_X"] = saved_relOrientation_outputs[2]
@@ -307,7 +308,8 @@ if __name__ == '__main__':
                                  outputFileNameBase = f'{exptName}', 
                                  outputFileNameExt = 'svg',
                                  closeFigures = closeFigures,
-                                 writeCSVs = False)
+                                 outputCSVFileName = f'turning_{exptName}.csv',
+                                 makeSlicePlots = False)
             all_expts[exptName]["turn_2Dhist_mean"] = saved_pair_turning_outputs[0]
             all_expts[exptName]["turn_2Dhist_sem"] = saved_pair_turning_outputs[1]
             all_expts[exptName]["turn_2Dhist_X"] = saved_pair_turning_outputs[2]
@@ -384,7 +386,7 @@ if __name__ == '__main__':
     else:
         raise ValueError('Invalide distance type')
     
-    calcDifferences = 'turning' #'turning' # 'turning', 'bending', or 'relOrient' 
+    calcDifferences = 'relOrient' #'turning' # 'turning', 'bending', or 'relOrient' 
                              #or 'none' [anything else]
 
     if (calcDifferences == 'turning') or (calcDifferences == 'bending') \
@@ -460,29 +462,34 @@ if __name__ == '__main__':
             else:
                 titleStr = f'{cmp_title}: {optionString} Angle; unc. < {mask_by_sem_limit_degrees:.1f} deg'
 
+            outputCSVFileName = outputFileNameBase + cmp_fname + '.csv'
+            print(outputCSVFileName)
             plot_2D_heatmap(d, X, Y, Z_unc=d_unc,
                             titleStr=titleStr, xlabelStr=xlabelStr, ylabelStr=ylabelStr,
                             clabelStr=clabelStr, colorRange=colorRange, cmap=cmap,
                             unit_scaling_for_plot=unit_scaling_for_plot,
                             mask_by_sem_limit=mask_by_sem_limit,
                             outputFileName=outputFileNameBase + cmp_fname + outputExtension,
+                            outputCSVFileName = outputCSVFileName,
                             closeFigure=False)
 
-            for d_range in [(0.0, 5.0), (5.0, 15.0)]:
-                if d_range[0] == 0.0:
-                    title_dist = f'{cmp_title}: {optionString} Angle for d < {d_range[1]:.2f} mm'
-                else:
-                    title_dist = f'{cmp_title}: {optionString} Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
-                slice_2D_histogram(d, X, Y, d_unc,
-                                   slice_axis='x', other_range=d_range,
-                                   titleStr=title_dist, xlabelStr=xlabelStr,
-                                   zlabelStr=clabelStr, ylabelStr=ylabelStr,
-                                   zlim=zlim, xlim=xlim,
-                                   plot_z_zero_line=True, plot_vert_zero_line=True,
-                                   unit_scaling_for_plot=unit_scaling_for_plot,
-                                   color=slice_color,
-                                   outputFileName=outputFileNameBase + f'{cmp_fname} {d_range[0]:.1f}-{d_range[1]:.1f} mm' + outputExtension,
-                                   closeFigure=False)
+            makeSlicePlots = False
+            if makeSlicePlots:
+                for d_range in [(0.0, 5.0), (5.0, 15.0)]:
+                    if d_range[0] == 0.0:
+                        title_dist = f'{cmp_title}: {optionString} Angle for d < {d_range[1]:.2f} mm'
+                    else:
+                        title_dist = f'{cmp_title}: {optionString} Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
+                    slice_2D_histogram(d, X, Y, d_unc,
+                                    slice_axis='x', other_range=d_range,
+                                    titleStr=title_dist, xlabelStr=xlabelStr,
+                                    zlabelStr=clabelStr, ylabelStr=ylabelStr,
+                                    zlim=zlim, xlim=xlim,
+                                    plot_z_zero_line=True, plot_vert_zero_line=True,
+                                    unit_scaling_for_plot=unit_scaling_for_plot,
+                                    color=slice_color,
+                                    outputFileName=outputFileNameBase + f'{cmp_fname} {d_range[0]:.1f}-{d_range[1]:.1f} mm' + outputExtension,
+                                    closeFigure=False)
 
     #%% Correlations of pair behaviors
     # Note that this is slow!

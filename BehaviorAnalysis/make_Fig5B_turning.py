@@ -97,7 +97,8 @@ for exptName in all_expts.keys():
                             outputFileNameBase = f'{exptName}', 
                             outputFileNameExt = 'svg',
                             closeFigures = closeFigures,
-                            writeCSVs = False)
+                            outputCSVFileName = f'{exptName}.csv',
+                             makeSlicePlots = False)
     all_expts[exptName]["turn_2Dhist_mean"] = saved_pair_turning_outputs[0]
     all_expts[exptName]["turn_2Dhist_sem"] = saved_pair_turning_outputs[1]
     all_expts[exptName]["turn_2Dhist_X"] = saved_pair_turning_outputs[2]
@@ -166,7 +167,8 @@ for cmp_title, cmp_fname, keyA, keyB, slice_color in comparisons:
                     unit_scaling_for_plot=unit_scaling_for_plot,
                     mask_by_sem_limit=mask_by_sem_limit,
                     outputFileName=outputFileNameBase + cmp_fname + outputExtension,
-                    closeFigure=False)
+                    closeFigure=False,
+                    outputCSVFileName = outputFileNameBase + cmp_fname + '.csv')
 
     if makeSlicePlots:
         for d_range in [(0.0, 5.0), (5.0, 15.0)]:

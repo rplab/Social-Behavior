@@ -2924,7 +2924,8 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
                              outputFileNameBase = 'turning_angle', 
                              outputFileNameExt = 'png',
                              closeFigures = False,
-                             writeCSVs = False):
+                             outputCSVFileName = None,
+                             makeSlicePlots = False):
     
     """
     Makes several useful plots of Turning angle properties for 
@@ -2948,8 +2949,9 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
                              won't save a figure file
         outputFileNameExt : extension for figure output (e.g. 'eps' or 'png')
         closeFigures : (bool) if True, close a figure after creating it.
-        writeCSVs : (bool) Used by various functions; if true, output plotted 
-                            points to a CSV file. See code for filenames
+        outputCSVFileName : str or None ; send to make_2D_histogram(); if not None,
+            output the 2D histogram values as a CSV file. 
+        makeSlicePlots : (bool) if true, make plots that are "slices" of the 2D histogram
 
     Outputs:
         saved_pair_outputs : list, containing
@@ -3030,121 +3032,123 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
         cmap = cmap, 
         plot_type = plot_type_2D,
         outputFileName = outputFileName,
-        closeFigure = closeFigures)
+        closeFigure = closeFigures,
+        outputCSVFileName = outputCSVFileName)
     saved_pair_outputs.append(turn_2Dhist_mean)
     saved_pair_outputs.append(turn_2Dhist_sem)
     saved_pair_outputs.append(X)
     saved_pair_outputs.append(Y)
 
-    # Slice turning angle binned by distance and orientation, along the
-    # orientation axis, distance slice: distance < 5.0 mm
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + f'_turnAngle_v_orientation_small_{distance_file_string}' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
-    d_range = (0.0, 5.0)
-    xlabelStr = 'Relative Orientation (deg)'
-    titleStr = f'{exptName}: Turn Angle for d < {d_range[1]:.2f} mm'
-    zlabelStr = 'Mean Turning Angle (degrees)'
-    xlim = (-np.pi, np.pi)
-    zlim = (-5*np.pi/180, 5*np.pi/180)
-    color = color
-    slice_2D_histogram(turn_2Dhist_mean, X, Y, turn_2Dhist_sem, 
-                       slice_axis = 'x', other_range = d_range, 
-                       titleStr = titleStr, xlabelStr = xlabelStr, 
-                       zlabelStr = zlabelStr,
-                       ylabelStr = distanceLabelStr, zlim = zlim, xlim = xlim, 
-                       plot_z_zero_line = True,
-                       plot_vert_zero_line = True,
-                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
-                       color = color, outputFileName=outputFileName,
-                       closeFigure=closeFigures)
+    if makeSlicePlots:
+        # Slice turning angle binned by distance and orientation, along the
+        # orientation axis, distance slice: distance < 5.0 mm
+        if outputFileNameBase is not None:
+            outputFileName = outputFileNameBase + f'_turnAngle_v_orientation_small_{distance_file_string}' + '.' + outputFileNameExt
+        else:
+            outputFileName = None
+        d_range = (0.0, 5.0)
+        xlabelStr = 'Relative Orientation (deg)'
+        titleStr = f'{exptName}: Turn Angle for d < {d_range[1]:.2f} mm'
+        zlabelStr = 'Mean Turning Angle (degrees)'
+        xlim = (-np.pi, np.pi)
+        zlim = (-5*np.pi/180, 5*np.pi/180)
+        color = color
+        slice_2D_histogram(turn_2Dhist_mean, X, Y, turn_2Dhist_sem, 
+                        slice_axis = 'x', other_range = d_range, 
+                        titleStr = titleStr, xlabelStr = xlabelStr, 
+                        zlabelStr = zlabelStr,
+                        ylabelStr = distanceLabelStr, zlim = zlim, xlim = xlim, 
+                        plot_z_zero_line = True,
+                        plot_vert_zero_line = True,
+                        unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                        color = color, outputFileName=outputFileName,
+                        closeFigure=closeFigures)
 
-    """
-    # Symmetrize the above turning angle / relative orientation graph,
-    # taking theta[theta > 0] - theta[theta < 0]
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + f'_turnAngle_v_orientation_small_{distance_file_string}_asymm' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
-    midXind = int((X.shape[0] - 1)/2.0)
-    if np.abs(X[midXind, 0]) > 1e-6:
-        print('"X" array is not centered at zero. Will not symmetrize.')
-    else:
-        turn_2Dhist_mean_symm = 0.5*(turn_2Dhist_mean[midXind:,:] - 
-                                     np.flipud(turn_2Dhist_mean[:(midXind+1),:]))
-        turn_2Dhist_sem_symm = np.sqrt(turn_2Dhist_sem[midXind:,:]**2 +
-                                       np.flipud(turn_2Dhist_sem[:(midXind+1),:])**2)/np.sqrt(2)
-        X_symm = X[midXind:,:]
-        Y_symm = Y[midXind:,:]
-        slice_2D_histogram(turn_2Dhist_mean_symm, X_symm, Y_symm,
-                           turn_2Dhist_sem_symm, 
-                           slice_axis = 'x', other_range = d_range, 
-                           titleStr = titleStr, xlabelStr = f'|{xlabelStr}|', 
-                           zlabelStr = zlabelStr + ' toward Other',
-                           ylabelStr = distanceLabelStr, zlim = zlim, 
-                           xlim = (0.0, xlim[1]), 
-                           plot_z_zero_line = True,
-                           plot_vert_zero_line = False,
-                           unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
-                           color = color, outputFileName=outputFileName,
-                           closeFigure=closeFigures)
-    """
-    
-    # Slice along turn angle binned by distance and orientation, 
-    # orientation axis, constrain distance: 5 mm < distance < 15 mm
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + f'_turnAngle_v_orientation_middle_{distance_file_string}' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
-    d_range = (5.0, 15.0)
-    xlabelStr = 'Relative Orientation (deg)'
-    titleStr = f'{exptName}: Turning Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
-    zlabelStr = 'Mean Turning Angle (degrees)'
-    xlim = (-np.pi, np.pi)
-    zlim = (-5*np.pi/180, 5*np.pi/180)
-    color = color
-    slice_2D_histogram(turn_2Dhist_mean, X, Y, turn_2Dhist_sem, 
-                       slice_axis = 'x', other_range = d_range, 
-                       titleStr = titleStr, xlabelStr = xlabelStr, 
-                       zlabelStr = zlabelStr,
-                       ylabelStr = distanceLabelStr, zlim = zlim, xlim = xlim, 
-                       plot_z_zero_line = True,
-                       plot_vert_zero_line = True,
-                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
-                       color = color, outputFileName=outputFileName,
-                       closeFigure=closeFigures)
+        """
+        # Symmetrize the above turning angle / relative orientation graph,
+        # taking theta[theta > 0] - theta[theta < 0]
+        if outputFileNameBase is not None:
+            outputFileName = outputFileNameBase + f'_turnAngle_v_orientation_small_{distance_file_string}_asymm' + '.' + outputFileNameExt
+        else:
+            outputFileName = None
+        midXind = int((X.shape[0] - 1)/2.0)
+        if np.abs(X[midXind, 0]) > 1e-6:
+            print('"X" array is not centered at zero. Will not symmetrize.')
+        else:
+            turn_2Dhist_mean_symm = 0.5*(turn_2Dhist_mean[midXind:,:] - 
+                                        np.flipud(turn_2Dhist_mean[:(midXind+1),:]))
+            turn_2Dhist_sem_symm = np.sqrt(turn_2Dhist_sem[midXind:,:]**2 +
+                                        np.flipud(turn_2Dhist_sem[:(midXind+1),:])**2)/np.sqrt(2)
+            X_symm = X[midXind:,:]
+            Y_symm = Y[midXind:,:]
+            slice_2D_histogram(turn_2Dhist_mean_symm, X_symm, Y_symm,
+                            turn_2Dhist_sem_symm, 
+                            slice_axis = 'x', other_range = d_range, 
+                            titleStr = titleStr, xlabelStr = f'|{xlabelStr}|', 
+                            zlabelStr = zlabelStr + ' toward Other',
+                            ylabelStr = distanceLabelStr, zlim = zlim, 
+                            xlim = (0.0, xlim[1]), 
+                            plot_z_zero_line = True,
+                            plot_vert_zero_line = False,
+                            unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                            color = color, outputFileName=outputFileName,
+                            closeFigure=closeFigures)
+        """
+        
+        # Slice along turn angle binned by distance and orientation, 
+        # orientation axis, constrain distance: 5 mm < distance < 15 mm
+        if outputFileNameBase is not None:
+            outputFileName = outputFileNameBase + f'_turnAngle_v_orientation_middle_{distance_file_string}' + '.' + outputFileNameExt
+        else:
+            outputFileName = None
+        d_range = (5.0, 15.0)
+        xlabelStr = 'Relative Orientation (deg)'
+        titleStr = f'{exptName}: Turning Angle for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
+        zlabelStr = 'Mean Turning Angle (degrees)'
+        xlim = (-np.pi, np.pi)
+        zlim = (-5*np.pi/180, 5*np.pi/180)
+        color = color
+        slice_2D_histogram(turn_2Dhist_mean, X, Y, turn_2Dhist_sem, 
+                        slice_axis = 'x', other_range = d_range, 
+                        titleStr = titleStr, xlabelStr = xlabelStr, 
+                        zlabelStr = zlabelStr,
+                        ylabelStr = distanceLabelStr, zlim = zlim, xlim = xlim, 
+                        plot_z_zero_line = True,
+                        plot_vert_zero_line = True,
+                        unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                        color = color, outputFileName=outputFileName,
+                        closeFigure=closeFigures)
 
-    """
-    # Symmetrize the above turning angle / relative orientation graph,
-    # taking theta[theta > 0] - theta[theta < 0]
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + f'_turnAngle_v_orientation_middle_{distance_file_string}_asymm' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
-    midXind = int((X.shape[0] - 1)/2.0)
-    if np.abs(X[midXind, 0]) > 1e-6:
-        print('"X" array is not centered at zero. Will not symmetrize.')
-    else:
-        turn_2Dhist_mean_symm = 0.5*(turn_2Dhist_mean[midXind:,:] - 
-                                     np.flipud(turn_2Dhist_mean[:(midXind+1),:]))
-        turn_2Dhist_sem_symm = np.sqrt(turn_2Dhist_sem[midXind:,:]**2 +
-                                       np.flipud(turn_2Dhist_sem[:(midXind+1),:])**2)/np.sqrt(2)
-        X_symm = X[midXind:,:]
-        Y_symm = Y[midXind:,:]
-        slice_2D_histogram(turn_2Dhist_mean_symm, X_symm, Y_symm,
-                           turn_2Dhist_sem_symm, 
-                           slice_axis = 'x', other_range = d_range, 
-                           titleStr = titleStr, xlabelStr = f'|{xlabelStr}|', 
-                           zlabelStr = zlabelStr + ' toward Other',
-                           ylabelStr = distanceLabelStr, zlim = zlim, 
-                           xlim = (0.0, xlim[1]), 
-                           plot_z_zero_line = True,
-                           plot_vert_zero_line = False,
-                           unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
-                           color = color, outputFileName=outputFileName,
-                           closeFigure=closeFigures)
-    """
+        """
+        # Symmetrize the above turning angle / relative orientation graph,
+        # taking theta[theta > 0] - theta[theta < 0]
+        if outputFileNameBase is not None:
+            outputFileName = outputFileNameBase + f'_turnAngle_v_orientation_middle_{distance_file_string}_asymm' + '.' + outputFileNameExt
+        else:
+            outputFileName = None
+        midXind = int((X.shape[0] - 1)/2.0)
+        if np.abs(X[midXind, 0]) > 1e-6:
+            print('"X" array is not centered at zero. Will not symmetrize.')
+        else:
+            turn_2Dhist_mean_symm = 0.5*(turn_2Dhist_mean[midXind:,:] - 
+                                        np.flipud(turn_2Dhist_mean[:(midXind+1),:]))
+            turn_2Dhist_sem_symm = np.sqrt(turn_2Dhist_sem[midXind:,:]**2 +
+                                        np.flipud(turn_2Dhist_sem[:(midXind+1),:])**2)/np.sqrt(2)
+            X_symm = X[midXind:,:]
+            Y_symm = Y[midXind:,:]
+            slice_2D_histogram(turn_2Dhist_mean_symm, X_symm, Y_symm,
+                            turn_2Dhist_sem_symm, 
+                            slice_axis = 'x', other_range = d_range, 
+                            titleStr = titleStr, xlabelStr = f'|{xlabelStr}|', 
+                            zlabelStr = zlabelStr + ' toward Other',
+                            ylabelStr = distanceLabelStr, zlim = zlim, 
+                            xlim = (0.0, xlim[1]), 
+                            plot_z_zero_line = True,
+                            plot_vert_zero_line = False,
+                            unit_scaling_for_plot = [180.0/np.pi, 1.0, 180.0/np.pi],
+                            color = color, outputFileName=outputFileName,
+                            closeFigure=closeFigures)
+        """
     
     """
     # 2D plot of mean turning angle vs. relative orientation and distance,
@@ -3195,7 +3199,8 @@ def make_relative_orientation_plots(datasets, exptName = '',
                              outputFileNameBase = 'rel_orient', 
                              outputFileNameExt = 'png',
                              closeFigures = False,
-                             writeCSVs = False):
+                             outputCSVFileName = None,
+                             makeSlicePlots = False):
     
     """
     Makes useful plots of relative orientation properties for 
@@ -3217,6 +3222,9 @@ def make_relative_orientation_plots(datasets, exptName = '',
         closeFigures : (bool) if True, close a figure after creating it.
         writeCSVs : (bool) Used by various functions; if true, output plotted 
                             points to a CSV file. See code for filenames
+        outputCSVFileName : str or None ; send to make_2D_histogram(); if not None,
+                    output the 2D histogram values as a CSV file. 
+        makeSlicePlots : (bool) if true, make plots that are "slices" of the 2D histogram
 
     Outputs:
         saved_pair_outputs : list, containing
@@ -3299,6 +3307,7 @@ def make_relative_orientation_plots(datasets, exptName = '',
         titleStr = f'{exptName}: abs(Rel. orient.) and {shortDistanceStr}', 
         plot_type = plot_type_2D,
         outputFileName = outputFileName,
+        outputCSVFileName = outputCSVFileName,
         closeFigure = closeFigures)
 
     saved_pair_outputs.append(relOrient_2Dhist_mean)
@@ -3306,55 +3315,56 @@ def make_relative_orientation_plots(datasets, exptName = '',
     saved_pair_outputs.append(X)
     saved_pair_outputs.append(Y)
 
-    # Slice turning angle binned by distance and orientation, along the
-    # orientation axis, distance slice: distance < 5.0 mm
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + f'_P_rel_orientation_middle_{distance_file_string}' + '.' + outputFileNameExt
-        outputFileName = outputFileNameBase + f'_P_rel_orientation_small_{distance_file_string}' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
-    d_range = (0.0, 5.0)
-    xlabelStr = 'Relative Orientation (deg)'
-    titleStr = f'{exptName}: P(Rel. Orientation) for d < {d_range[1]:.2f} mm'
-    zlabelStr = 'Probability (not normalized)'
-    xlim = (-np.pi, np.pi)
-    zlim = (0.0, 0.02)
-    color = color
-    slice_2D_histogram(relOrient_2Dhist_mean, X, Y, relOrient_2Dhist_std, 
-                       slice_axis = 'x', other_range = d_range, 
-                       titleStr = titleStr, xlabelStr = xlabelStr, 
-                       zlabelStr = zlabelStr,
-                       ylabelStr = distanceLabelStr, zlim = zlim, xlim = xlim, 
-                       plot_z_zero_line = True,
-                       plot_vert_zero_line = True,
-                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 1.0],
-                       color = color, outputFileName=outputFileName,
-                       closeFigure=closeFigures)
+    if makeSlicePlots:
+        # Slice turning angle binned by distance and orientation, along the
+        # orientation axis, distance slice: distance < 5.0 mm
+        if outputFileNameBase is not None:
+            outputFileName = outputFileNameBase + f'_P_rel_orientation_middle_{distance_file_string}' + '.' + outputFileNameExt
+            outputFileName = outputFileNameBase + f'_P_rel_orientation_small_{distance_file_string}' + '.' + outputFileNameExt
+        else:
+            outputFileName = None
+        d_range = (0.0, 5.0)
+        xlabelStr = 'Relative Orientation (deg)'
+        titleStr = f'{exptName}: P(Rel. Orientation) for d < {d_range[1]:.2f} mm'
+        zlabelStr = 'Probability (not normalized)'
+        xlim = (-np.pi, np.pi)
+        zlim = (0.0, 0.02)
+        color = color
+        slice_2D_histogram(relOrient_2Dhist_mean, X, Y, relOrient_2Dhist_std, 
+                        slice_axis = 'x', other_range = d_range, 
+                        titleStr = titleStr, xlabelStr = xlabelStr, 
+                        zlabelStr = zlabelStr,
+                        ylabelStr = distanceLabelStr, zlim = zlim, xlim = xlim, 
+                        plot_z_zero_line = True,
+                        plot_vert_zero_line = True,
+                        unit_scaling_for_plot = [180.0/np.pi, 1.0, 1.0],
+                        color = color, outputFileName=outputFileName,
+                        closeFigure=closeFigures)
 
-    
-    # Slice along turn angle binned by distance and orientation, 
-    # orientation axis, constrain distance: 5 mm < distance < 15 mm
-    if outputFileNameBase is not None:
-        outputFileName = outputFileNameBase + f'_P_rel_orientation_middle_{distance_file_string}' + '.' + outputFileNameExt
-    else:
-        outputFileName = None
-    d_range = (5.0, 15.0)
-    xlabelStr = 'Relative Orientation (deg)'
-    titleStr = f'{exptName}: P(Rel. Orientation) for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
-    zlabelStr = 'Probability (not normalized)'
-    xlim = (-np.pi, np.pi)
-    zlim = (0.0, 0.02)
-    color = color
-    slice_2D_histogram(relOrient_2Dhist_mean, X, Y, relOrient_2Dhist_std, 
-                       slice_axis = 'x', other_range = d_range, 
-                       titleStr = titleStr, xlabelStr = xlabelStr, 
-                       zlabelStr = zlabelStr,
-                       ylabelStr = distanceLabelStr, zlim = zlim, xlim = xlim, 
-                       plot_z_zero_line = True,
-                       plot_vert_zero_line = True,
-                       unit_scaling_for_plot = [180.0/np.pi, 1.0, 1.0],
-                       color = color, outputFileName=outputFileName,
-                       closeFigure=closeFigures)
+        
+        # Slice along turn angle binned by distance and orientation, 
+        # orientation axis, constrain distance: 5 mm < distance < 15 mm
+        if outputFileNameBase is not None:
+            outputFileName = outputFileNameBase + f'_P_rel_orientation_middle_{distance_file_string}' + '.' + outputFileNameExt
+        else:
+            outputFileName = None
+        d_range = (5.0, 15.0)
+        xlabelStr = 'Relative Orientation (deg)'
+        titleStr = f'{exptName}: P(Rel. Orientation) for {d_range[0]:.1f} < d < {d_range[1]:.1f} mm'
+        zlabelStr = 'Probability (not normalized)'
+        xlim = (-np.pi, np.pi)
+        zlim = (0.0, 0.02)
+        color = color
+        slice_2D_histogram(relOrient_2Dhist_mean, X, Y, relOrient_2Dhist_std, 
+                        slice_axis = 'x', other_range = d_range, 
+                        titleStr = titleStr, xlabelStr = xlabelStr, 
+                        zlabelStr = zlabelStr,
+                        ylabelStr = distanceLabelStr, zlim = zlim, xlim = xlim, 
+                        plot_z_zero_line = True,
+                        plot_vert_zero_line = True,
+                        unit_scaling_for_plot = [180.0/np.pi, 1.0, 1.0],
+                        color = color, outputFileName=outputFileName,
+                        closeFigure=closeFigures)
 
     return saved_pair_outputs
 

@@ -3138,7 +3138,8 @@ def plot_2D_heatmap(Z, X, Y, Z_unc=None,
                    colorRange=None, cmap='RdYlBu',
                    unit_scaling_for_plot=[1.0, 1.0, 1.0],
                    mask_by_sem_limit=None,
-                   outputFileName=None, closeFigure=False):
+                   outputFileName=None, outputCSVFileName=None,
+                   closeFigure=False):
     """
     Create a 2D heatmap plot.
     Based on approach formerly in make_2D_histogram()
@@ -3163,14 +3164,19 @@ def plot_2D_heatmap(Z, X, Y, Z_unc=None,
         If not None, mask points where Z_unc > this value
     outputFileName : str or None
         If not None, save figure to this file
+    outputCSVFileName : str or None
+        If not None, write Z (raw, unscaled) as a wide-format CSV with X[:,0]
+        as the row index and Y[0,:] as column headers. If Z_unc is also
+        provided, write it to a parallel file with '_unc' inserted before
+        the extension.
     closeFigure : bool
         If True, close figure after creating
-    
+
     Returns
     -------
     fig, ax : matplotlib figure and axes objects
     """
-    
+
     # Apply masking if requested
     if (mask_by_sem_limit is not None) and (Z_unc is not None):
         mask = Z_unc > mask_by_sem_limit
@@ -3217,18 +3223,27 @@ def plot_2D_heatmap(Z, X, Y, Z_unc=None,
         plt.close(fig)
     else:
         plt.show()
-    
-    """ 
+
+    """
     Should the order be this?
     plt.show()
     if outputFileName != None:
         plt.savefig(outputFileName, bbox_inches='tight')
-        
+
     if closeFigure:
         print(f'Closing figure {titleStr}')
         plt.close(fig)
     """
-    
+
+    if outputCSVFileName is not None:
+        x_vals = X[:, 0]   # unique x centers (raw, unscaled)
+        y_vals = Y[0, :]   # unique y centers (raw, unscaled)
+        pd.DataFrame(Z, index=x_vals, columns=y_vals).to_csv(outputCSVFileName)
+        if Z_unc is not None:
+            base, ext = os.path.splitext(outputCSVFileName)
+            pd.DataFrame(Z_unc, index=x_vals, columns=y_vals).to_csv(
+                base + '_unc' + ext)
+
     return fig, ax
     
 
@@ -3378,8 +3393,9 @@ def make_2D_histogram(datasets,
                       unit_scaling_for_plot = [1.0, 1.0, 1.0],
                       mask_by_sem_limit = None,
                       cmap = 'RdYlBu', 
-                      plot_type = 'heatmap', 
+                      plot_type = 'heatmap',
                       outputFileName = None,
+                      outputCSVFileName = None,
                       closeFigure = False):
     """
     Create a 2D histogram plot of the values from two keys in the given 
@@ -3447,17 +3463,22 @@ def make_2D_histogram(datasets,
     cmap : string, colormap. Default 'RdYlBu' (rather than usual Python viridis)
     plot_type : str, 'heatmap' or 'line_plots'
                    Determines which plotting function to use.
-    outputFileName : if not None, save the figure with this filename 
-                     (include extension)    
+    outputFileName : if not None, save the figure with this filename
+                     (include extension)
+    outputCSVFileName : str or None
+        If not None, write hist as a wide-format CSV with X axis values as
+        the row index and Y axis values as column headers. If hist_sem is
+        also available (keyNameC is not None), write it to a parallel file
+        with '_unc' inserted before the extension. Written before the plot,
+        regardless of plot_type.
     closeFigure : (bool) if True, close figure after creating it.
 
     Returns:
         hist : 2D array, normalized histogram if keyNameC is None; mean values
                 in each bin if keyNameC is used
         X, Y : 2D array of X, Y values from meshgrid
-        hist_sem : 2D array, std error of the mean in each bin if keyNameC 
+        hist_sem : 2D array, std error of the mean in each bin if keyNameC
                    is used; else None
-    None
     """
     if len(keyNames) != 2:
         raise ValueError("There must be two keys for the 2D histogram!") 
@@ -3605,9 +3626,18 @@ def make_2D_histogram(datasets,
     
     # For the 2D histogram
     # X and Y values
-    X, Y = np.meshgrid(0.5*(xedges[1:] + xedges[:-1]), 
+    X, Y = np.meshgrid(0.5*(xedges[1:] + xedges[:-1]),
                        0.5*(yedges[1:] + yedges[:-1]), indexing='ij')
-    
+
+    if outputCSVFileName is not None:
+        x_vals = X[:, 0]
+        y_vals = Y[0, :]
+        pd.DataFrame(hist, index=x_vals, columns=y_vals).to_csv(outputCSVFileName)
+        if hist_sem is not None:
+            base, ext = os.path.splitext(outputCSVFileName)
+            pd.DataFrame(hist_sem, index=x_vals, columns=y_vals).to_csv(
+                base + '_unc' + ext)
+
     if xlabelStr is None:
         xlabelStr = keyNames[0]
     if ylabelStr is None:
