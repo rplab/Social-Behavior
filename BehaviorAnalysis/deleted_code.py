@@ -3,7 +3,7 @@
 """
 Author:   Raghuveer Parthasarathy
 Created on Wed Jul  5 17:54:16 2023
-Last modified on Nov. 24, 2024
+Last modified on June 5, 2026
 
 Description
 -----------
@@ -11,6 +11,182 @@ Description
 Misc. deleted code
 
 """
+
+
+def length_difference_correlation(CSVfilename = '', behavior_to_plot=''):
+    """
+    Calls get_duration_info to read the CSV output by 
+    calc_relative_durations_csv(), containing fish length differences, etc.
+    Plot / examine correlations between the fish length differences 
+    and the durations of each behavior.
+    
+    Consider the subset of datasets in Laura Desban's list of sets
+    for which the program-derived difference in fish lengths is similar
+    to the manually-derived list.
+    
+    Inputs:
+        CSVfilename : CSV file name containing dataset names (col 1) 
+            and relative durations. Reading stops at the first blank
+            row, and so will ignore the mean, etc.
+            Leave empty to list csv files in the current directory that 
+            have 'relDuration' in the file name. If there's only one,
+            use it as default.
+        behavior_to_plot : (string) name of the behavior to plot. Leave
+            blank for none. Must exactly match column headings in CSV file,
+            e.g. '90deg-One'
+        
+    Outputs:
+        
+    Raghuveer Parthasarathy
+    Sept. 17, 2023
+    """
+    
+    duration_data = get_duration_info(CSVfilename)  # Will ask for CSV file info
+    
+    # Datasets with manually verified lengths that agree with 
+    # the automated lengths
+    good_datasets = ['3b_k11', '3b_k3', '3b_k5', '3b_k9', '3b_nk1', 
+                     '3b_nk6','3c_k11', '3c_k1', '3c_k2', '3c_k3', 
+                     '3c_k4', '3c_k5','3c_k7', '3c_nk1', '3c_nk6', 
+                     '5b_k2', '3b_k10', '3b_k1','3b_k4', '3b_nk11', 
+                     '3b_nk2', '3b_nk3', '3c_k10','3c_k6', '3c_nk2', 
+                     '3c_nk4', '3c_nk7', '3c_nk8','3c_nk9', '5b_k10', 
+                     '5b_k4', '5b_k7', '5b_k9','5b_nk2', '5b_nk3', 
+                     '5b_nk5', '5b_nk6', '5b_nk8']
+    print(f'Number of possible datasets to consider: {len(good_datasets)}')
+    
+    # Let's make a filtered set of only the data in the "good_datasets" list
+    filtered_df = duration_data[duration_data.index.isin(good_datasets)]
+    
+    # Length differences
+    length_diff = filtered_df["Mean difference in fish lengths (px)"]
+    print(f'Number of filtered datasets: {len(length_diff)}')
+    
+    print('here')
+    print(filtered_df.columns)
+    print(behavior_to_plot)
+    # Check if "behavior_to_plot" column exists in the filtered DataFrame
+    if behavior_to_plot in filtered_df.columns:
+        # Extract the data from the specified columns
+        behavior_values = filtered_df[behavior_to_plot]
+        
+        # Perform linear regression
+        slope, intercept, r_value, p_value, std_err = linregress(length_diff, behavior_values)
+        # Print the regression results
+        print("Linear Regression Results:")
+        print(f"Slope: {slope:.5f}")
+        print(f"Intercept: {intercept:.4f}")
+        print(f"R-squared: {r_value**2:.4f}")
+        print(f"P-value: {p_value:.4f}")
+        print(f"Standard Error: {std_err:.5f}")
+    
+        # Create a scatter plot
+        plt.figure()
+        plt.scatter(length_diff, behavior_values, marker='o', 
+                    color='deepskyblue', label=behavior_to_plot)
+
+        # Add the linear regression line to the plot
+        plt.plot(np.array(length_diff), intercept + slope * np.array(length_diff), 
+                 color='steelblue', label='Linear Regression')
+        
+        # Add labels and a legend
+        plt.xlabel("Length Difference (px)")
+        plt.ylabel(behavior_to_plot + ' duration')
+        plt.title(f'{behavior_to_plot}. Slope: {slope:.2e} +/- {std_err:.2e} ({100*std_err/slope:.0f}%)')
+        plt.legend()
+    
+        # Show the plot
+        plt.show()
+        
+    else:
+        print("The specified behavior is not found in the filtered DataFrame.")
+
+    return duration_data
+
+
+def get_fish_lengths_mean_gmm(dataset, verbose = False):
+    """
+    Fit each fish's length data, for good tracking frames only, to 
+    a Gaussian mixture model and return the mean of the component near 
+    the median value.
+    
+    input:
+        dataset : single dataset (probably datasets[j]))
+        verbose : if True, print lengths
+    return:
+        numpy array of shape (Nfish, 1) containing the mean length, mm
+    """
+    goodIdx = np.where(np.in1d(dataset["frameArray"], 
+                               dataset["bad_bodyTrack_frames"]["raw_frames"], 
+                               invert=True))[0]
+    goodLengthArray = dataset["fish_length_array_mm"][goodIdx]
+    mean_length_mm_gmm = np.zeros((dataset["Nfish"],))
+    for k in range(dataset["Nfish"]):
+        length_med = np.median(goodLengthArray[:,k])
+        init_means = [length_med, 0.75*length_med, 3.0*length_med]
+        mean_length_mm_gmm[k] = \
+            fit_gaussian_mixture(goodLengthArray[:,k], n_gaussian=3, 
+                                 init_means=init_means)[0]
+        if verbose:
+            # Note [k,0] needed for formatting to work
+            print(f'   Mean fish length from gmm for fish {k}: ' + 
+                  f'{mean_length_mm_gmm[k,0]:.3f} mm')
+        
+    return mean_length_mm_gmm
+
+def getTailCurvature(position_data, CSVcolumns, image_scale):
+    """
+    Calculate the curvature of the fish posterior (last 5 body
+        datapoints) at each frame, for each fish.
+    
+    NOTE: Not used; not robust!
+    
+    Input:
+        position_data : basic position information for this dataset, numpy array
+        CSVcolumns : CSV column information (dictionary)
+        image_scale : scale, um/px; from dataset["image_scale"]
+    Output
+        curvature_invmm  : (1/mm) Nframes x Nfish array
+    """
+    
+    # All tail positions, for each frame, for each fish
+    # Each array is Nframes x (Nbodypts/2==5) x (Nfish==2)
+    tailpos_x = position_data[:,CSVcolumns["body_column_x_start"] : \
+                           CSVcolumns["body_column_x_start"] + int(CSVcolumns["body_Ncolumns"]/2),:]
+    tailpos_y = position_data[:,CSVcolumns["body_column_y_start"] : \
+                           CSVcolumns["body_column_y_start"] + int(CSVcolumns["body_Ncolumns"]/2),:]
+    
+    # Calculate mean curvature. I'm sure there's a way to vectorize
+    # this, but I won't bother. (Claude fails at this...)
+    curvatures = np.zeros((tailpos_x.shape[0], tailpos_x.shape[2]))
+    
+    for frame in range(tailpos_x.shape[0]):
+        for fish in range(tailpos_x.shape[2]):
+            x = tailpos_x[frame, :, fish]
+            y = tailpos_y[frame, :, fish]
+            
+            # bypass if all zeros (bad tracking)
+            if np.min(x) > 0.0:
+                # Flip if needed to avoid Rank warning for polyfit
+                if np.var(x) > np.var(y):
+                    # Fit a quadratic function (y = ax^2 + bx + c)
+                    coeffs = np.polyfit(x, y, 2)
+                    a, b, _ = coeffs
+                    # curvature at each point
+                    curvature = np.abs(2 * a) / (1 + (2 * a * x + b)**2)**(3/2)
+                else:
+                    # Fit a quadratic function (y = ax^2 + bx + c)
+                    coeffs = np.polyfit(y, x, 2)
+                    a, b, _ = coeffs
+                    # curvature at each point
+                    curvature = np.abs(2 * a) / (1 + (2 * a * y + b)**2)**(3/2)
+                    
+                # mean curvature 
+                curvatures[frame, fish] = np.mean(curvature)
+                
+    curvature_invmm = curvatures / image_scale
+    
+    return curvature_invmm
 
 
 redundant -- was in toolkit.py

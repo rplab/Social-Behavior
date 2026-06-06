@@ -30,11 +30,11 @@ Modify the expBaseStrm et., for each dataset of interest.
 import os
 import numpy as np
 from IO_toolkit import load_and_assign_from_pickle, \
-    combine_images_to_tiff, plot_2D_heatmap, slice_2D_histogram
-from behavior_identification import make_pair_fish_plots,  \
-    make_bending_angle_plots, make_pair_1D_v_distance_plots, \
-    make_turning_angle_plots, make_relative_orientation_plots
-from behavior_identification_single import make_single_fish_plots
+    combine_images_to_tiff, plot_2D_heatmap
+from behavior_plots import (make_pair_fish_plots, make_bending_angle_plots,
+    make_pair_1D_v_distance_plots, make_turning_angle_plots,
+    make_relative_orientation_plots, make_single_fish_plots,
+    slice_2D_histogram, make_2D_histogram)
 from toolkit import get_fps 
 from behavior_correlations import plot_behaviorCorrelation,  \
     calc_corr_asymm, plot_corr_asymm, calcDeltaFramesEvents, bin_deltaFrames, calc_pAB, calcBehavCorrAllSets

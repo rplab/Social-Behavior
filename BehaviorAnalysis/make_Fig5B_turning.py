@@ -34,8 +34,8 @@ Modify the expBaseStrm et., for each dataset of interest.
 
 import os
 import numpy as np
-from behavior_identification import make_turning_angle_plots
-from IO_toolkit import plot_2D_heatmap, slice_2D_histogram
+from behavior_plots import make_turning_angle_plots, slice_2D_histogram
+from IO_toolkit import plot_2D_heatmap
 
 from compare_all_2wkData import load_all_expt_data
 

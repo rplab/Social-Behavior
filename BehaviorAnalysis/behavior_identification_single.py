@@ -33,8 +33,6 @@ import matplotlib.pyplot as plt
 from toolkit import make_frames_dictionary, dilate_frames, wrap_to_pi,\
     combine_all_values_constrained, get_values_subset, \
     calculate_value_corr_all, fit_gaussian_mixture
-from IO_toolkit import plot_probability_distr, plot_function_allSets, \
-    get_plot_and_CSV_filenames
 
 def get_coord_characterizations(all_position_data, datasets, 
                                 CSVcolumns, expt_config, params):
@@ -291,41 +289,8 @@ def get_single_fish_characterizations(all_position_data, datasets, CSVcolumns,
         datasets[j]["fish_length_mm_mean"] = np.mean(goodLengthArray)
         print(f'   Mean fish length: {datasets[j]["fish_length_mm_mean"]:.3f} mm')
         
-        # Use Gaussian mixture model to get mean fish length (in good frames)
-        # Fit gmm
-        # datasets[j]["fish_length_mm_gmm_mean"] = get_fish_lengths_mean_gmm(datasets[j]) 
-
     return datasets
 
-def get_fish_lengths_mean_gmm(dataset, verbose = False):
-    """
-    Fit each fish's length data, for good tracking frames only, to 
-    a Gaussian mixture model and return the mean of the component near 
-    the median value.
-    
-    input:
-        dataset : single dataset (probably datasets[j]))
-        verbose : if True, print lengths
-    return:
-        numpy array of shape (Nfish, 1) containing the mean length, mm
-    """
-    goodIdx = np.where(np.in1d(dataset["frameArray"], 
-                               dataset["bad_bodyTrack_frames"]["raw_frames"], 
-                               invert=True))[0]
-    goodLengthArray = dataset["fish_length_array_mm"][goodIdx]
-    mean_length_mm_gmm = np.zeros((dataset["Nfish"],))
-    for k in range(dataset["Nfish"]):
-        length_med = np.median(goodLengthArray[:,k])
-        init_means = [length_med, 0.75*length_med, 3.0*length_med]
-        mean_length_mm_gmm[k] = \
-            fit_gaussian_mixture(goodLengthArray[:,k], n_gaussian=3, 
-                                 init_means=init_means)[0]
-        if verbose:
-            # Note [k,0] needed for formatting to work
-            print(f'   Mean fish length from gmm for fish {k}: ' + 
-                  f'{mean_length_mm_gmm[k,0]:.3f} mm')
-        
-    return mean_length_mm_gmm
     
 def get_fish_lengths(position_data, image_scale, CSVcolumns):
     """
@@ -549,7 +514,6 @@ def get_isCloseToEdge_frames(dataset, edge_proximity_threshold_mm, arena_radius_
     return close_to_edge_frames_each, close_to_edge_frames_any, close_to_edge_frames_all
 
 
-
 def getTailAngle(position_data, CSVcolumns, heading_angles):
     """
     Calculate the tail angle:  angle of last two body points 
@@ -584,59 +548,6 @@ def getTailAngle(position_data, CSVcolumns, heading_angles):
 
     return tail_angle
 
-def getTailCurvature(position_data, CSVcolumns, image_scale):
-    """
-    Calculate the curvature of the fish posterior (last 5 body
-        datapoints) at each frame, for each fish.
-    
-    NOTE: Not used; not robust!
-    
-    Input:
-        position_data : basic position information for this dataset, numpy array
-        CSVcolumns : CSV column information (dictionary)
-        image_scale : scale, um/px; from dataset["image_scale"]
-    Output
-        curvature_invmm  : (1/mm) Nframes x Nfish array
-    """
-    
-    # All tail positions, for each frame, for each fish
-    # Each array is Nframes x (Nbodypts/2==5) x (Nfish==2)
-    tailpos_x = position_data[:,CSVcolumns["body_column_x_start"] : \
-                           CSVcolumns["body_column_x_start"] + int(CSVcolumns["body_Ncolumns"]/2),:]
-    tailpos_y = position_data[:,CSVcolumns["body_column_y_start"] : \
-                           CSVcolumns["body_column_y_start"] + int(CSVcolumns["body_Ncolumns"]/2),:]
-    
-    # Calculate mean curvature. I'm sure there's a way to vectorize
-    # this, but I won't bother. (Claude fails at this...)
-    curvatures = np.zeros((tailpos_x.shape[0], tailpos_x.shape[2]))
-    
-    for frame in range(tailpos_x.shape[0]):
-        for fish in range(tailpos_x.shape[2]):
-            x = tailpos_x[frame, :, fish]
-            y = tailpos_y[frame, :, fish]
-            
-            # bypass if all zeros (bad tracking)
-            if np.min(x) > 0.0:
-                # Flip if needed to avoid Rank warning for polyfit
-                if np.var(x) > np.var(y):
-                    # Fit a quadratic function (y = ax^2 + bx + c)
-                    coeffs = np.polyfit(x, y, 2)
-                    a, b, _ = coeffs
-                    # curvature at each point
-                    curvature = np.abs(2 * a) / (1 + (2 * a * x + b)**2)**(3/2)
-                else:
-                    # Fit a quadratic function (y = ax^2 + bx + c)
-                    coeffs = np.polyfit(y, x, 2)
-                    a, b, _ = coeffs
-                    # curvature at each point
-                    curvature = np.abs(2 * a) / (1 + (2 * a * y + b)**2)**(3/2)
-                    
-                # mean curvature 
-                curvatures[frame, fish] = np.mean(curvature)
-                
-    curvature_invmm = curvatures / image_scale
-    
-    return curvature_invmm
 
 def get_bout_statistics(dataset):
     """
@@ -960,7 +871,6 @@ def get_bend_behavior_frames(dataset, params):
     return Jbend_frames, Rbend_frames, Cbend_frames
 
 
-                      
 def average_bout_trajectory_oneSet(dataset, keyName = "speed_array_mm_s", 
                                    keyIdx = None, t_range_s=(-0.5, 2.0), 
                                    use_abs_value = False,
@@ -1140,7 +1050,6 @@ def average_bout_trajectory_oneSet(dataset, keyName = "speed_array_mm_s",
     return avg_values
 
 
-
 def average_bout_trajectory_allSets(datasets, t_range_s=(-0.5, 2.0), 
                                     keyName = "speed_array_mm_s", 
                                     keyIdx = None, 
@@ -1286,167 +1195,3 @@ def average_bout_trajectory_allSets(datasets, t_range_s=(-0.5, 2.0),
     return avg_values
 
 
-
-def make_single_fish_plots(datasets, exptName = '', color = 'black',
-                           outputFileNameBase = 'single_fish',
-                           outputFileNameExt = 'png',
-                           closeFigures = False,
-                           writeCSVs = False):
-    """
-    makes several useful "single fish" plots -- i.e. 
-    plots of characteristics of individual fish, which may be in multi-fish 
-    experiments
-    Note that there are lots of parameter values that are hard-coded; this
-    function is probably more useful to read than to run, pasting and 
-    modifying its code.
-    
-    Inputs:
-        datasets : dictionaries for each dataset
-        exptName : (string) Experiment name, to append to titles.
-        color: plot color (uses alpha for indiv. dataset colors)
-        outputFileNameBase : base file name for figure output; if None,
-                             won't save a figure file
-        outputFileNameExt : extension for figure output (e.g. 'eps' or 'png')
-        closeFigures : (bool) if True, close a figure after creating it.
-        writeCSVs : (bool) Used by various functions; if true, output plotted 
-                            points to a CSV file. See code for filenames
-
-    Outputs:
-
-    """
-    
-    # Speed histogram
-    speeds_mm_s_all = combine_all_values_constrained(datasets, 
-                                                     keyName='speed_array_mm_s', 
-                                                     dilate_minus1 = True)
-    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_speed', 
-                                            outputFileNameBase, 
-                                            outputFileNameExt, writeCSVs)
-    plot_probability_distr(speeds_mm_s_all, bin_width = 1.0, 
-                           bin_range = [0, None], 
-                           ylim = (0.001, 0.5), xlim = (0.0, 60.0),
-                           color = color,
-                           yScaleType = 'log',
-                           plot_each_dataset = False,
-                           plot_sem_band = True,
-                           xlabelStr = 'Speed (mm/s)', 
-                           titleStr = f'{exptName}: Probability Distr.: Speed',
-                           outputFileName = outputFileName,
-                           closeFigure=closeFigures,
-                           outputCSVFileName=outputCSVFileName)
-
-    # Angular_speed histogram
-    angular_speeds_rad_s_all = combine_all_values_constrained(datasets, 
-                                                     keyName='angular_speed_array_rad_s', 
-                                                     dilate_minus1 = True)
-    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_angularSpeed', 
-                                            outputFileNameBase, 
-                                            outputFileNameExt, writeCSVs)
-    plot_probability_distr(angular_speeds_rad_s_all, bin_width = 1.0, 
-                           bin_range = [0, None], 
-                           color = color, 
-                           yScaleType = 'log',
-                           plot_each_dataset = False,
-                           plot_sem_band = True,
-                           ylim = (0.001, 0.5), xlim = (0.0, 40.0),
-                           xlabelStr = 'Angular Speed (rad/s)', 
-                           titleStr = f'{exptName}: Probability Distr.: Angular Speed',
-                           outputFileName = outputFileName,
-                           closeFigure=closeFigures,
-                           outputCSVFileName=outputCSVFileName)
-
-
-    # Radial position histogram
-    radial_position_mm_all = combine_all_values_constrained(datasets, 
-                                                     keyName='radial_position_mm', 
-                                                     dilate_minus1 = False)
-    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_radialpos', 
-                                            outputFileNameBase, 
-                                            outputFileNameExt, writeCSVs)
-    plot_probability_distr(radial_position_mm_all, bin_width = 0.5, 
-                           bin_range = [0, None],
-                           color = color,
-                           yScaleType = 'linear',
-                           plot_each_dataset = False,
-                           plot_sem_band = True,
-                           normalize_by_inv_bincenter = True,
-                           ylim = (-0.025, 0.5),
-                           xlabelStr = 'Radial position (mm)', 
-                           titleStr = f'{exptName}: Probability Distr.: r',
-                           outputFileName = outputFileName,
-                           closeFigure=closeFigures,
-                           outputCSVFileName=outputCSVFileName)
-    
-    # Heading angle histogram
-    heading_angle_all = combine_all_values_constrained(datasets, 
-                                                 keyName='heading_angle', 
-                                                 dilate_minus1 = False)
-    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_heading_angle', 
-                                            outputFileNameBase, 
-                                            outputFileNameExt, writeCSVs)
-    bin_width = np.pi/30
-    plot_probability_distr(heading_angle_all, bin_width = bin_width,
-                           bin_range=[None, None], yScaleType = 'linear',
-                           polarPlot = True,
-                           color = color,
-                           plot_each_dataset = False,
-                           plot_sem_band = True,
-                           titleStr = f'{exptName}: Heading Angle',
-                           ylim = (0, 0.3),
-                           unit_scaling_for_plot = 1.0,
-                           outputFileName = outputFileName,
-                           closeFigure=closeFigures,
-                           outputCSVFileName=outputCSVFileName)
-    
-    # Radial alignment angle
-    radial_alignment_all = combine_all_values_constrained(datasets, 
-                                                     keyName='radial_alignment_rad', 
-                                                     dilate_minus1 = False)
-    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_radialAlignment_angle', 
-                                            outputFileNameBase, 
-                                            outputFileNameExt, writeCSVs)
-    bin_width = np.pi/30
-    plot_probability_distr(radial_alignment_all, bin_width = bin_width,
-                           bin_range=[None, None], yScaleType = 'linear',
-                           plot_each_dataset = False,
-                           plot_sem_band = True,
-                           polarPlot = True,
-                           color = color,
-                           titleStr = f'{exptName}: Radial alignment angle (rad)',
-                           ylim = (0, 0.6),
-                           outputFileName = outputFileName,
-                           closeFigure=closeFigures,
-                           outputCSVFileName=outputCSVFileName)
-
-    # Speed vs. time for bouts
-    # Note that this doesn't support CSV output
-    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_boutSpeed', 
-                                            outputFileNameBase, 
-                                            outputFileNameExt, writeCSVs=False)
-    average_bout_trajectory_allSets(datasets, keyName = "speed_array_mm_s", 
-                                    keyIdx = None, t_range_s=(-1.0, 2.0), 
-                                    titleStr = f'{exptName}: Bout Speed', 
-                                    makePlot=True,
-                                    color = color,
-                                    outputFileName = outputFileName,
-                                    closeFigure=closeFigures)
-
-    # speed autocorrelation function
-    outputFileName, outputCSVFileName = get_plot_and_CSV_filenames('_speedAutocorr', 
-                                            outputFileNameBase, 
-                                            outputFileNameExt, writeCSVs=False)
-    speed_ac_all, t_lag = \
-        calculate_value_corr_all(datasets, keyName = 'speed_array_mm_s',
-                                 corr_type='auto', dilate_minus1 = True, 
-                                 t_max = 3.0, t_window = 10.0, fpstol = 1e-6)
-    plot_function_allSets(speed_ac_all, t_lag, xlabelStr='time (s)', 
-                          ylabelStr='Speed autocorrelation', 
-                          titleStr = f'{exptName}: Speed autocorrelation', 
-                          color = color,
-                          xlim = (-0.1, 2.0),
-                          average_in_dataset = True,
-                          outputFileName = outputFileName,
-                          closeFigure=closeFigures,
-                          outputCSVFileName=outputCSVFileName)
-
-    

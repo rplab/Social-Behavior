@@ -1032,98 +1032,6 @@ def get_duration_info(CSVfilename = ''):
 
 
 
-def length_difference_correlation(CSVfilename = '', behavior_to_plot=''):
-    """
-    Calls get_duration_info to read the CSV output by 
-    calc_relative_durations_csv(), containing fish length differences, etc.
-    Plot / examine correlations between the fish length differences 
-    and the durations of each behavior.
-    
-    Consider the subset of datasets in Laura Desban's list of sets
-    for which the program-derived difference in fish lengths is similar
-    to the manually-derived list.
-    
-    Inputs:
-        CSVfilename : CSV file name containing dataset names (col 1) 
-            and relative durations. Reading stops at the first blank
-            row, and so will ignore the mean, etc.
-            Leave empty to list csv files in the current directory that 
-            have 'relDuration' in the file name. If there's only one,
-            use it as default.
-        behavior_to_plot : (string) name of the behavior to plot. Leave
-            blank for none. Must exactly match column headings in CSV file,
-            e.g. '90deg-One'
-        
-    Outputs:
-        
-    Raghuveer Parthasarathy
-    Sept. 17, 2023
-    """
-    
-    duration_data = get_duration_info(CSVfilename)  # Will ask for CSV file info
-    
-    # Datasets with manually verified lengths that agree with 
-    # the automated lengths
-    good_datasets = ['3b_k11', '3b_k3', '3b_k5', '3b_k9', '3b_nk1', 
-                     '3b_nk6','3c_k11', '3c_k1', '3c_k2', '3c_k3', 
-                     '3c_k4', '3c_k5','3c_k7', '3c_nk1', '3c_nk6', 
-                     '5b_k2', '3b_k10', '3b_k1','3b_k4', '3b_nk11', 
-                     '3b_nk2', '3b_nk3', '3c_k10','3c_k6', '3c_nk2', 
-                     '3c_nk4', '3c_nk7', '3c_nk8','3c_nk9', '5b_k10', 
-                     '5b_k4', '5b_k7', '5b_k9','5b_nk2', '5b_nk3', 
-                     '5b_nk5', '5b_nk6', '5b_nk8']
-    print(f'Number of possible datasets to consider: {len(good_datasets)}')
-    
-    # Let's make a filtered set of only the data in the "good_datasets" list
-    filtered_df = duration_data[duration_data.index.isin(good_datasets)]
-    
-    # Length differences
-    length_diff = filtered_df["Mean difference in fish lengths (px)"]
-    print(f'Number of filtered datasets: {len(length_diff)}')
-    
-    print('here')
-    print(filtered_df.columns)
-    print(behavior_to_plot)
-    # Check if "behavior_to_plot" column exists in the filtered DataFrame
-    if behavior_to_plot in filtered_df.columns:
-        # Extract the data from the specified columns
-        behavior_values = filtered_df[behavior_to_plot]
-        
-        # Perform linear regression
-        slope, intercept, r_value, p_value, std_err = linregress(length_diff, behavior_values)
-        # Print the regression results
-        print("Linear Regression Results:")
-        print(f"Slope: {slope:.5f}")
-        print(f"Intercept: {intercept:.4f}")
-        print(f"R-squared: {r_value**2:.4f}")
-        print(f"P-value: {p_value:.4f}")
-        print(f"Standard Error: {std_err:.5f}")
-    
-        # Create a scatter plot
-        plt.figure()
-        plt.scatter(length_diff, behavior_values, marker='o', 
-                    color='deepskyblue', label=behavior_to_plot)
-
-        # Add the linear regression line to the plot
-        plt.plot(np.array(length_diff), intercept + slope * np.array(length_diff), 
-                 color='steelblue', label='Linear Regression')
-        
-        # Add labels and a legend
-        plt.xlabel("Length Difference (px)")
-        plt.ylabel(behavior_to_plot + ' duration')
-        plt.title(f'{behavior_to_plot}. Slope: {slope:.2e} +/- {std_err:.2e} ({100*std_err/slope:.0f}%)')
-        plt.legend()
-    
-        # Show the plot
-        plt.show()
-        
-    else:
-        print("The specified behavior is not found in the filtered DataFrame.")
-
-    return duration_data
-
-
-
 def array_stats(x, stats_axis = 0):
     """
     Array stats, ignore NaN (note that this isn't accounted for in the "N" for
@@ -1253,94 +1161,19 @@ def pool_quant_property_from_behavior_1dataset(dataset,
     # Total duration in frames
     duration_frames = end_offset_frames - start_offset_frames
 
-    # All initial frames and durations of the behavior
-    b_start_frames = dataset[behavior]["combine_frames"][0].copy()
-    b_durations = dataset[behavior]["combine_frames"][1].copy()
+    # Apply all constraints (min duration, co-occurrence, quantitative) via the
+    # shared utility, which returns filtered start frames.
+    b_start_frames = apply_behavior_constraints(
+        dataset, behavior,
+        min_duration_behavior=behavior,
+        min_duration_fr=min_duration_fr,
+        behavior_C=behavior_C,
+        C_delta_f=C_delta_f,
+        constraintKey=constraintKey,
+        constraintRange=constraintRange,
+        constraintIdx=constraintIdx,
+        use_abs_value_constraint=use_abs_value_constraint)
 
-    # Apply minimum duration constraint
-    if min_duration_fr > 0:
-        print(f'     {behavior}, initially {len(b_start_frames)} events. ', end='')
-        duration_mask = b_durations >= min_duration_fr
-        b_start_frames = b_start_frames[duration_mask]
-        b_durations = b_durations[duration_mask]
-        print(f'After min duration constraint: {len(b_start_frames)} events')
-    
-    # Apply behavior C co-occurrence constraint
-    if behavior_C is not None and behavior_C in dataset:
-        bC_start_frames = dataset[behavior_C]["combine_frames"][0]
-        
-        # For each behavior event, check if any behavior C event occurs within range
-        valid_mask = np.zeros(len(b_start_frames), dtype=bool)
-        for i, frameA in enumerate(b_start_frames):
-            # Calculate frame differences (C - A)
-            frame_diffs = bC_start_frames - frameA
-            # Check if any C event is within the specified range
-            in_range = (frame_diffs >= C_delta_f[0]) & (frame_diffs <= C_delta_f[1])
-            valid_mask[i] = np.any(in_range)
-        
-        b_start_frames = b_start_frames[valid_mask]
-        print(f'     {behavior}, After behavior C constraint: {len(b_start_frames)} events remain')
-        
-    # Apply quantitative constraint
-    if constraintKey is not None and constraintRange is not None and constraintKey in dataset:
-        if len(b_start_frames) == 0:
-            print(f'     {behavior} 0 events remain (no events to constrain)')
-        else:
-            try:
-                # Get constraint values at behavior start frames
-                constraint_data = dataset[constraintKey]
-                
-                # Apply keyIdx operation to get the relevant constraint values
-                constraint_values = get_values_subset(constraint_data, 
-                                                      constraintIdx,
-                                                      use_abs_value = use_abs_value_constraint)
-                    
-                if len(constraint_values) == 0:
-                    print(f'   Warning: Constraint data {constraintKey} is empty')
-                    b_start_frames = np.array([])
-                else:
-                    print(f'     {behavior}, initially {len(b_start_frames)} events. ', end='')
-                    # For each behavior event, check constraint at start frame
-                    valid_constraint_mask = np.zeros(len(b_start_frames), dtype=bool)
-                    for i, frameA in enumerate(b_start_frames):
-                        frame_idx = int(frameA) - 1  # Convert to 0-based indexing
-                        if 0 <= frame_idx < len(constraint_values):
-                            try:
-                                # Handle different array shapes and types
-                                if constraint_values.ndim > 1 and constraint_values.shape[1] > 0:
-                                    val_array = constraint_values[frame_idx]
-                                    if hasattr(val_array, 'size') and val_array.size > 0:
-                                        val = val_array.flatten()[0]
-                                    else:
-                                        val = np.nan
-                                else:
-                                    val = constraint_values[frame_idx]
-                                    if hasattr(val, '__len__') and len(val) > 0:
-                                        val = val[0]
-                                
-                                # Check if value is valid (not NaN) and within range
-                                if not np.isnan(val):
-                                    if use_abs_value_constraint:
-                                        valid_constraint_mask[i] = (constraintRange[0] <= np.abs(val) <= constraintRange[1])
-                                    else:
-                                        valid_constraint_mask[i] = (constraintRange[0] <= val <= constraintRange[1])
-
-                                
-                            except (IndexError, TypeError, AttributeError) as e:
-                                print(f'   Warning: Could not access constraint value at frame {frameA}: {e}')
-                                valid_constraint_mask[i] = False
-                        else:
-                            # Frame index out of bounds
-                            valid_constraint_mask[i] = False
-                    
-                    b_start_frames = b_start_frames[valid_constraint_mask]
-                
-                print(f'After quantitative constraint: {len(b_start_frames)} events')
-            except Exception as e:
-                print(f'   Warning: Error applying quantitative constraint: {e}')
-                print('   Continuing without quantitative constraint for this dataset')
-
-    
     # Keep only frames that are within valid bounds considering both start and end offsets
     # Start frame + start_offset must be >= 0 (since frameArray starts at frame 1, index 0)
     # Start frame + end_offset must be <= Nframes

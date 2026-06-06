@@ -139,7 +139,6 @@ def get_valid_file(fileTypeString = 'Config File'):
             print(f"Invalid file. Please select a valid {fileTypeString}.")
              
 
-
 def load_expt_config(config_path, config_file):
     """ 
     Loads the experimental configuration file
@@ -220,8 +219,6 @@ def load_expt_config(config_path, config_file):
     return expt_config
 
 
-
-    
 def load_analysis_parameters(basePath, params_file):
     """ 
     Loads the analysis parameters file
@@ -327,7 +324,6 @@ def check_analysis_parameters(params):
     return params
 
 
-
 def load_global_expt_config(config_path, config_file):
     """ 
     Loads the global experimental configuration file, which points to the
@@ -426,7 +422,6 @@ def get_CSV_filenames(basePath, expt_config, startString="results"):
     return dataPath, allCSVfileNames, subGroupName
 
 
-
 def get_dataset_name(CSVfileName):
     """ 
     Extract the "dataset name" from the CSV filename. Delete
@@ -441,7 +436,6 @@ def get_dataset_name(CSVfileName):
     dataset_name = dataset_name.replace("_ALL", '')
     dataset_name = dataset_name.replace(".csv", '')
     return dataset_name
-
 
 
 def set_outputFile_params(params, expt_config, subGroupName):
@@ -615,7 +609,6 @@ def load_data(CSVfileName, N_columns):
     return all_data, frameArray
 
 
-
 def get_ArenaCenter(dataset_name, expt_config):
     """ 
     Extract the x,y positions of the Arena centers from the 
@@ -696,7 +689,6 @@ def get_ArenaCenter(dataset_name, expt_config):
         return None
         
 
-
 def get_imageScale(dataset_name, expt_config):
     """ 
     Extract the image scale (um/px) from the config file (same for all datasets
@@ -747,8 +739,6 @@ def get_imageScale(dataset_name, expt_config):
         else:
             return matching_rows[0][expt_config['imageScaleColumn']]
         
-
-
 
 def match_dataset_name(dataset_name, row_array, 
                        removeStrings = [], datasetColumns = [0]):
@@ -1639,7 +1629,6 @@ def write_CSV_Excel_YAML(expt_config, params, dataPath, datasets):
         yaml.dump(all_outputs, file)
         
 
-
 def mark_behavior_frames_Excel(writer, dataset, key_list, sheet_name,
                                mark = 1):
     """
@@ -2228,7 +2217,6 @@ def modify_params(pickleFilePath, pickleFileName, dict_to_modify = 'params',
             pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-
 def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None], 
                            xlabelStr='x', titleStr='Probability density',
                            yScaleType = 'log', 
@@ -2429,7 +2417,6 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
            prob_dist_each_sem, Nsets_total
 
 
-    
 def plot_behavior_probability_bin_by_property(bin_centers, counts, 
                                     behavior_key_for_title, property_key_for_label,
                                     xlabelStr=None, ylabelStr='Number of events',
@@ -2508,7 +2495,6 @@ def plot_behavior_probability_bin_by_property(bin_centers, counts,
     plt.show()
     
     
-
 def plot_function_allSets(y_list, x_array = None, 
                            xlabelStr='x', ylabelStr='y', titleStr='Value',
                            average_in_dataset = False,
@@ -2837,46 +2823,26 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
                                 constraintIdx=None,
                                 use_abs_value=False,
                                 use_abs_value_constraint=False,
-                                dilate_minus1=True,
-                                makePlot=True, plot_each_dataset=True,
-                                plot_sem_band=False,
-                                titleStr=None,
-                                xlabelStr=None, ylabelStr=None,
-                                color='black', xlim=None, ylim=None,
-                                unit_scaling_for_plot = [1.0, 1.0],
-                                outputFileName=None, closeFigure=False,
-                                outputCSVFileName=None):
+                                dilate_minus1=True):
     """
     Calculate mean of a quantitative property binned by another property.
-    Creates a 1D line plot with error bars.
-    
-    This is analogous to what calculate_bout_property_binned_by_distance() does for IBI,
-    but works for any quantitative property.
-    
-    This function can also be used to calculate the probability of a 
-    *behavior* binned by some quantitative property, such as distance. 
-    If so, set key_is_a_behavior = True, and have keyName be the behavior name
-    (e.g. "Jbend_any")
-    Note that the behavior probability is conditional
-    on the quantitative property bin, regardless of the probability of 
-    that property bin. In other words, for example, we want the probability
-    of a turn at d = 5 mm and the probability of a turn at d = 10 mm not
-    to depend on how many times d = 5 mm and d = 10 mm occur. The former 
-    is (# turning frames when d = 5mm) / (# frames when d = 5 mm)
-    
-    The "behavior frames" are given by the "raw frames" key in the
-    behavior dictionary
-    
-    
+
+    Analogous to calculate_bout_property_binned_by_distance() for IBI, but
+    works for any quantitative property or behavior probability.
+
+    If key_is_a_behavior=True, keyName should be a behavior key (e.g. "Jbend_any")
+    and the function computes the conditional probability of that behavior in
+    each bin of binKeyName.
+
     Parameters
     ----------
     datasets : list of dataset dictionaries
     keyName : str
-        Property to calculate mean of (e.g., 'speed_array_mm_s')
+        Property to average, or behavior key if key_is_a_behavior=True
     keyIdx : int, str, or None
         Which fish/operation to use for keyName
     key_is_a_behavior : bool
-        If True, 
+        If True, treat keyName as a behavior and compute its probability
     binKeyName : str
         Property to bin by (e.g., 'closest_distance_mm')
     bin_range : tuple
@@ -2890,42 +2856,13 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
         Use absolute value of constraint
     dilate_minus1 : bool
         Dilate bad frames by -1
-    makePlot : bool
-        If True, create plot
-    plot_each_dataset : bool
-        If True, plot one semi-transparent line per dataset
-    plot_sem_band : bool
-        If True, plot a shaded band at +/- 1 s.e.m.
-    titleStr, xlabelStr, ylabelStr : str
-        Plot labels
-    color : str
-        Plot color
-    xlim, ylim : tuple or None
-        Axis limits
-    outputFileName : str or None
-        Save figure to this file
-    closeFigure : bool
-        Close figure after creating
-    unit_scaling_for_plot : list of 2 floats (for x, y); 
-                for plots only, multiply values by unit_scaling_for_plot,  
-                for example to convert radians to degrees.
-                Note that xlim, ylim should *not* incorporate this; the code takes
-                care of changing the limits
-    outputCSVFileName : if not None, save to a CSV file the following (columns):
-                - plotted "X" positions (bin_centers)
-                - plotted mean "Y" positions (binned_mean[:,0])
-                - Standard deviation (binned_mean[:,2])
-                - Standard error of the mean (binned_mean[:,2])
+
     Returns
     -------
-    binned_mean : numpy array (Nbins, 3)
-        [mean, std, sem] for each bin
-    bin_centers : numpy array
-        Center values of bins
+    binned_mean : numpy array (Nbins, 3) — [mean, std, sem] per bin
+    bin_centers : numpy array — bin center values
     binned_mean_each_dataset : numpy array (Ndatasets, Nbins)
-        Mean for each dataset in each bin
     binned_mean_each_fish : numpy array (nfish_total, Nbins)
-        Mean for each fish in each bin
     """
     
     # Set up bins 
@@ -3055,84 +2992,10 @@ def calculate_property_1Dbinned(datasets, keyName, keyIdx=None,
     binned_mean[:, 1] = np.nanstd(binned_mean_each_fish, axis=0)
     binned_mean[:, 2] = (np.nanstd(binned_mean_each_fish, axis=0) /
                         np.sqrt(np.sum(~np.isnan(binned_mean_each_fish), axis=0)))
-    
-    # Plot
-    if makePlot:
-        fig = plt.figure(figsize=(10, 6))
-        plt.errorbar(bin_centers*unit_scaling_for_plot[0], 
-                     binned_mean[:, 0]*unit_scaling_for_plot[1], 
-                     binned_mean[:, 2]*unit_scaling_for_plot[1],
-                    fmt='o-', capsize=7, markersize=12, linewidth=2,
-                    color=color, ecolor=color)
 
-        # Plot sem as shaded band
-        alpha_sem = 0.4
-        if plot_sem_band:
-            plt.fill_between(bin_centers*unit_scaling_for_plot[0], 
-                             (binned_mean[:, 0] - binned_mean[:, 2])*unit_scaling_for_plot[1], 
-                             (binned_mean[:, 0] + binned_mean[:, 2])*unit_scaling_for_plot[1], 
-                             color=color, 
-                             alpha=alpha_sem, label='s.e.m.')        
-
-        # Plot each dataset as semi-transparent line
-        if plot_each_dataset:
-            alpha_each = np.max((0.7 / Ndatasets, 0.15))
-            for i in range(Ndatasets):
-                plt.plot(bin_centers*unit_scaling_for_plot[0], 
-                         binned_mean_each_dataset[i, :]*unit_scaling_for_plot[1], 
-                         color=color, alpha=alpha_each)
-        
-        if xlabelStr is None:
-            xlabelStr = binKeyName
-        if ylabelStr is None:
-            ylabelStr = f'Mean {keyName}'
-        if titleStr is None:
-            titleStr = f'Mean {keyName} vs {binKeyName}'
-        
-        plt.xlabel(xlabelStr, fontsize=14)
-        plt.ylabel(ylabelStr, fontsize=14)
-        plt.title(titleStr, fontsize=16)
-        plt.grid(True, alpha=0.3)
-        
-        if xlim is not None:
-            xlim_plot = np.zeros_like(np.array(xlim))
-            for j in range(len(xlim)):
-                xlim_plot[j] = unit_scaling_for_plot[0]*xlim[j]
-            plt.xlim(xlim_plot)
-        if ylim is not None:
-            ylim_plot = np.zeros_like(np.array(ylim))
-            for j in range(len(ylim)):
-                ylim_plot[j] = unit_scaling_for_plot[1]*ylim[j]
-            plt.ylim(ylim_plot)
-        
-        if outputFileName is not None:
-            plt.savefig(outputFileName, bbox_inches='tight')
-        
-        if closeFigure:
-            plt.close(fig)
-        else:
-            plt.show()
-        
-    # Output points to CSV (optional)
-    if outputCSVFileName is not None:
-        header_strings = [xlabelStr.replace(',', '_'), 
-                          f'{ylabelStr} mean', f'{ylabelStr} std', f'{ylabelStr} s.e.m.']
-        for i in range(Ndatasets):
-            header_strings.append(f'{ylabelStr}_Dataset_{i+1}')
-        
-        list_to_output = [binned_mean[:, 0], binned_mean[:, 1], binned_mean[:, 2]]
-        for i in range(Ndatasets):
-            list_to_output.append(binned_mean_each_dataset[i, :])
-        
-        simple_write_CSV(bin_centers, 
-                         list_to_output, 
-                         filename=outputCSVFileName, 
-                         header_strings=header_strings)    
-        
     return binned_mean, bin_centers, binned_mean_each_dataset, binned_mean_each_fish
 
 
-    
 def plot_2D_heatmap(Z, X, Y, Z_unc=None,
                    titleStr=None, xlabelStr='X', ylabelStr='Y', clabelStr='Z',
                    colorRange=None, cmap='RdYlBu',
@@ -3378,517 +3241,6 @@ def plot_2Darray_linePlots(Z, X, Y, Z_unc=None,
     
     return fig, ax
     
-def make_2D_histogram(datasets, 
-                      keyNames = ('speed_array_mm_s', 'head_head_distance_mm'), 
-                      keyIdx = (None, None), 
-                      use_abs_value = (False, False),
-                      keyNameC = None, keyIdxC = None,
-                      constraintKey=None, constraintRange=None, 
-                      constraintIdx = 0,
-                      use_abs_value_constraint = False, 
-                      dilate_minus1=True, bin_ranges=None, Nbins=(20,20),
-                      titleStr = None, clabelStr = None,
-                      xlabelStr = None, ylabelStr = None,
-                      colorRange = None, 
-                      unit_scaling_for_plot = [1.0, 1.0, 1.0],
-                      mask_by_sem_limit = None,
-                      cmap = 'RdYlBu', 
-                      plot_type = 'heatmap',
-                      outputFileName = None,
-                      outputCSVFileName = None,
-                      closeFigure = False):
-    """
-    Create a 2D histogram plot of the values from two keys in the given 
-    datasets. Combine all the values across datasets. Or can plot the mean 
-    value of a quantitative property (third key) binned by these two keys.
-
-    If keyNameC is None: plots a normalized 2D histogram (occurrence count)
-    If keyNameC is provided: plots mean value of keyC in each (keyA, keyB) bin
-
-    Uses combine_all_values_constrained() to pick a subset of the keys or to 
-    apply a constraint to the values to plot (optional)
-    
-    Parameters:
-    datasets (list): List of dictionaries containing the analysis data.
-    keyNames (tuple of 2 str): Key names for the first and second values to plot.
-    keyIdx : tuple of 2 items, integer or string or None indicating subset of 
-             value array, using get_values_subset(datasets[j][keyName], keyIdx)
-            If keyIdx is:
-                None: If datasets[j][keyName] is a multidimensional array, 
-                   return the full array (minus bad frames, constraints)
-                an integer: extract that column
-                   (e.g. datasets[12]["speed_array_mm_s"][:,keyIdx])
-                    the string "phi_low" or "phi_high", call get_keyIdx_array()
-                       to get an array of integers corresponding to the index
-                       of the low or high relative orientation fish
-                    a string "min", "max", or "mean", apply this
-                       operation along axis==1 (e.g. for fastest fish)
-    use_abs_value : (bool, bool) default False, False (for each property)
-                    If True, return absolute value of the quantitative 
-                    property. Probably should always be false
-    keyNameC (str or None): Key name for the third variable whose mean will be
-                           plotted as a heatmap. If None, plots occurrence histogram.
-    keyIdxC : integer or string or None, same indexing as keyIdx but for keyNameC
-    constraintKey (str): Key name for the constraint, 
-        or None to use no constraint. Apply the same constraint to both keys.
-        see combine_all_values_constrained()
-    constraintRange (np.ndarray): Numpy array with two elements specifying the constraint range, or None to use no constraint.
-    constraintIdx : integer or string.
-                    If the constraint is a multidimensional array, will use
-                    dimension constraintIdx if constraintIdx is an integer 
-                    or the "operation" if constraintIdx is a string,
-                    "min", "max", or "mean",
-                    If None, won't apply constraint    
-                    see combine_all_values_constrained()
-    use_abs_value_constraint : bool, default False
-                    If True, use absolute value of the quantitative 
-                    property before applying constraints or combining values. 
-                    Useful for signed angles (relative orientation, bending).    
-    dilate_minus1 (bool): If True, dilate the bad frames -1; see above.
-    bin_ranges (tuple): Optional tuple of two lists, specifying the (min, max) range for the bins of value1 and value2.
-    Nbins (tuple): Optional tuple of two integers, number of bins for value1 and value2
-    titleStr : title string; if None use Key names
-    clabelStr : string for color bar label. If None use 'Normalized Count' 
-                or Mean {keyNameC} 
-    xlabelStr, ylabelStr : x and y axis labels. If None, use key names
-    colorRange : Optional tuple of (vmin, vmax) for the histogram "v axis" range
-    unit_scaling_for_plot : List of None or float for x, y, optional "C"; 
-                   for plots only, multiply values by unit_scaling_for_plot,  
-                   for example to convert radians to degrees.
-                   if keyNameC is None, ignore 3rd item
-    mask_by_sem_limit : float or None. 
-                   If not None, and if keyNameC is not None, only plot 
-                   the 2D mesh at points whose s.e.m. of the third variable
-                   is less than this value, to ignore noisy points. 
-    cmap : string, colormap. Default 'RdYlBu' (rather than usual Python viridis)
-    plot_type : str, 'heatmap' or 'line_plots'
-                   Determines which plotting function to use.
-    outputFileName : if not None, save the figure with this filename
-                     (include extension)
-    outputCSVFileName : str or None
-        If not None, write hist as a wide-format CSV with X axis values as
-        the row index and Y axis values as column headers. If hist_sem is
-        also available (keyNameC is not None), write it to a parallel file
-        with '_unc' inserted before the extension. Written before the plot,
-        regardless of plot_type.
-    closeFigure : (bool) if True, close figure after creating it.
-
-    Returns:
-        hist : 2D array, normalized histogram if keyNameC is None; mean values
-                in each bin if keyNameC is used
-        X, Y : 2D array of X, Y values from meshgrid
-        hist_sem : 2D array, std error of the mean in each bin if keyNameC
-                   is used; else None
-    """
-    if len(keyNames) != 2:
-        raise ValueError("There must be two keys for the 2D histogram!") 
-        
-    # For scaling values for plot only, e.g. radians to degrees.
-    if len(unit_scaling_for_plot) == 2:
-        unit_scaling_for_plot.append(1.0)
-    if (keyNameC is None) and (abs(unit_scaling_for_plot[2]-1.0)<1e-6):
-        print('No keyNameC and unit_scaling_for_plot[2] ' + \
-              f'is {unit_scaling_for_plot[2]:.6e} is not 1; forcing equal to 1.0')
-        unit_scaling_for_plot[2] = 1.0
-        
-    # Get the values for each key with the constraint applied
-    values1 = combine_all_values_constrained(datasets, keyNames[0], 
-                                             keyIdx=keyIdx[0],
-                                             use_abs_value = use_abs_value[0],
-                                             constraintKey=constraintKey, 
-                                             constraintRange=constraintRange, 
-                                             constraintIdx=constraintIdx,
-                                             use_abs_value_constraint = use_abs_value_constraint,
-                                             dilate_minus1=dilate_minus1)
-    values2 = combine_all_values_constrained(datasets, keyNames[1], 
-                                             keyIdx=keyIdx[1],
-                                             use_abs_value = use_abs_value[1],
-                                             constraintKey=constraintKey, 
-                                             constraintRange=constraintRange, 
-                                             constraintIdx=constraintIdx,
-                                             use_abs_value_constraint = use_abs_value_constraint,
-                                             dilate_minus1 = dilate_minus1)
-    
-    # Get values for keyC if provided
-    if keyNameC is not None:
-        valuesC = combine_all_values_constrained(datasets, keyNameC, 
-                                                 keyIdx=keyIdxC,
-                                                 use_abs_value = False,
-                                                 constraintKey=constraintKey, 
-                                                 constraintRange=constraintRange, 
-                                                 constraintIdx=constraintIdx,
-                                                 use_abs_value_constraint = use_abs_value_constraint,
-                                                 dilate_minus1=dilate_minus1)
-    
-    # Flatten the values and handle different dimensions
-    values1_all = []
-    values2_all = []
-    valuesC_all = [] if keyNameC is not None else None
-    
-    for idx, (v1, v2) in enumerate(zip(values1, values2)):
-        M1 = get_effective_dims(v1)
-        M2 = get_effective_dims(v2)
-        
-        if keyNameC is not None:
-            vC = valuesC[idx]
-            MC = get_effective_dims(vC)
-        
-        if M1 is None or M2 is None or ((M1 != M2) and min(M1, M2) > 1):
-            print(f'M values: {M1}, {M2}')
-            raise ValueError("Values for the two keys are not commensurate. 2D histogram cannot be created.")
-        
-        if keyNameC is not None and (MC is None or (MC != M1 and MC != M2 and MC != 1)):
-            print(f'M values: {M1}, {M2}, {MC}')
-            raise ValueError("Values for keyC are not commensurate with keyA and keyB.")
-        
-        if M1 > 1 and M2 == 1:
-            Nfish = M1
-            values2_all.append(np.repeat(v2.flatten(), Nfish))
-            values1_all.append(v1.flatten())
-            if keyNameC is not None:
-                if MC > 1:
-                    valuesC_all.append(vC.flatten())
-                else:
-                    valuesC_all.append(np.repeat(vC.flatten(), Nfish))
-        elif M2 > 1 and M1 == 1:
-            Nfish = M2
-            values1_all.append(np.repeat(v1.flatten(), Nfish))
-            values2_all.append(v2.flatten())
-            if keyNameC is not None:
-                if MC > 1:
-                    valuesC_all.append(vC.flatten())
-                else:
-                    valuesC_all.append(np.repeat(vC.flatten(), Nfish))
-        else:
-            values1_all.append(v1.flatten())
-            values2_all.append(v2.flatten())
-            if keyNameC is not None:
-                valuesC_all.append(vC.flatten())
-    
-    # Concatenate the flattened values
-    values1_all = np.concatenate(values1_all)
-    values2_all = np.concatenate(values2_all)
-    if keyNameC is not None:
-        valuesC_all = np.concatenate(valuesC_all)
-    
-    # Determine the bin ranges
-    if bin_ranges is None:
-        value1_min, value1_max = np.nanmin(values1_all), np.nanmax(values1_all)
-        value2_min, value2_max = np.nanmin(values2_all), np.nanmax(values2_all)
-        # Expand a bit!
-        d1 = (value1_max - value1_min)/Nbins[0]
-        d2 = (value2_max - value2_min)/Nbins[1]
-        value1_min = value1_min - d1/2.0
-        value1_max = value1_max + d1/2.0
-        value2_min = value2_min - d2/2.0
-        value2_max = value2_max + d2/2.0
-    else:
-        value1_min, value1_max = bin_ranges[0]
-        value2_min, value2_max = bin_ranges[1]
-    
-    if keyNameC is None:
-        # calculate the normalized occurrence histogram values
-        hist, xedges, yedges = np.histogram2d(values1_all, values2_all, 
-                                              bins=Nbins, 
-                                              range=[(value1_min, value1_max), 
-                                                     (value2_min, value2_max)])
-        # Normalize the histogram
-        hist = hist / hist.sum()
-        if clabelStr is None:
-            clabelStr = 'Normalized Count'
-        hist_std = None
-        hist_sem = None
-    else:
-        # plot mean of keyC in each bin
-        # Use binned_statistic_2d to compute mean
-        
-        hist, xedges, yedges, _ = binned_statistic_2d(
-            values1_all, values2_all, valuesC_all,
-            statistic='mean',
-            bins=Nbins,
-            range=[(value1_min, value1_max), (value2_min, value2_max)]
-        )
-        hist_std, _, _, _ = binned_statistic_2d(
-            values1_all, values2_all, valuesC_all,
-            statistic='std',
-            bins=Nbins,
-            range=[(value1_min, value1_max), (value2_min, value2_max)]
-        )
-        hist_count, _, _, _ = binned_statistic_2d(
-            values1_all, values2_all, valuesC_all,
-            statistic='count',
-            bins=Nbins,
-            range=[(value1_min, value1_max), (value2_min, value2_max)]
-        )
-        hist_sem = hist_std / np.sqrt(hist_count)
-        if clabelStr is None:
-            clabelStr = f'Mean {keyNameC}'
-    
-    # For the 2D histogram
-    # X and Y values
-    X, Y = np.meshgrid(0.5*(xedges[1:] + xedges[:-1]),
-                       0.5*(yedges[1:] + yedges[:-1]), indexing='ij')
-
-    if outputCSVFileName is not None:
-        x_vals = X[:, 0]
-        y_vals = Y[0, :]
-        pd.DataFrame(hist, index=x_vals, columns=y_vals).to_csv(outputCSVFileName)
-        if hist_sem is not None:
-            base, ext = os.path.splitext(outputCSVFileName)
-            pd.DataFrame(hist_sem, index=x_vals, columns=y_vals).to_csv(
-                base + '_unc' + ext)
-
-    if xlabelStr is None:
-        xlabelStr = keyNames[0]
-    if ylabelStr is None:
-        ylabelStr = keyNames[1]
-            
-    if titleStr is None:
-        if keyNameC is None:
-            titleStr = f'2D Histogram of {keyNames[0]} vs {keyNames[1]}'
-        else:
-            titleStr = f'Mean {keyNameC} vs {keyNames[0]} and {keyNames[1]}'
-
-    # Choose plotting function based on plot_type
-    # For line_plots, ignore the colorRange 
-    if plot_type.lower() == 'line_plots':
-        plot_2Darray_linePlots(hist, X, Y, Z_unc=hist_sem,
-                              titleStr=titleStr, 
-                              xlabelStr=xlabelStr, ylabelStr=ylabelStr, 
-                              clabelStr=clabelStr,
-                              colorRange=None, cmap=cmap,
-                              unit_scaling_for_plot=unit_scaling_for_plot,
-                              mask_by_sem_limit=mask_by_sem_limit,
-                              outputFileName=outputFileName, 
-                              closeFigure=closeFigure)        
-    else:  # default to heatmap
-        plot_2D_heatmap(hist, X, Y, Z_unc=hist_sem,
-                       titleStr=titleStr, 
-                       xlabelStr=xlabelStr, ylabelStr=ylabelStr, 
-                       clabelStr=clabelStr,
-                       colorRange=colorRange, cmap=cmap,
-                       unit_scaling_for_plot=unit_scaling_for_plot,
-                       mask_by_sem_limit=mask_by_sem_limit,
-                       outputFileName=outputFileName, closeFigure=closeFigure)
-
-        
-    return hist, X, Y, hist_sem
-
-
-def slice_2D_histogram(z_mean, X, Y, z_unc, slice_axis='x', other_range=None, 
-                       titleStr = None, 
-                       xlabelStr = 'x', ylabelStr = 'y', zlabelStr = 'z',
-                       xlim = None, ylim = None, zlim = None,
-                       plot_z_zero_line = False, plot_vert_zero_line = False,
-                       unit_scaling_for_plot = [1.0, 1.0, 1.0],
-                       color = 'black', 
-                       outputFileName = None,
-                       closeFigure = False):
-    """
-    Perform weighted average of 2D data "z" along one axis 
-    (either x or y), possibly limited to some range along the other axis,
-    and make an errorbar plot.
-    Ignores NaNs in sums, averages; treats std. dev. = 0 as NaN
-    
-    Parameters:
-    -----------
-    z_mean : 2D numpy array
-        Mean values at each (x, y) position
-    X : 2D numpy array
-        X-coordinates from meshgrid
-    Y : 2D numpy array
-        Y-coordinates from meshgrid
-    z_unc : 2D numpy array
-        Uncertainty values at each (x, y) position
-        Note that if these are mean values, should use s.e.m. for proper weighting
-    slice_axis : str, either 'x' or 'y'
-        Axis along which to plot the slice
-    other_range : tuple or None
-        If not None, (min, max) range for the axis being averaged over
-    titleStr : string or None
-        If not None, title string; If None, "Slice along {whatever} axis"
-    xlabelStr, ylabelStr, zlabelStr : string for x axis label, y, z.
-        Note that only two of these will be used on the axis, the other in
-        the title (if slicing)
-    plot_z_zero_line : bool . if true, dotted line at z = 0
-    plot_vert_zero_line : bool . if true, dotted line at (x or y) = 0
-    unit_scaling_for_plot : List of None or float for x, y, z; 
-                   for plots only, multiply values by unit_scaling_for_plot,  
-                   for example to convert radians to degrees.
-                   Note that one of x or y will be irrelevant, but I include 
-                   all three anyway
-    color: plot color
-    xlim, ylim, zlim : (optional) tuple of min, max {x,y,z}-axis limits
-        Note that only two of these will be used.
-        Note that this should not incorporate unit_scaling_for_plot -- 
-        if angles are in radians, for example, leave the limits in radians 
-        and unit_scaling_for_plot will convert values *and* axis limits
-        to degrees
-    outputFileName : if not None, save the figure with this filename 
-                     (include extension)
-    closeFigure : (bool) if True, close a figure after creating it.
-    
-    Returns:
-    --------
-    axis_values : 1D numpy array
-        Values along the slice axis (x or y values)
-    weighted_mean : 1D numpy array
-        Weighted mean at each position along slice axis
-    weighted_std : 1D numpy array
-        Weighted standard deviation at each position along slice axis
-    """
-    
-    # Calculate weights (inverse variance weighting)
-    if z_unc is not None:
-        weights = 1.0 / (z_unc ** 2)
-    else:
-        weights = np.ones_like(z_mean)
-    
-    # Handle inf values (where z_unc= 0)
-    weights = np.where(np.isfinite(weights), weights, np.nan)
-
-    # For the plot    
-    if zlabelStr is None:
-        for_plot_ylabelStr = 'z (weighted mean)'
-    else:
-        for_plot_ylabelStr = zlabelStr
-
-    if slice_axis == 'x':
-        # Average over y, plot along x
-        axis_values = X[:, 0]  # x values
-        
-        # Determine which y indices to include
-        if other_range is not None:
-            y_values = Y[0, :]
-            mask = (y_values >= other_range[0]) & (y_values <= other_range[1])
-        else:
-            mask = np.ones(Y.shape[1], dtype=bool)
-        
-        # Apply mask to data
-        z_mean_masked = z_mean[:, mask]
-        weights_masked = weights[:, mask]
-        
-        if z_mean_masked.shape[1] == 1:
-            # Only one "bin" along other axis
-            weighted_mean = z_mean_masked.flatten()
-            weighted_std = z_unc[:, mask].flatten()
-        else:
-            # Calculate weighted mean along y-axis (axis=1)
-            sum_weights = np.nansum(weights_masked, axis=1)
-            weighted_mean = np.nansum(weights_masked * z_mean_masked, axis=1) / sum_weights
-            
-            # Calculate weighted standard deviation
-            # Formula: sqrt(sum(w_i * (x_i - mu)^2) / sum(w_i))
-            weighted_variance = np.nansum(weights_masked * (z_mean_masked - weighted_mean[:, np.newaxis])**2, axis=1) / sum_weights
-            weighted_std = np.sqrt(weighted_variance)
-        
-        # For labels
-        if xlabelStr is None:
-            for_plot_xlabelStr = 'x'
-        else:
-            for_plot_xlabelStr = xlabelStr
-        if ylabelStr is None:
-            slice_label = 'y'
-        else:
-            slice_label = 'ylabelStr'
-        if titleStr is None:
-            titleStr = f'Slice along {for_plot_xlabelStr}-axis' + \
-                     (f' ({slice_label} ∈ [{other_range[0]}, {other_range[1]}])' \
-                      if other_range else '')
-        # For plot limits
-        if xlim is None:
-            for_plot_xlim = None
-        else:
-            for_plot_xlim = xlim
-            
-        # for scaling x or y scale (converting units)
-        unit_scaling_for_plot_xy = unit_scaling_for_plot[0]
-        
-    elif slice_axis == 'y':
-        # Average over x, plot along y
-        axis_values = Y[0, :]  # y values
-        
-        # Determine which x indices to include
-        if other_range is not None:
-            x_values = X[:, 0]
-            mask = (x_values >= other_range[0]) & (x_values <= other_range[1])
-        else:
-            mask = np.ones(X.shape[0], dtype=bool)
-        
-        # Apply mask to data
-        z_mean_masked = z_mean[mask, :]
-        weights_masked = weights[mask, :]
-
-        if z_mean_masked.shape[0] == 1:
-            # Only one "bin" along other axis
-            weighted_mean = z_mean_masked.flatten()
-            weighted_std = z_unc[mask, :].flatten()
-        else:
-            # Calculate weighted mean along x-axis (axis=0)
-            sum_weights = np.sum(weights_masked, axis=0)
-            weighted_mean = np.sum(weights_masked * z_mean_masked, axis=0) / sum_weights
-            
-            # Calculate weighted standard deviation
-            weighted_variance = np.sum(weights_masked * (z_mean_masked - weighted_mean[np.newaxis, :])**2, axis=0) / sum_weights
-            weighted_std = np.sqrt(weighted_variance)
-        
-        # For labels
-        if xlabelStr is None:
-            for_plot_xlabelStr = 'y'
-        else:
-            for_plot_xlabelStr = ylabelStr
-        if ylabelStr is None:
-            slice_label = 'x'
-        else:
-            slice_label = 'xlabelStr'
-        if titleStr is None:
-            titleStr = f'Slice along {for_plot_xlabelStr}-axis' + \
-                     (f' ({slice_label} ∈ [{other_range[0]}, {other_range[1]}])' \
-                      if other_range else '')
-
-        # For plot limits
-        if ylim is None:
-            for_plot_xlim = None
-        else:
-            for_plot_xlim = ylim
-        # for scaling x or y scale (converting units)
-        unit_scaling_for_plot_xy = unit_scaling_for_plot[1]
-        
-    else:
-        raise ValueError("slice_axis must be either 'x' or 'y'")
-
-    # Plot
-    fig = plt.figure(figsize=(10, 6))
-    plt.errorbar(axis_values*unit_scaling_for_plot_xy, 
-                 weighted_mean*unit_scaling_for_plot[2], 
-                 yerr=weighted_std*unit_scaling_for_plot[2], 
-                 fmt='o-', capsize=5, capthick=2, markersize=12,
-                 linewidth = 2, color = color)
-    plt.xlabel(for_plot_xlabelStr, fontsize=14)
-    plt.ylabel(for_plot_ylabelStr, fontsize=14)
-    plt.title(titleStr, fontsize=16)
-    plt.xticks(fontsize = 14)
-    plt.yticks(fontsize = 14)
-    if xlim is not None:
-        plt.xlim(tuple([item * unit_scaling_for_plot_xy for item in for_plot_xlim]))
-    if zlim is not None:
-        plt.ylim(tuple([item * unit_scaling_for_plot[2] for item in zlim]))
-    if plot_z_zero_line:
-        plt.axhline(y=0.0, color='black', alpha = 0.7, linestyle=':')
-    if plot_vert_zero_line:
-        plt.axvline(x=0.0, color='black', alpha = 0.7, linestyle=':')
-
-    if outputFileName != None:
-        plt.savefig(outputFileName, bbox_inches='tight')
-
-    plt.show()
-    if closeFigure:
-        print(f'Closing figure {titleStr}')
-        plt.close(fig)
-    
-    return axis_values, weighted_mean, weighted_std
-
-
 def revise_datasets(keys_to_modify=["relative_orientation"],
                     pickleFileName1=None, pickleFileName2=None,
                     writePickleOutput =  True, writeOtherOutput = False):
@@ -4197,7 +3549,6 @@ def update_parameters(keyName, params):
     print('Parameters updated.')
 
     return params
-
 
 
 def get_plot_and_CSV_filenames(s, outputFileNameBase, outputFileNameExt, 
