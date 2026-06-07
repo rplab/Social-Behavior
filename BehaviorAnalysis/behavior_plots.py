@@ -2,7 +2,7 @@
 # behavior_plots.py
 """
 Author:   Raghuveer Parthasarathy
-Created: June 5, 2026
+Created: June 5, 2026 (functions moved from other modules)
 Last modified: June 5, 2026 -- Raghuveer Parthasarathy
 
 Description

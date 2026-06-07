@@ -9,17 +9,11 @@ Last modified February 24, 2026 -- Raghuveer Parthasarathy
 Description
 -----------
 
-Author:   Raghuveer Parthasarathy
-Version ='2.0': 
-First version created by  : Estelle Trieu, 9/7/2022
-Major modifications by Raghuveer Parthasarathy, May-July 2023
+Author:   Raghuveer Parthasarathy, May-July 2023
 Last modified by Raghuveer Parthasarathy, March 12, 2026
 
 Module containing functions for handling data files, configuration
 files, and output files -- reading and writing.
-Also functions for making plots
-
-Formerly in toolkit.py
 
 """
 
@@ -1345,7 +1339,7 @@ def write_output_files(params, output_path, datasets):
                 # Write for this dataset: summary in text file
                 write_behavior_txt_file(datasets[j], key_list_revised)
                 # Write for this dataset: frame-by-frame "basic measurements"
-                write_basicMeasurements_txt_file(datasets[j])
+                write_basicMeasurements_file(datasets[j])
         finally:
             # Always restore original directory
             os.chdir(original_cwd)
@@ -1514,7 +1508,7 @@ def write_behavior_txt_file(dataset, key_list):
             results_file.write(outString)
 
 
-def write_basicMeasurements_txt_file(dataset):
+def write_basicMeasurements_file(dataset):
     """
     Creates a CSV file of "basic" speed and distance measurements for
     a given *single dataset* at each frame.
@@ -2626,8 +2620,9 @@ def plot_waterfall_binned_crosscorr(binned_crosscorr_all, bin_centers, t_lag,
                                      heatmap_ylabelStr='Distance (mm)',
                                      closeFigure = False):
     """
-    Create a waterfall plot of binned cross-correlations averaged 
-    across all datasets.
+    Create a waterfall-style plot of cross-correlations binned by a parameter
+    (e.g., inter-fish distance), with each bin's correlation plotted as a separate 
+    curve offset vertically.
     
     Parameters
     ----------

@@ -3,26 +3,15 @@
 # -*- coding: utf-8 -*- 
 """
 Author:   Raghuveer Parthasarathy
-Version ='2.0': 
-First version created by  : Estelle Trieu, 9/7/2022
-Major modifications by Raghuveer Parthasarathy, May-July 2023
+Version ='2.0': Raghuveer Parthasarathy, May-July 2023
 Last modified by Raghuveer Parthasarathy, Feb. 11, 2026
 
 Description
 -----------
 
-Module containing functions for handling data files and performing
+Module containing functions for handling data and performing
 various non-behavioral analyses.
-Includes: 
-    - Load expt config file
-    - get lists of files to load
-    - load data, 
-    - assess proximity to the edge, 
-    - assess bad frames, 
-    - link_weighted(): re-do fish IDs (track linkage)
-    - repair_double_length_fish() : split fish that are 2L in length into two fish
-    - auto- and cross-correlation, for single and all datasets
-    - etc.
+
 """
 
 import numpy as np

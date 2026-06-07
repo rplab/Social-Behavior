@@ -9,9 +9,9 @@ Description
 -----------
 
 Contains function(s) for calculating the correlation between different 
-behavior events
+behavior events.
 Also contains functions for plotting quantitative properties in intervals
-around behavior events
+around behavior events.
 
 
 """

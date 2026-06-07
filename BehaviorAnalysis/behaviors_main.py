@@ -3,11 +3,9 @@
 # behaviors_main.py
 """
 #----------------------------------------------------------------------------
-# Raghuveer Parthasarathy (2023-2024)
-# First version  : Estelle Trieu 9/19/2022
-# Re-written by : Raghuveer Parthasarathy (2023)
-# version ='2.0' Raghuveer Parthasarathy -- begun May 2023; see notes.
-# last modified: Raghuveer Parthasarathy, Dec. 31, 2025
+# Raghuveer Parthasarathy (2023-2025)
+# Version ='2.0' Raghuveer Parthasarathy -- begun May 2023; see notes.
+# Last modified: Raghuveer Parthasarathy, Dec. 31, 2025
 # ---------------------------------------------------1------------------------
 """
 

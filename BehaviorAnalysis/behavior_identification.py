@@ -2,9 +2,8 @@
 # behavior_identification.py
 """
 Author:   Raghuveer Parthasarathy
-Version ='2.0': 
-First versions created By  : Estelle Trieu, 5/26/2022
-Major modifications by Raghuveer Parthasarathy, May-July 2023
+Version ='2.0'; 
+Major modifications May-July 2023
 Last modified February 25, 2026 -- Raghu Parthasarathy
 
 Description

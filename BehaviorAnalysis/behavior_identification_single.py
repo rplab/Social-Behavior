@@ -21,10 +21,7 @@ that apply to single fish:
     - "is Moving"
     - average_bout_trajectory_allSets() and average_bout_trajectory_oneSet()
     - (and more)
-Also a function that makes several useful "single fish" plots -- i.e. 
-plots of characteristics of individual fish, which may be in multi-fish 
-experiments
-    - make_single_fish_plots()
+
 
 """
 
@@ -78,8 +75,7 @@ def get_single_fish_characterizations(all_position_data, datasets, CSVcolumns,
     """
     For each dataset, characterizations that involve single fish
         (e.g. bending angle, C-bend or J-bend, speed, mean fish length)
-        Fish length calculation for each frame
-           moved out of this, to allow double-length repair
+
     Inputs:
         all_position_data : basic position information for all datasets, list of numpy arrays
         datasets : all datasets, info, list of dictionaries 
@@ -880,15 +876,13 @@ def average_bout_trajectory_oneSet(dataset, keyName = "speed_array_mm_s",
                                    constraintIdx = None,
                                    use_abs_value_constraint = False):
     """
-    Tabulates some quantity from a dataset, typically speed
-    dataset["speed_array_mm_s"], around each onset of a bout 
-    ("isActive" == True) in the time interval specified by t_range_s. 
-    Consider each fish in the dataset, and combines the 
-    bout information for that fish unless keyIdx is not None
-    (see below; recommended to keep as None!).
-    Optional: Only consider bouts for which the value of constraintKey 
+    Tabulates values of “keyName” (default speed_array_mm_s) in a time window 
+    t_range_s around each bout onset ("isActive" == True) for a single dataset. 
+    Optionally restricts to bouts satisfying a constraint on another key
+    (i.e. only consider bouts for which the value of constraintKey 
     at the start frame (first isActive frame) is between constraintRange[0]
-    and constraintRange[1]. Calls get_values_subset(); can apply operations
+    and constraintRange[1]. )
+    Calls get_values_subset(); can apply operations
     like mean on constraint, or particular index for constraint array
     
     Parameters:
@@ -1063,18 +1057,10 @@ def average_bout_trajectory_allSets(datasets, t_range_s=(-0.5, 2.0),
                                     outputFileName = None,
                                     closeFigure = False):
     """
-    For all datasets, call average_bout_trajectory_oneSet() 
-    to tabulate some quantity, typically speed
-    dataset["speed_array_mm_s"], around each onset of a bout 
-    ("isActive" == True) in the time interval specified by t_range_s. 
-    Note that this considers each fish in the dataset, and combines
-    the bout information for that fish unless keyIdx is not None
-    (see below; recommended to keep as None!).
-    
-    Optional: only consider bouts for which the value of constraintKey 
-    at the start frame (first isActive frame) is between constraintRange[0]
-    and constraintRange[1]. Calls get_values_subset(); can apply operations
-    like mean on constraint
+    Calls average_bout_trajectory_oneSet() for all datasets and averages the results. 
+    Optional constraint on bout properties, i.e.
+    Tabulates values of “keyName” (default speed_array_mm_s) in a time window 
+    t_range_s around each bout onset ("isActive" == True)
     
     Parameters:
         datasets (list): List of dictionaries containing the analysis data.

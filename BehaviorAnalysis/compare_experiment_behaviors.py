@@ -8,11 +8,10 @@ Last modified on June 18, 2025
 Description
 -----------
 
-Code to read relative durations output for various datasets and plot
-summary stats versus each other.
+Stand-alone code to read previously-calculated behavior output 
+for two datasets and plot summary statistics versus each other.
 
-See the "Behavior analysis pipeline v2" document, 
-section "Compare experiment sets", 
+See the analysis code documentation, section "Compare experiment sets", 
 for description of the code and process.
 Also "Behavior Code Revisions November 2023" document
 
