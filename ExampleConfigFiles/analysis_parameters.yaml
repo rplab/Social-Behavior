@@ -8,9 +8,9 @@ params:
   cosSeeingAngle: 0.5
   perp_windowsize: 2
   perp_maxDistance_mm: 12.0
-  contact_distance_threshold_mm: 2.5
-  contact_inferred_distance_threshold_mm: 3.5
-  contact_inferred_window: 3
+  contact_distance_threshold_mm: 1.3
+  contact_inferred_distance_threshold_mm: 2.5
+  contact_inferred_window: 2
   tail_rub_ws: 2
   tailrub_maxTailDist_mm: 2.0
   tailrub_maxHeadDist_mm: 12.5

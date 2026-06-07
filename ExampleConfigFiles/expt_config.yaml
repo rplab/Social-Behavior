@@ -1,17 +1,14 @@
 # experiment_paths_and_parameters
 
-TwoWeek2023:
-  expt_name: TwoWeekLight2023  # experiment name
+TwoWeekSept2025:
   fps: 25.0  # frames per second
   arena_radius_mm: 25.0  # arena radius, mm
-  imageScalePathName:
-  imageScaleFilename: ArenaCenters_SocPref_3456.csv
-  imageScaleColumn: 4 # column (0-indexed) with image scale
-  datasetColumns:  [0] # columns to concatenate to match dataset name 
-  datasetRemoveStrings: ['results_', 'SocPref_', '_ALL', '_light', '_dark', '_2wpf', '_SocPref'] # strings to remove from filenames and first column of the imageScale CSV to find matches. 
-  # Arena center location information
-  arenaCentersPathName:
-  arenaCentersFilename: ArenaCenters_SocPref_3456.csv
-  arenaCentersColumns: [5,6] # columns (0-indexed) with x,y arena centers
+  imageScale: 85.65 # image scale
+  datasetColumns:  [0, 1]  # columns to concatenate to match dataset name
   # filename of CSV file *in each data folder* with image offset filename
+  datasetRemoveStrings: ['results_', 'SocPref_', '_ALL'] # strings to remove from filenames and first column of the imageScale CSV to find matches. 
   offsetPositionsFilename: wellOffsetPositionsCSVfile.csv
+  # Arena center location information
+  arenaCentersLocation:  # estimate from well offset positions
+  arenaCentersColumns: 
+  subGroups: ['Dark_Cond_1', 'Light_Cond_2'] # 
