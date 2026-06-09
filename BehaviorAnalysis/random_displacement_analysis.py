@@ -13,10 +13,10 @@ Code to extract from single-fish behavior analysis properties of inter-bout
 intervals (IBIs), defined as sequences of frames for which isMoving == False.
 
 For each IBI (excluding the first and last per trajectory), computes:
-  - r_mm_mean, theta_mean: mean radial position and polar angle (circular mean),
+  - r_mm_mean, gamma_mean: mean radial position and polar angle (circular mean),
     excluding bad tracking frames
-  - r_mm_std, theta_std: corresponding standard deviations
-  - Delta_r_mm, Delta_theta: change in mean r and theta to the NEXT IBI
+  - r_mm_std, gamma_std: corresponding standard deviations
+  - Delta_r_mm, Delta_gamma: change in mean r and gamma to the NEXT IBI
   - IB_duration_s: IBI duration in seconds (including bad tracking frames)
   - Delta_t_s: time from end of this IBI to start of the next IBI (i.e. the
     duration of the intervening bout), in seconds
@@ -39,7 +39,7 @@ def get_InterBout_properties(datasets):
 
     Outputs rows for IBIs indexed 1 through N-2 (second to second-to-last),
     skipping the first and last IBIs to avoid edge effects. For each such IBI,
-    Delta_r_mm and Delta_theta describe the change from this IBI to the next,
+    Delta_r_mm and Delta_gamma describe the change from this IBI to the next,
     and Delta_t_s is the duration of the intervening bout.
 
     Bad tracking frames are excluded from means and standard deviations, but
@@ -71,7 +71,7 @@ def get_InterBout_properties(datasets):
         bad_frames = set(np.array(dataset["bad_bodyTrack_frames"]["raw_frames"]).astype(int))
 
         r_mm = dataset["radial_position_mm"]   # Nframes x Nfish
-        theta = dataset["polar_angle_rad"]      # Nframes x Nfish, in [-pi, pi]
+        gamma = dataset["polar_angle_rad"]      # Nframes x Nfish, in [-pi, pi]
 
         for k in range(Nfish):
             moving_info = dataset[f"isMoving_Fish{k}"]["combine_frames"]
@@ -102,9 +102,9 @@ def get_InterBout_properties(datasets):
 
             # --- Compute means and stds for all IBIs (0 through N-1) ---
             r_means = np.full(N_ibis, np.nan)
-            theta_means = np.full(N_ibis, np.nan)
+            gamma_means = np.full(N_ibis, np.nan)
             r_stds = np.full(N_ibis, np.nan)
-            theta_stds = np.full(N_ibis, np.nan)
+            gamma_stds = np.full(N_ibis, np.nan)
             ibi_durations_s = np.zeros(N_ibis)
 
             for idx_i, (ibi_start, ibi_end) in enumerate(ibis):
@@ -118,19 +118,19 @@ def get_InterBout_properties(datasets):
 
                 good_idx = good_frames - idx_offset
                 r_vals = r_mm[good_idx, k]
-                theta_vals = theta[good_idx, k]
+                gamma_vals = gamma[good_idx, k]
 
                 r_means[idx_i] = np.mean(r_vals)
                 r_stds[idx_i] = np.std(r_vals)
 
-                # Circular mean and circular std for theta
-                sin_m = np.mean(np.sin(theta_vals))
-                cos_m = np.mean(np.cos(theta_vals))
-                theta_means[idx_i] = np.arctan2(sin_m, cos_m)
+                # Circular mean and circular std for gamma
+                sin_m = np.mean(np.sin(gamma_vals))
+                cos_m = np.mean(np.cos(gamma_vals))
+                gamma_means[idx_i] = np.arctan2(sin_m, cos_m)
                 R = np.sqrt(sin_m**2 + cos_m**2)
                 # Circular std is undefined for R==0; clip to avoid log(0)
                 R_clipped = np.clip(R, 1e-12, 1.0)
-                theta_stds[idx_i] = np.sqrt(-2.0 * np.log(R_clipped))
+                gamma_stds[idx_i] = np.sqrt(-2.0 * np.log(R_clipped))
 
             # --- Output rows for IBIs 1 through N-2 ---
             for idx_i in range(1, N_ibis - 1):
@@ -147,24 +147,24 @@ def get_InterBout_properties(datasets):
 
                 Delta_r_mm = r_means[idx_i + 1] - r_means[idx_i]
 
-                raw_Delta_theta = theta_means[idx_i + 1] - theta_means[idx_i]
-                Delta_theta = (raw_Delta_theta + np.pi) % (2.0 * np.pi) - np.pi
+                raw_Delta_gamma = gamma_means[idx_i + 1] - gamma_means[idx_i]
+                Delta_gamma = (raw_Delta_gamma + np.pi) % (2.0 * np.pi) - np.pi
 
                 all_results.append({
                     "dataset_number": j,
                     "r_mm_mean":     r_means[idx_i],
-                    "theta_mean":    theta_means[idx_i],
+                    "gamma_mean":    gamma_means[idx_i],
                     "r_mm_std":      r_stds[idx_i],
-                    "theta_std":     theta_stds[idx_i],
+                    "gamma_std":     gamma_stds[idx_i],
                     "Delta_r_mm":    Delta_r_mm,
-                    "Delta_theta":   Delta_theta,
+                    "Delta_gamma":   Delta_gamma,
                     "Delta_t_s":     Delta_t_s,
                     "IB_duration_s": ibi_durations_s[idx_i],
                 })
 
     # Build pooled_IB_properties
-    property_keys = ["r_mm_mean", "theta_mean", "r_mm_std", "theta_std",
-                     "Delta_r_mm", "Delta_theta", "Delta_t_s", "IB_duration_s"]
+    property_keys = ["r_mm_mean", "gamma_mean", "r_mm_std", "gamma_std",
+                     "Delta_r_mm", "Delta_gamma", "Delta_t_s", "IB_duration_s"]
     pooled_IB_properties = {
         key: np.array([row[key] for row in all_results])
         for key in property_keys
@@ -180,8 +180,8 @@ def export_interbout_CSV(all_results, default_filename="interbout_properties.csv
     """
     Export IBI properties to a CSV file, pooling rows across all datasets.
 
-    Columns: dataset_number, r_mm_mean, theta_mean, r_mm_std, theta_std,
-             Delta_r_mm, Delta_theta, Delta_t_s, IB_duration_s
+    Columns: dataset_number, r_mm_mean, gamma_mean, r_mm_std, gamma_std,
+             Delta_r_mm, Delta_gamma, Delta_t_s, IB_duration_s
 
     Inputs
     ------
@@ -192,8 +192,8 @@ def export_interbout_CSV(all_results, default_filename="interbout_properties.csv
     filename = user_input if user_input else default_filename
 
     columns = [
-        "dataset_number", "r_mm_mean", "theta_mean", "r_mm_std", "theta_std",
-        "Delta_r_mm", "Delta_theta", "Delta_t_s", "IB_duration_s"
+        "dataset_number", "r_mm_mean", "gamma_mean", "r_mm_std", "gamma_std",
+        "Delta_r_mm", "Delta_gamma", "Delta_t_s", "IB_duration_s"
     ]
 
     formatted_results = []
@@ -207,9 +207,9 @@ def export_interbout_CSV(all_results, default_filename="interbout_properties.csv
             "Delta_t_s": f'{float(row["Delta_t_s"]):.3f}',
             "IB_duration_s": f'{float(row["IB_duration_s"]):.3f}',
 
-            "theta_mean": f'{float(row["theta_mean"]):.4f}',
-            "theta_std": f'{float(row["theta_std"]):.4f}',
-            "Delta_theta": f'{float(row["Delta_theta"]):.4f}',
+            "gamma_mean": f'{float(row["gamma_mean"]):.4f}',
+            "gamma_std": f'{float(row["gamma_std"]):.4f}',
+            "Delta_gamma": f'{float(row["Delta_gamma"]):.4f}',
         }
         formatted_results.append(formatted_row)
 
@@ -223,28 +223,28 @@ def export_interbout_CSV(all_results, default_filename="interbout_properties.csv
 
 def plot_interbout_histograms(pooled_IB_properties):
     """
-    Plot histograms of Delta_r_mm, Delta_theta, Delta_t_s, and IB_duration_s
+    Plot histograms of Delta_r_mm, Delta_gamma, Delta_t_s, and IB_duration_s
     from the pooled IBI properties. Print mean and std for each.
 
     Input
     -----
     pooled_IB_properties : dict returned by get_InterBout_properties()
     """
-    keys = ["Delta_r_mm", "Delta_theta", "Delta_t_s", "IB_duration_s"]
+    keys = ["Delta_r_mm", "Delta_gamma", "Delta_t_s", "IB_duration_s"]
     labels = {
         "Delta_r_mm":    "Δr (mm)",
-        "Delta_theta":   "Δθ (rad)",
+        "Delta_gamma":   "Δθ (rad)",
         "Delta_t_s":     "Δt between IBIs (s)",
         "IB_duration_s": "IBI duration (s)",
     }
     bin_specs = {
         "Delta_r_mm":    50,
-        "Delta_theta":   np.linspace(-np.pi, np.pi, 37),
+        "Delta_gamma":   np.linspace(-np.pi, np.pi, 37),
         "Delta_t_s":     50,
         "IB_duration_s": 50,
     }
     xtick_specs = {
-        "Delta_theta": ([-np.pi, -np.pi/2, 0, np.pi/2, np.pi],
+        "Delta_gamma": ([-np.pi, -np.pi/2, 0, np.pi/2, np.pi],
                         ['-π', '-π/2', '0', 'π/2', 'π']),
     }
 
@@ -301,13 +301,13 @@ def build_radial_bin_distributions(pooled_IB_properties, arena_radius_mm,
         radial_bins[i] contains:
             "r_edges"       : (r_low, r_high) for this bin (mm)
             "Delta_r_mm"    : 1D array of observed values in this bin
-            "Delta_theta"   : 1D array
+            "Delta_gamma"   : 1D array
             "Delta_t_s"     : 1D array
             "IB_duration_s" : 1D array
             "N"             : number of observations in this bin
     bin_edges : 1D array of radial bin edges (mm), length = n_bins + 1
     """
-    step_keys = ["Delta_r_mm", "Delta_theta", "Delta_t_s", "IB_duration_s"]
+    step_keys = ["Delta_r_mm", "Delta_gamma", "Delta_t_s", "IB_duration_s"]
 
     bin_edges = np.arange(0.0, arena_radius_mm + bin_size_mm, bin_size_mm)
     n_bins = len(bin_edges) - 1
@@ -341,7 +341,7 @@ def build_radial_bin_distributions(pooled_IB_properties, arena_radius_mm,
 def sample_from_radial_bin(radial_bins, r_current, rng=None):
     """
     Given the current radial position, find the corresponding radial bin and
-    draw one random (Delta_r_mm, Delta_theta, Delta_t_s, IB_duration_s) tuple
+    draw one random (Delta_r_mm, Delta_gamma, Delta_t_s, IB_duration_s) tuple
     from the empirical observations in that bin.
 
     If the bin is empty (no observations), the nearest non-empty bin is used.
@@ -354,7 +354,7 @@ def sample_from_radial_bin(radial_bins, r_current, rng=None):
 
     Returns
     -------
-    sample : dict with keys Delta_r_mm, Delta_theta, Delta_t_s, IB_duration_s
+    sample : dict with keys Delta_r_mm, Delta_gamma, Delta_t_s, IB_duration_s
     """
     if rng is None:
         rng = np.random.default_rng()
@@ -388,14 +388,14 @@ def sample_from_radial_bin(radial_bins, r_current, rng=None):
     idx = rng.integers(0, b["N"])
     return {
         "Delta_r_mm":    float(b["Delta_r_mm"][idx]),
-        "Delta_theta":   float(b["Delta_theta"][idx]),
+        "Delta_gamma":   float(b["Delta_gamma"][idx]),
         "Delta_t_s":     float(b["Delta_t_s"][idx]),
         "IB_duration_s": float(b["IB_duration_s"][idx]),
     }
 
 
 def sim_sampled_random_walk(radial_bins, arena_radius_mm, r_init=None,
-                             theta_init=None, T_total_s=600.0,
+                             gamma_init=None, T_total_s=600.0,
                              plot_positions=False, rng=None):
     """
     Simulate a random walk of a zebrafish using the empirical IBI distributions
@@ -403,11 +403,11 @@ def sim_sampled_random_walk(radial_bins, arena_radius_mm, r_init=None,
 
     At each step the fish pauses for a drawn IB_duration_s (the IBI), then
     undergoes a bout of drawn duration Delta_t_s during which its position
-    changes by (Delta_r_mm, Delta_theta).  This repeats until elapsed time
+    changes by (Delta_r_mm, Delta_gamma).  This repeats until elapsed time
     exceeds T_total_s.
 
     Radial boundary conditions: r < 0 is reflected through the origin (r → -r,
-    theta → theta + pi); r > arena_radius_mm is reflected at the wall
+    gamma → gamma + pi); r > arena_radius_mm is reflected at the wall
     (r → 2*arena_radius - r).
 
     Inputs
@@ -417,7 +417,7 @@ def sim_sampled_random_walk(radial_bins, arena_radius_mm, r_init=None,
     r_init : float or None; initial radial position (mm).  If None, drawn
              from a uniform distribution over the arena disk:
              r = arena_radius_mm * sqrt(U(0,1))
-    theta_init : float or None; initial polar angle (rad).  If None, drawn
+    gamma_init : float or None; initial polar angle (rad).  If None, drawn
                  uniformly from [0, 2*pi).
     T_total_s : float, minimum total simulation time in seconds (default 600)
     plot_positions : bool, if True scatter-plot all simulated positions with
@@ -427,7 +427,7 @@ def sim_sampled_random_walk(radial_bins, arena_radius_mm, r_init=None,
     Returns
     -------
     r_sim : 1D numpy array of radial positions at the start of each IBI (mm)
-    theta_sim : 1D numpy array of polar angles at the start of each IBI (rad)
+    gamma_sim : 1D numpy array of polar angles at the start of each IBI (rad)
     t_sim : 1D numpy array of elapsed times at the start of each IBI (s)
     """
     if rng is None:
@@ -438,13 +438,13 @@ def sim_sampled_random_walk(radial_bins, arena_radius_mm, r_init=None,
         r = arena_radius_mm * np.sqrt(rng.uniform())
     else:
         r = float(r_init)
-    if theta_init is None:
-        theta = rng.uniform(0.0, 2.0 * np.pi)
+    if gamma_init is None:
+        gamma = rng.uniform(0.0, 2.0 * np.pi)
     else:
-        theta = float(theta_init)
+        gamma = float(gamma_init)
 
     r_list = [r]
-    theta_list = [theta]
+    gamma_list = [gamma]
     t_list = [0.0]
     t = 0.0
 
@@ -454,33 +454,33 @@ def sim_sampled_random_walk(radial_bins, arena_radius_mm, r_init=None,
         t += sample["IB_duration_s"] + sample["Delta_t_s"]
 
         r_new = r + sample["Delta_r_mm"]
-        theta_new = theta + sample["Delta_theta"]
+        gamma_new = gamma + sample["Delta_gamma"]
 
         # Reflect through origin if r goes negative
         if r_new < 0.0:
             r_new = -r_new
-            theta_new = theta_new + np.pi
+            gamma_new = gamma_new + np.pi
         # Reflect at arena wall if r exceeds arena radius
         if r_new > arena_radius_mm:
             r_new = 2.0 * arena_radius_mm - r_new
         # Clamp to [0, arena_radius_mm] in case of extreme overshooting
         r_new = float(np.clip(r_new, 0.0, arena_radius_mm))
-        # Wrap theta to [-pi, pi]
-        theta_new = (theta_new + np.pi) % (2.0 * np.pi) - np.pi
+        # Wrap gamma to [-pi, pi]
+        gamma_new = (gamma_new + np.pi) % (2.0 * np.pi) - np.pi
 
         r = r_new
-        theta = theta_new
+        gamma = gamma_new
         r_list.append(r)
-        theta_list.append(theta)
+        gamma_list.append(gamma)
         t_list.append(t)
 
     r_sim = np.array(r_list)
-    theta_sim = np.array(theta_list)
+    gamma_sim = np.array(gamma_list)
     t_sim = np.array(t_list)
 
     if plot_positions:
-        x_sim = r_sim * np.cos(theta_sim)
-        y_sim = r_sim * np.sin(theta_sim)
+        x_sim = r_sim * np.cos(gamma_sim)
+        y_sim = r_sim * np.sin(gamma_sim)
 
         fig = plt.figure(figsize=(10, 6))
 
@@ -502,7 +502,7 @@ def sim_sampled_random_walk(radial_bins, arena_radius_mm, r_init=None,
         # Polar histogram plot of angles
         num_bins = 90
         bins = np.linspace(-np.pi, np.pi, num_bins + 1)
-        counts, bin_edges = np.histogram(theta_sim, bins=bins)
+        counts, bin_edges = np.histogram(gamma_sim, bins=bins)
         widths = 2*np.pi/num_bins
         bin_centers = bin_edges[:-1] + widths / 2
         ax2 = fig.add_subplot(122, projection='polar')
@@ -520,7 +520,7 @@ def sim_sampled_random_walk(radial_bins, arena_radius_mm, r_init=None,
         plt.tight_layout()
         plt.show(block=False)
 
-    return r_sim, theta_sim, t_sim
+    return r_sim, gamma_sim, t_sim
 
 
 def load_interbout_CSV(filename=None):
@@ -543,8 +543,8 @@ def load_interbout_CSV(filename=None):
             'CSV filename to load (default: "interbout_properties.csv"): ').strip()
         filename = user_input if user_input else "interbout_properties.csv"
 
-    float_keys = ["r_mm_mean", "theta_mean", "r_mm_std", "theta_std",
-                  "Delta_r_mm", "Delta_theta", "Delta_t_s", "IB_duration_s"]
+    float_keys = ["r_mm_mean", "gamma_mean", "r_mm_std", "gamma_std",
+                  "Delta_r_mm", "Delta_gamma", "Delta_t_s", "IB_duration_s"]
 
     all_results = []
     with open(filename, 'r', newline='') as f:
@@ -555,8 +555,8 @@ def load_interbout_CSV(filename=None):
                 entry[key] = float(row[key])
             all_results.append(entry)
 
-    property_keys = ["r_mm_mean", "theta_mean", "r_mm_std", "theta_std",
-                     "Delta_r_mm", "Delta_theta", "Delta_t_s", "IB_duration_s"]
+    property_keys = ["r_mm_mean", "gamma_mean", "r_mm_std", "gamma_std",
+                     "Delta_r_mm", "Delta_gamma", "Delta_t_s", "IB_duration_s"]
     pooled_IB_properties = {
         key: np.array([row[key] for row in all_results])
         for key in property_keys
@@ -625,7 +625,7 @@ def main():
         pooled_IB_properties, arena_radius_mm, bin_size_mm=1.0)
     plot_radial_bin_occupancy(radial_bins, bin_edges)
 
-    r_sim, theta_sim, t_sim = \
+    r_sim, gamma_sim, t_sim = \
         sim_sampled_random_walk(radial_bins, arena_radius_mm, T_total_s=600.0,
                                 plot_positions=True, rng=None)
     print(f'Simulated time: {t_sim[-1]:.1f} s')
