@@ -551,7 +551,7 @@ def make_pair_fish_plots(datasets, exptName = '',
     xlabelStr = 'Head-Head Distance (mm)'
     ylabelStr = 'Relative Orientation (rad)'
     colorRange = (constraintRange[0], 40.0)
-    hist_speed, X, Y, hist_speed_sem = make_2D_histogram(
+    hist_speed, X, Y, hist_speed_sem, _ = make_2D_histogram(
         datasets,
         keyNames = keyNames, keyIdx = keyIdx, use_abs_value = use_abs_value,
         keyNameC = keyNameC, keyIdxC =keyIdxC, 
@@ -887,7 +887,7 @@ def make_bending_angle_plots(datasets, exptName = '', distance_type = None,
     use_abs_value = (False, False)
     titleStr = f'{exptName}: Bend Angle; unc. < {mask_by_sem_limit_degrees:.1f} deg'
     # Save the output 2D histograms, for use later.
-    bend_2Dhist_mean, X, Y, bend_2Dhist_sem = make_2D_histogram(
+    bend_2Dhist_mean, X, Y, bend_2Dhist_sem, _ = make_2D_histogram(
         datasets,
         keyNames = ('relative_orientation', f'{distance_type}_mm'),
         keyIdx = (None, None), 
@@ -1032,7 +1032,7 @@ def make_bending_angle_plots(datasets, exptName = '', distance_type = None,
         use_abs_value = (False, False)
         titleStr = f'{exptName}: Bend Angle >{bending_threshold_deg:.0f}deg; unc. < {mask_by_sem_limit_degrees:.1f}deg'
         # Save the output 2D histograms, for use later.
-        bend_2Dhist_mean, X, Y, bend_2Dhist_sem = make_2D_histogram(
+        bend_2Dhist_mean, X, Y, bend_2Dhist_sem, _ = make_2D_histogram(
             datasets,
             keyNames = ('relative_orientation', f'{distance_type}_mm'),
             keyIdx = (None, None), 
@@ -1157,7 +1157,7 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
     use_abs_value = (False, False)
     titleStr = f'{exptName}: Turn Angle; unc. < {mask_by_sem_limit_degrees:.1f} deg'
     # Save the output 2D histograms, for use later.
-    turn_2Dhist_mean, X, Y, turn_2Dhist_sem = make_2D_histogram(
+    turn_2Dhist_mean, X, Y, turn_2Dhist_sem, _ = make_2D_histogram(
         datasets,
         keyNames = ('relative_orientation', f'{distance_type}_mm'),
         keyIdx = (None, None), 
@@ -1307,7 +1307,7 @@ def make_turning_angle_plots(datasets, exptName = '', distance_type = None,
         use_abs_value = (False, False)
         titleStr = f'{exptName}: Turn Angle >{turning_threshold_deg:.0f}deg; unc. < {mask_by_sem_limit_degrees:.1f}deg'
         # Save the output 2D histograms, for use later.
-        turn_2Dhist_mean, X, Y, turn_2Dhist_sem = make_2D_histogram(
+        turn_2Dhist_mean, X, Y, turn_2Dhist_se, _ = make_2D_histogram(
             datasets,
             keyNames = ('relative_orientation', f'{distance_type}_mm'),
             keyIdx = (None, None), 
@@ -1372,7 +1372,7 @@ def make_relative_orientation_plots(datasets, exptName = '',
     Outputs:
         saved_pair_outputs : list, containing
             0 : relOrient_2Dhist_mean, mean 2D relative orientation histogram
-            1 : relOrient_2Dhist_std, std dev for 2D relative orientation histogram
+            1 : relOrient_2Dhist_sem, s.e.m. for 2D relative orientation histogram
             2: bin positions ("X") for distance for 2D relative orientation histogram
             3: bin positions ("Y") for relative orientation for 2D relative orientation histogram
 
@@ -1433,7 +1433,7 @@ def make_relative_orientation_plots(datasets, exptName = '',
     titleStr = f'{exptName}: Relative Orientation'
     # Save the output 2D histograms, for use later.
     # use heatmap as plot type; for 2D histogram slicing along Y is not helpful
-    relOrient_2Dhist_mean, X, Y, relOrient_2Dhist_std = make_2D_histogram(
+    relOrient_2Dhist_mean, X, Y, relOrient_2Dhist_sem, _ = make_2D_histogram(
         datasets, 
         keyNames = ('relative_orientation', distanceKey), 
         keyIdx = (None, None), 
@@ -1454,7 +1454,7 @@ def make_relative_orientation_plots(datasets, exptName = '',
         closeFigure = closeFigures)
 
     saved_pair_outputs.append(relOrient_2Dhist_mean)
-    saved_pair_outputs.append(relOrient_2Dhist_std)
+    saved_pair_outputs.append(relOrient_2Dhist_sem)
     saved_pair_outputs.append(X)
     saved_pair_outputs.append(Y)
 
@@ -1473,7 +1473,7 @@ def make_relative_orientation_plots(datasets, exptName = '',
         xlim = (-np.pi, np.pi)
         zlim = (0.0, 0.02)
         color = color
-        slice_2D_histogram(relOrient_2Dhist_mean, X, Y, relOrient_2Dhist_std, 
+        slice_2D_histogram(relOrient_2Dhist_mean, X, Y, relOrient_2Dhist_sem, 
                         slice_axis = 'x', other_range = d_range, 
                         titleStr = titleStr, xlabelStr = xlabelStr, 
                         zlabelStr = zlabelStr,
@@ -1498,7 +1498,7 @@ def make_relative_orientation_plots(datasets, exptName = '',
         xlim = (-np.pi, np.pi)
         zlim = (0.0, 0.02)
         color = color
-        slice_2D_histogram(relOrient_2Dhist_mean, X, Y, relOrient_2Dhist_std, 
+        slice_2D_histogram(relOrient_2Dhist_mean, X, Y, relOrient_2Dhist_sem, 
                         slice_axis = 'x', other_range = d_range, 
                         titleStr = titleStr, xlabelStr = xlabelStr, 
                         zlabelStr = zlabelStr,
@@ -1776,6 +1776,8 @@ def make_2D_histogram(datasets,
         X, Y : 2D array of X, Y values from meshgrid
         hist_sem : 2D array, std error of the mean in each bin if keyNameC
                    is used; else None
+        hist_std : 2D array, std deviation in each bin if keyNameC
+                   is used; else None
     """
     if len(keyNames) != 2:
         raise ValueError("There must be two keys for the 2D histogram!") 
@@ -1969,7 +1971,7 @@ def make_2D_histogram(datasets,
                        outputFileName=outputFileName, closeFigure=closeFigure)
 
         
-    return hist, X, Y, hist_sem
+    return hist, X, Y, hist_sem, hist_std
 
 
 def slice_2D_histogram(z_mean, X, Y, z_unc, slice_axis='x', other_range=None, 
