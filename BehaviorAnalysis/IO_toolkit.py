@@ -2384,9 +2384,9 @@ def plot_probability_distr(x_list, bin_width=1.0, bin_range=[None, None],
     plt.yscale(yScaleType)
     plt.tick_params(axis='both', which='major', labelsize=12)
     # plt.legend()
-    plt.show()
     if outputFileName != None:
         plt.savefig(outputFileName, bbox_inches='tight')
+    plt.show()
 
     if closeFigure:
         print(f'Closing figure {titleStr}')

@@ -349,7 +349,7 @@ def main():
     elif which_turning_plot == 'inter_bout':
         for_interbout_turning_angle_plots(
             all_expts, distance_type, comparisons,
-            Nbins=(11, 13), cmap=cmap, plot_type=plot_type,
+            Nbins=(15, 19), cmap=cmap, plot_type=plot_type,
             mask_by_sem_limit_degrees=mask_by_sem_limit_degrees,
             colorRange=colorRange,
             xlabelStr=xlabelStr, outputExtension=outputExtension)
