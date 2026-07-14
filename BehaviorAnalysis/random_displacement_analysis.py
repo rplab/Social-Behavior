@@ -33,6 +33,9 @@ See Simulating Zebrafish Trajectories.docx
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import csv
+from pathlib import Path
+
 # Note: calls from IO_toolkit import load_and_assign_from_pickle only if needed
 from behavior_plots import (make_interbout_turning_angle_plots, bin_and_plot_2D,
                             plot_interbout_histogram)
@@ -330,6 +333,17 @@ def _pool_experimental_r(datasets):
     the arena and otherwise leak into the p(r) overlay). Returns an empty array if
     no dataset carries it.
     """
+    vals = _pool_experimental_r_by_dataset(datasets)
+    return np.concatenate(vals) if vals else np.array([])
+
+
+def _pool_experimental_r_by_dataset(datasets):
+    """
+    Like _pool_experimental_r, but return a LIST of per-dataset 1D radial-position
+    arrays (one finite, good-frame array of "radial_position_mm" per dataset) rather
+    than a single concatenated array. Used for the across-dataset s.e.m. band in
+    plot_experimental_vs_sim_r. Datasets lacking the field are skipped.
+    """
     vals = []
     for ds in datasets:
         d = np.asarray(ds.get("radial_position_mm", []), dtype=float)
@@ -342,7 +356,7 @@ def _pool_experimental_r(datasets):
         d = d[np.isfinite(d)]
         if d.size:
             vals.append(d)
-    return np.concatenate(vals) if vals else np.array([])
+    return vals
 
 
 def _density_and_sem(arrays, edges):
@@ -368,6 +382,39 @@ def _density_and_sem(arrays, edges):
                              for a in arrays]) if len(arrays) else np.array([])
     pooled = pooled[np.isfinite(pooled)]
     pooled_density, _ = np.histogram(pooled, bins=edges, density=True)
+    if len(per_rep) >= 2:
+        stack = np.vstack(per_rep)
+        sem = np.std(stack, axis=0) / np.sqrt(stack.shape[0])
+    else:
+        sem = None
+    return pooled_density, sem
+
+
+def _areal_density_and_sem(arrays, edges, centers, bin_width):
+    """
+    Areal (1/r-normalized) analogue of _density_and_sem for radial p(r): each
+    replicate's histogram is divided by the bin-center r and scaled to unit area,
+    then the mean (over the POOLED samples) and the across-replicate s.e.m.
+    (std(per-replicate areal densities) / sqrt(Nrep)) are returned. Returns
+    (pooled_density, None) if fewer than 2 non-empty replicates are available.
+    """
+    def _areal(x):
+        h, _ = np.histogram(x, bins=edges)
+        d = h / centers
+        area = np.sum(d) * bin_width
+        return d / area if area > 0 else d
+
+    per_rep = []
+    for a in arrays:
+        a = np.asarray(a, dtype=float).ravel()
+        a = a[np.isfinite(a)]
+        if a.size == 0:
+            continue
+        per_rep.append(_areal(a))
+    pooled = np.concatenate([np.asarray(a, dtype=float).ravel()
+                             for a in arrays]) if len(arrays) else np.array([])
+    pooled = pooled[np.isfinite(pooled)]
+    pooled_density = _areal(pooled) if pooled.size else np.zeros_like(centers)
     if len(per_rep) >= 2:
         stack = np.vstack(per_rep)
         sem = np.std(stack, axis=0) / np.sqrt(stack.shape[0])
@@ -416,8 +463,10 @@ def plot_experimental_vs_sim_dHH(exp_dHH, dHH_list, social_method='',
 
     Returns
     -------
-    centers, exp_density, sim_density : 1D arrays (bin centers and the two
-        normalized histograms), or (None, None, None) if no experimental dHH is
+    centers, exp_density, exp_density_sem, sim_density, sim_density_sem : 
+        1D arrays (bin centers, the two normalized histograms, and the standard
+        error of the mean for each histogram), 
+        or (None, None, None, None, None) if no experimental dHH is
         available.
     """
     exp_dHH = np.asarray(exp_dHH, dtype=float).ravel()
@@ -425,7 +474,7 @@ def plot_experimental_vs_sim_dHH(exp_dHH, dHH_list, social_method='',
     if exp_dHH.size == 0:
         print('\nplot_experimental_vs_sim_dHH: empty experimental dHH; '
               'skipping overlay.')
-        return None, None, None
+        return None, None, None, None, None
 
     sim_dHH = np.concatenate([np.asarray(a, dtype=float).ravel()
                               for a in dHH_list]) if len(dHH_list) else np.array([])
@@ -479,7 +528,7 @@ def plot_experimental_vs_sim_dHH(exp_dHH, dHH_list, social_method='',
     if closeFigure:
         plt.close(fig)
 
-    return centers, exp_density, sim_density
+    return centers, exp_density, exp_sem, sim_density, sim_sem
 
 
 def _circulation_drift_one_dataset(r_mm, gamma_rad, good, fps, edges, n_shift,
@@ -4820,6 +4869,8 @@ def _specular_reflect_circle(r_new, gamma_new, r_prev, gamma_prev,
 
 def plot_experimental_vs_sim_r(exp_r, r_list, social_method='',
                                bin_width_mm=0.5, r_max_mm=None,
+                               exp_r_list=None,
+                               exp_color='black', sim_color='darkorange',
                                outputFileName='compare_r_exp_vs_sim.png',
                                closeFigure=False):
     """
@@ -4827,7 +4878,10 @@ def plot_experimental_vs_sim_r(exp_r, r_list, social_method='',
     on the EXPERIMENTAL one, as 1/r-normalized areal densities, for a direct visual
     comparison of how well the simulation reproduces the radial occupancy (edge-
     dwelling / thigmotaxis). The radial-position analogue of
-    plot_experimental_vs_sim_dHH().
+    plot_experimental_vs_sim_dHH(). Each curve carries a semi-transparent +/- s.e.m.
+    band: for the simulation the s.e.m. is taken across trials (r_list); for the
+    experiment it is taken across datasets when exp_r_list is supplied (else no
+    experimental band is drawn).
 
     The 1/r (areal) normalization matters: in a uniform disk the raw radial
     histogram grows linearly with r simply because there is more area at larger r,
@@ -4844,26 +4898,33 @@ def plot_experimental_vs_sim_r(exp_r, r_list, social_method='',
     Inputs
     ------
     exp_r : 1D array of experimental frame-level radial position (mm).
-    r_list : list of 1D arrays of simulated radial position (mm).
+    r_list : list of 1D arrays of simulated radial position (mm), one per trial (the
+        across-trial spread gives the simulated s.e.m. band).
     social_method : label for the legend / title (e.g. the social_method used).
     bin_width_mm : histogram bin width (mm).
     r_max_mm : upper edge of the histogram (mm); None -> derived from the data
         (max observed r, rounded up to a bin edge).
+    exp_r_list : optional list of per-dataset 1D experimental r arrays (e.g. from
+        _pool_experimental_r_by_dataset). When given (>=2 datasets), the experimental
+        s.e.m. band is the across-dataset standard error. None -> no experimental band.
+    exp_color : color of the experimental curve/band (default 'black').
+    sim_color : color of the simulated curve/band (default 'darkorange').
     outputFileName : figure filename; None to skip saving.
     closeFigure : if True, close the figure after creating it.
 
     Returns
     -------
-    centers, exp_density, sim_density : 1D arrays (bin centers and the two
-        1/r-normalized histograms), or (None, None, None) if no experimental r is
-        available.
+    centers, exp_density, exp_density_sem, sim_density, sim_density_sem : 1D arrays
+        (bin centers, the two 1/r-normalized histograms, and the across-replicate
+        standard error of the mean for each), or (None, None, None, None, None) if
+        no experimental r is available.
     """
     exp_r = np.asarray(exp_r, dtype=float).ravel()
     exp_r = exp_r[np.isfinite(exp_r)]
     if exp_r.size == 0:
         print('\nplot_experimental_vs_sim_r: empty experimental r; '
               'skipping overlay.')
-        return None, None, None
+        return None, None, None, None, None
 
     sim_r = np.concatenate([np.asarray(a, dtype=float).ravel()
                             for a in r_list]) if len(r_list) else np.array([])
@@ -4877,17 +4938,17 @@ def plot_experimental_vs_sim_r(exp_r, r_list, social_method='',
     edges = np.arange(0.0, r_max_mm + bin_width_mm, bin_width_mm)
     centers = 0.5 * (edges[:-1] + edges[1:])
 
-    def _areal_density(x):
-        # raw histogram divided by bin-center r (areal density), then scaled to
-        # unit area so the two curves are on the same footing.
-        h, _ = np.histogram(x, bins=edges)
-        d = h / centers
-        area = np.sum(d) * bin_width_mm
-        return d / area if area > 0 else d
-
-    exp_density = _areal_density(exp_r)
-    sim_density = (_areal_density(sim_r) if sim_r.size
-                   else np.zeros_like(centers))
+    # Areal (1/r-normalized) densities + across-replicate s.e.m.: experiment across
+    # datasets (if the per-dataset list is supplied), simulation across trials.
+    if exp_r_list:
+        exp_density, exp_sem = _areal_density_and_sem(
+            exp_r_list, edges, centers, bin_width_mm)
+    else:
+        exp_density, _ = _areal_density_and_sem(
+            [exp_r], edges, centers, bin_width_mm)
+        exp_sem = None
+    sim_density, sim_sem = _areal_density_and_sem(
+        list(r_list), edges, centers, bin_width_mm)
 
     def _summary(x):
         x = x[np.isfinite(x)]
@@ -4905,9 +4966,17 @@ def plot_experimental_vs_sim_r(exp_r, r_list, social_method='',
           f'P(r>{0.8*r_max_mm:.0f}mm)={sp:.3f}')
 
     fig = plt.figure(figsize=(9, 5))
-    plt.plot(centers, exp_density, 'k-', lw=2, label='experimental')
-    lbl = 'simulated' + (f' ({social_method})' if social_method else '')
-    plt.plot(centers, sim_density, '-', color='darkorange', lw=2, label=lbl)
+    alpha_sem = 0.3
+    plt.plot(centers, exp_density, '-', color=exp_color, lw=2, label='Experimental')
+    if exp_sem is not None:
+        plt.fill_between(centers, exp_density - exp_sem, exp_density + exp_sem,
+                         color=exp_color, alpha=alpha_sem, linewidth=0)
+    lbl = 'Simulated'  # + (f' ({social_method})' if social_method else '')
+    plt.plot(centers, sim_density, '-', color=sim_color, lw=2, label=lbl)
+    if sim_sem is not None:
+        plt.fill_between(centers, sim_density - sim_sem, sim_density + sim_sem,
+                         color=sim_color, alpha=alpha_sem, linewidth=0)
+    plt.ylim(bottom=0)
     plt.xlabel('radial position r (mm)', fontsize=12)
     plt.ylabel('areal probability density (1/r-normalized)', fontsize=12)
     plt.title('Experimental vs simulated radial position', fontsize=12)
@@ -4920,7 +4989,7 @@ def plot_experimental_vs_sim_r(exp_r, r_list, social_method='',
     if closeFigure:
         plt.close(fig)
 
-    return centers, exp_density, sim_density
+    return centers, exp_density, exp_sem, sim_density, sim_sem
 
 
 def plot_radial_drift_vs_distance(datasets, arena_radius_mm,
@@ -6979,6 +7048,79 @@ def build_phi_dHH_psi_turning_preference(datasets_A, datasets_B, n_psi_bins=6,
             dHH_bins, psi_edges)
 
 
+def append_CSVs(append_p_r_dHH_filename, x, y1, y2, z1, z2,
+                sx, sy1, sy2, sz1, sz2, expCSVstr = ''):
+    """
+    To write p(r) or p(dHH) to a CSV, appending columns to a CSV so we can 
+    collect and compare the results of various run conditions.
+    If append_p_r_dHH_filename is None, the function won't do anything.
+    Checks if append_p_r_dHH_filename.csv exists; create if not.
+
+    Inputs:
+    append_p_r_dHH_filename : None, or string for the output CSV; will append '.csv'
+    x, y1, y2, z1, z2 : 1D numpy arrays, presumaby dHH, p_exp, p_exp_sem,
+                        p_sim, p_sim_sem
+                        "z2" can be None if there's no s.e.m. data
+                        ("y2" can't be None -- maybe should allow this.)
+    sx, sy1, sy2, sz1, sz2 : initial strings for column headers, 
+                 presumably "dHH", "p_exp", "p_exp_sem", "p_sim", "p_sim_sem"
+    expCSVstr : additional string to append to column headers
+
+    """
+    if append_p_r_dHH_filename is None:
+        return
+
+    csvfile = Path(f"{append_p_r_dHH_filename}.csv")
+
+    new_headers = [f"{sx}_{expCSVstr}", 
+               f"{sy1}_{expCSVstr}", f"{sy2}_{expCSVstr}",
+               f"{sz1}_{expCSVstr}"]
+
+    if z2 is not None:
+        new_headers.append(f"{sz2}_{expCSVstr}")
+
+    # Data to append as columns
+    if z2 is None:
+        new_cols = list(zip(x, y1, y2, z1))
+    else:
+        new_cols = list(zip(x, y1, y2, z1, z2))
+    
+    # File doesn't exist yet; create it
+    if not csvfile.exists():
+        with open(csvfile, "w", newline="") as fp:
+            writer = csv.writer(fp)
+            writer.writerow(new_headers)
+            writer.writerows(new_cols)
+        return
+    
+    # Read existing file
+    with open(csvfile, newline="") as fp:
+        rows = list(csv.reader(fp))
+
+    # Check that row counts match
+    n_existing = len(rows) - 1      # exclude header
+    n_new = len(new_cols)
+
+    if n_existing != n_new:
+        raise ValueError(
+            f"Existing CSV has {n_existing} data rows, "
+            f"but new data have length {n_new}."
+            "\nCould modify code to allow this..."
+        )
+
+    # Append headers
+    rows[0].extend(new_headers)
+
+    # Append data columns
+    for row, new_data in zip(rows[1:], new_cols):
+        row.extend(new_data)
+
+    # Rewrite file
+    with open(csvfile, "w", newline="") as fp:
+        writer = csv.writer(fp)
+        writer.writerows(rows)
+
+
 def default_pickle_filename_sets():
     """
     Hardcoded pickle-filename sets for main()'s data-selection menu, so the long
@@ -7055,9 +7197,9 @@ def main():
     pickle_sets = default_pickle_filename_sets()
     useDefaultPickleFilenames = input(
         '\nUse hardcoded pickle filenames for '
-        '\n  (a) Single Light / Pair Light / Pair LightTS0 '
+        '\n  (a) Single Light / Pair Light / [Pair Light TS0 -- not used for paired-single null] '
         '\n  (b) Single Light / Pair Light '
-        '\n  (c) Single Dark / Pair Dark / Pair Dark TS0 '
+        '\n  (c) Single Dark / Pair Dark / [Pair Dark TS0 -- not used for paired-single null] '
         '\n  (d) Single Dark / Pair Dark '
         '\n  (e) Pair Light / Pair LightTS0 '
         '\n  ([anything else]) NOT default /hardcoded'
@@ -7123,7 +7265,7 @@ def main():
     # diagnostics/plots are produced. Only edit values HERE.
     # =====================================================================
     Nbins = (11, 13)        # (n_relorient_bins, n_dHH_bins) for the turn histograms
-    Ntrials = 39            # independent pair simulations
+    Ntrials = 40            # independent pair simulations
     T_total_s = 600.0       # duration of each simulation (s)
 
     # --- social model selection ---
@@ -7306,8 +7448,13 @@ def main():
     # inter-bout interval, not one frame). The cap is an angular RATE so it scales with
     # frame rate; the per-bout threshold is max_bout_turn_angle_rad_s / fps. At fps = 25
     # the default 22.5*pi rad/s rejects |Delta_theta| > 0.9*pi. None -> off.
+    # Recommended: Keep as None, since this has negligible effect (probably 
+    #              redundant with max bout speed), and None is simple.
+    # NOTE: fps is hard-coded -- change if using different fps.
     fps = 25.0
-    max_bout_turn_angle_rad_s = None #22.5 * np.pi
+    max_bout_turn_angle_rad_s = None # 22.5 * np.pi ; negligible effect
+    if max_bout_turn_angle_rad_s is not None:
+        print('\n\nNOTE: max_bout_turn_angle_rad_s setting does not check fps; hard-coded.') 
     # Diagnostic only: plot the within-condition turn spread resolved by BOTH dHH and
     # relative orientation phi (axial vs lateral neighbour bearing), to check whether
     # the focus (turn-narrowing) is phi-gated -- i.e. whether the fish narrows its
@@ -7392,14 +7539,20 @@ def main():
     # test whether the frozen-step representation biases p(dHH). See interpolate_pair_rsim.
     sim_interp_method = 'nearest'
 
+    # Color for p(dHH) and p(r) simulation plots
+    sim_color = 'darkorange' # darkorange, cornflowerblue (dark), crimson (test)
+
+    # For appending writing p(r) and p(dHH) to (separate) CSV files
+    append_p_r_dHH_filename = None #'exp_and_sim' # use None to avoid CSV writing
+    expCSVstr = 'x' # additional string for headers; '' to ignore
+
     # For adding an extra string to output filenames
-    # extraString = f'SPP_Light_r_psi_TEST' # '' for nothing
+    # extraString = '' # for nothing
     # extraString = f'SPP_Light_r_psi_dHH_threshold_{dHH_threshold:.0f}_kfocus_BINARY{k_focus_floor:.1f}' # '' for nothing
-    # extraString = 'SPP_cond_all_Light_KIN_dHH'
-    extraString = f'SPP_Light_mean_{social_track_mean}_' + \
+    extraString = f'SP_Light_mean_{social_track_mean}_' + \
         f'spread_{social_track_spread}_' + \
-        f'target_{social_track_target}_Cond_ds{condition_by_dHH_delta_s}_' + \
-        f'Cond_dt{condition_by_dHH_delta_t}_Cond_IBD{condition_by_dHH_IB_duration}_SimS2'
+        f'target_{social_track_target}_Cond_ds_{condition_by_dHH_delta_s}_' + \
+        f'dt_{condition_by_dHH_delta_t}_IBD_{condition_by_dHH_IB_duration}'
 
     # =====================================================================
     # END RUN CONFIG
@@ -7860,11 +8013,19 @@ def main():
                 print(f'\n[dHH overlay] could not load per-dataset experimental '
                       f'dHH for the s.e.m. band ({_e}); drawing curve without band.')
                 exp_dHH_by_ds = None
+        centers, exp_density, exp_sem, sim_density, sim_sem = \
         plot_experimental_vs_sim_dHH(
             exp_dHH_values, dHH_list, social_method=social_method,
             exp_dHH_list=exp_dHH_by_ds,
+            sim_color = sim_color,
             outputFileName=f'compare_dHH_exp_vs_sim_{social_method}_'
                            f'{extraString}.png')
+        # Write to CSV (append)
+        if append_p_r_dHH_filename is not None:
+            append_CSVs(f'{append_p_r_dHH_filename}_pdHH',
+                        centers, exp_density, exp_sem, sim_density, sim_sem,
+                        "dHH", "pd_exp", "pd_exp_sem", "pd_sim", "pd_sim_sem",
+                        expCSVstr = expCSVstr)
     elif plot_exp_vs_sim_dHH:
         print('\nSkipping experimental-vs-simulated dHH overlay (no experimental '
               'head_head_distance_mm available from the pair data; choose the '
@@ -8032,15 +8193,37 @@ def main():
     # dataset, the radial analogue of the dHH overlay above. exp_r_values is empty
     # for non-pair / CSV-loaded data, in which case the overlay is skipped.
     if exp_r_values is not None and np.asarray(exp_r_values).size > 0:
+        # Per-dataset experimental r (the minuend A pair data that produced the pooled
+        # exp_r_values) for the across-dataset s.e.m. band. Reload the minuend pickle
+        # if available; else pass None (no experimental band).
+        exp_r_by_ds = None
+        pA_r = defaultPickleFileNames.get("pairstats_2")
+        if pA_r is not None:
+            try:
+                from IO_toolkit import load_dict_from_pickle
+                _ds_A_r = load_dict_from_pickle(pA_r)['datasets']
+                exp_r_by_ds = _pool_experimental_r_by_dataset(_ds_A_r)
+            except Exception as _e:
+                print(f'\n[p(r) overlay] could not load per-dataset experimental r '
+                      f'for the s.e.m. band ({_e}); drawing curve without band.')
+                exp_r_by_ds = None
         # r_max_mm=None lets the axis span the full observed range, so any
         # experimental r beyond the (single-fish-derived) arena_radius_mm -- e.g. a
         # different pair-arena radius or tracking outliers -- is visible rather than
         # silently clipped.
-        plot_experimental_vs_sim_r(
-            exp_r_values, r_list_pair, social_method=social_method,
-            r_max_mm=None,
-            outputFileName=f'compare_r_exp_vs_sim_{social_method}_'
-                           f'{Ntrials}trials_{extraString}.png')
+        centers, exp_density, exp_sem, sim_density, sim_sem = \
+            plot_experimental_vs_sim_r(
+                exp_r_values, r_list_pair, social_method=social_method,
+                r_max_mm=None, exp_r_list=exp_r_by_ds,
+                sim_color = sim_color,
+                outputFileName=f'compare_r_exp_vs_sim_{social_method}_'
+                            f'{Ntrials}trials_{extraString}.png')
+        # Write to CSV (append)
+        if append_p_r_dHH_filename is not None:
+            append_CSVs(f'{append_p_r_dHH_filename}_pr',
+                        centers, exp_density, exp_sem, sim_density, sim_sem,
+                        "dHH", "pr_exp", "pr_exp_sem", "pr_sim", "pr_sim_sem",
+                        expCSVstr = expCSVstr)
     else:
         print('\nSkipping experimental-vs-simulated p(r) overlay (no experimental '
               'radial_position_mm available; choose the pickle option (p) when '
