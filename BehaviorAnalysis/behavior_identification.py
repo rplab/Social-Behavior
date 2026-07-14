@@ -25,7 +25,7 @@ from toolkit import wrap_to_pi, combine_all_values_constrained, \
     calculate_value_corr_all,  make_frames_dictionary, \
     remove_frames, combine_events, calculate_value_corr_all_binned, \
     dilate_frames, get_values_subset, repair_heading_angles
-from IO_toolkit import plot_2D_heatmap, plot_2Darray_linePlots
+from IO_toolkit import plot_2D_heatmap, plot_2Darray_linePlots, simple_write_CSV
 from behavior_identification_single import calc_bend_angle
 from scipy.stats import skew
 import itertools

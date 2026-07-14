@@ -19,10 +19,8 @@ Lots of code from Claude (mostly Sonnet 4.6 and Fable 5)
 
 """
 
-import csv
 import os
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 # Note: calls from IO_toolkit import load_and_assign_from_pickle only if needed
 from behavior_plots import (make_interbout_turning_angle_plots, bin_and_plot_2D,
@@ -172,7 +170,7 @@ def experimental_outgoing_psi(pooled_IB_properties):
 
 
 def run_psi_model_walk(radial_bins, radial_psi_bins, arena_radius_mm, bin_edges,
-                       angle_type='Delta_theta', edgeMethod='reflection',
+                       edgeMethod='reflection',
                        Ntrials=20, T_total_s=600.0, seed=1):
     """
     Run the (r, psi) wall-conditioned single-fish walk (the current model) over
@@ -187,7 +185,7 @@ def run_psi_model_walk(radial_bins, radial_psi_bins, arena_radius_mm, bin_edges,
     for _ in range(Ntrials):
         r_sim, gamma_sim, _t = sim_sampled_random_walk(
             radial_bins, arena_radius_mm, T_total_s=T_total_s,
-            angle_type=angle_type, radial_psi_bins=radial_psi_bins,
+            radial_psi_bins=radial_psi_bins,
             edgeMethod=edgeMethod, rng=rng)
         r_pool.append(r_sim)
         _a, _b, c, d = binned_alignment_from_trajectory(r_sim, gamma_sim, bin_edges)
@@ -321,7 +319,6 @@ def main():
   output_base = 'single_fish_sim'
 
   # ---- Parameters ----
-  angle_type = 'Delta_theta'   # 'Delta_theta' or 'turning_angle_IBI'
   edgeMethod = 'reflection'    # best-fitting outer-wall handling (see summary)
   n_psi_bins = 12              # psi (wall-orientation) bins for the (r, psi) model
   Ntrials = 20                 # independent walks pooled
@@ -334,10 +331,10 @@ def main():
   # and (r, psi) wall-conditioned (the model).
   print('\nBuilding radial bin distributions...')
   radial_bins, bin_edges = build_radial_bin_distributions(
-      pooled_IB_properties, arena_radius_mm, bin_size_mm=1.0, delta_s_mm_min=0.0)
+      pooled_IB_properties, arena_radius_mm, bin_size_mm=1.0)
   radial_psi_bins = build_radial_psi_bin_distributions(
       pooled_IB_properties, arena_radius_mm, bin_size_mm=1.0,
-      n_psi_bins=n_psi_bins, delta_s_mm_min=0.0)
+      n_psi_bins=n_psi_bins)
 
   r_exp = np.asarray(pooled_IB_properties["r_mm_mean"], dtype=float)
   r_exp = r_exp[np.isfinite(r_exp)]
@@ -349,7 +346,7 @@ def main():
   # ---- The (r, psi) wall-conditioned model vs experiment ----
   psi_walk = run_psi_model_walk(
       radial_bins, radial_psi_bins, arena_radius_mm, bin_edges,
-      angle_type=angle_type, edgeMethod=edgeMethod,
+      edgeMethod=edgeMethod,
       Ntrials=Ntrials, T_total_s=T_total_s, seed=seed)
   plot_psi_model_pr_alignment(radial_bins, bin_edges, arena_radius_mm,
                               r_exp, psi_walk, output_base)

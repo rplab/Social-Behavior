@@ -3,7 +3,8 @@
 #%%
 import numpy as np
 
-#%%
+#%% Head-Head distance probability distribution
+
 import matplotlib.pyplot as plt
 
 from behavior_plots import make_pair_fish_plots
@@ -13,15 +14,24 @@ from toolkit import combine_all_values_constrained
 
 plt.ion() 
 
-_ = input('Press Enter. ')
+mainPathName = r"C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs"
 
-all_position_data, variable_tuple = load_and_assign_from_pickle()
+# Pairs light
+pickleFileName1=r"C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - Sept2025 control pairs in dark vs light New Tracking\Light_Cond_2\TwoWk_Sept2025_Light_Cond_2_positionData.pickle"
+pickleFileName2=r"C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - Sept2025 control pairs in dark vs light New Tracking\Light_Cond_2\TwoWk_Sept2025_Light_Cond_2_Analysis\TwoWk_Sept2025_Light_Cond_2_datasets.pickle"
+
+# pairs dark
+#pickleFileName1 = os.path.join(mainPathName, r"2 week old - Sept2025 control pairs in dark vs light New Tracking\Dark_Cond_1\TwoWk_Sept2025_Dark_Cond_1_positionData.pickle")
+#pickleFileName2 = os.path.join(mainPathName, r"2 week old - Sept2025 control pairs in dark vs light New Tracking\Dark_Cond_1\TwoWk_Sept2025_Dark_Cond_1_Analysis\TwoWk_Sept2025_Dark_Cond_1_datasets.pickle")
+
+all_position_data, variable_tuple = load_and_assign_from_pickle(pickleFileName1 = pickleFileName1, 
+                pickleFileName2 = pickleFileName2)
 
 (datasets, CSVcolumns, expt_config, params, N_datasets, Nfish, 
  basePath, dataPath, subGroupName) = variable_tuple
 
 outputFileName = 'Pairs_Light_HHDistance.png'
-outputCSVFileName = 'Pairs_Light_distance_head_head.csv'
+outputCSVFileName = None
 closeFigures = False
 color = 'darkorange'
 exptName = 'Pairs_Light'
@@ -54,7 +64,6 @@ from toolkit import combine_all_values_constrained
 
 plt.ion() 
 
-all_position_data, variable_tuple = load_and_assign_from_pickle()
 #pairs light
 pickleFileName1=r"C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - Sept2025 control pairs in dark vs light New Tracking\Light_Cond_2\TwoWk_Sept2025_Light_Cond_2_positionData.pickle"
 pickleFileName2=r"C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - Sept2025 control pairs in dark vs light New Tracking\Light_Cond_2\TwoWk_Sept2025_Light_Cond_2_Analysis\TwoWk_Sept2025_Light_Cond_2_datasets.pickle"
@@ -92,7 +101,7 @@ plot_probability_distr(radial_position_mm_all, bin_width = 0.5,
 plt.ioff()             # turn blocking back on for the final hold
 plt.show()       
 
-# %%
+# %% Revise datasets with IBI properties
 
 import os
 from IO_toolkit import revise_datasets
@@ -127,7 +136,6 @@ revise_datasets(keys_to_modify=["IBI_properties"], pickleFileName1 = pickleFileN
                 writePickleOutput =  True)
 
 print('\nDone')
-# %%
 
 #%% Plot a few inter-bout interval histograms, including Delta_theta
 import matplotlib.pyplot as plt
@@ -219,4 +227,135 @@ plot_probability_distr(radial_position_mm_all, bin_width = 1.0,
 plt.ioff()             # turn blocking back on for the final hold
 plt.show()       
 
+
+#%% Turning angle 2D histogram, and asymmetric sum
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+from behavior_plots import make_pair_fish_plots, \
+    make_interbout_turning_angle_plots
+
+from IO_toolkit import load_and_assign_from_pickle, plot_probability_distr
+from toolkit import combine_all_values_constrained
+
+plt.ion() 
+
+# Pairs light
+pickleFileName1=r"C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - Sept2025 control pairs in dark vs light New Tracking\Light_Cond_2\TwoWk_Sept2025_Light_Cond_2_positionData.pickle"
+pickleFileName2=r"C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - Sept2025 control pairs in dark vs light New Tracking\Light_Cond_2\TwoWk_Sept2025_Light_Cond_2_Analysis\TwoWk_Sept2025_Light_Cond_2_datasets.pickle"
+
+all_position_data, variable_tuple = load_and_assign_from_pickle(pickleFileName1 = pickleFileName1, 
+                pickleFileName2 = pickleFileName2)
+
+(datasets, CSVcolumns, expt_config, params, N_datasets, Nfish, 
+ basePath, dataPath, subGroupName) = variable_tuple
+
+outputFileNameBase = 'Pairs_Light_TurningAngle.png'
+outputCSVFileName = 'Pairs_Light_TurningAngle_AsymmSum.csv'
+closeFigures = False
+color = 'darkorange'
+exptName = 'Pairs_Light'
+
+Nbins = (21, 15) # n_relorient_bins, n_dHH_bins
+arena_radius_mm = 25.0
+build_kinematic_bins = False
+kinematic_r_bin_size_mm = 2.0
+kinematic_dHH_bin_size_mm = 2.0
+
+
+saved_pair_outputs = make_interbout_turning_angle_plots(
+    datasets,
+    exptName='pair_light',
+    angle_type='Delta_theta',   # displacement-direction change (the sim frame)
+    distance_type='head_head_distance',
+    Nbins=Nbins,
+    mask_by_sem_limit_degrees=8.0,
+    colorRange=(-20*np.pi/180.0, 20*np.pi/180.0),
+    cmap='berlin',
+    plot_type_2D='heatmap',
+    outputFileNameBase=outputFileNameBase,
+    closeFigures=True,
+    outputCSVFileName=None)
+turn_2Dhist_mean = saved_pair_outputs[0]
+turn_2Dhist_std = saved_pair_outputs[2]
+rel_orient_bins = saved_pair_outputs[3]
+dHH_bins = saved_pair_outputs[4]
+
+dHH = dHH_bins[0,:]
+relOrient = rel_orient_bins[:,0]
+
+print('Done.')
+print('Shape: ', turn_2Dhist_mean.shape)
+
+# Asymmetric sum
+if len(rel_orient_bins) % 2 == 0:
+    # Verify odd number of relOrient bins
+    raise ValueError('Must have odd number of relative orientation bins, or rewrite code.')
+    turn_sum = None
+else:
+    # subtract second  half from  first half
+    nRO = int((len(relOrient)+1)/2.0)
+    print(nRO)
+    turn_diff = np.zeros((nRO, Nbins[1]), dtype=turn_2Dhist_mean.dtype)
+    firstHalf = turn_2Dhist_mean[:nRO, :]
+    secondHalf = turn_2Dhist_mean[:nRO-1:-1,:]
+    turn_diff[:-1, :] = secondHalf - firstHalf[:-1, :]
+    # center bin zero by definition
+    turn_diff[-1, :] = np.zeros_like(firstHalf[-1,:])
+    turn_sum_relOrient = np.mean(turn_diff[3:8], axis=0)
+    turn_sum_relOrient_sem = np.std(turn_diff[3:8], axis=0)/np.sqrt(nRO)
+
+print('here')
+print(turn_sum_relOrient)
+
+print(dHH.shape)
+print(turn_sum_relOrient.shape)
+
+print('dHH: ')
+print(dHH)
+
+plt.figure()
+plt.imshow(turn_2Dhist_mean, cmap='berlin',
+           vmin=-0.5, vmax=0.5)
+plt.title('Mean turning angle')
+
+plt.figure()
+plt.imshow(turn_diff, cmap='berlin',
+           vmin=-1.0, vmax=1.0)
+
+plt.figure()
+plt.errorbar(dHH, turn_sum_relOrient, yerr=turn_sum_relOrient_sem,  fmt='o',
+             capsize=7, markersize = 14, color = 'dodgerblue', ecolor = 'navy')
+logisticCurve = -0.3 + 0.85/(1 + np.exp((dHH - 30.0)/5.0))
+plt.plot(dHH, logisticCurve, color='darkorange')
+plt.xlabel('Inter-fish distance (mm)', fontsize=12)
+plt.ylabel('Asymm Turning Angle Difference (rad)', fontsize=12)
+
+plt.ioff()             # turn blocking back on for the final hold
+plt.show()       
+
+#%% Poisson
+
+
+
+# %%
+
+import os
+import tifffile as tiff
+
+mainPath = r'C:\Users\raghu\Documents\Experiments and Projects\Light Sheet Microscope\Sheet shifting deconvolution\Sheet shifting decon_test 23Feb2023\slice20'
+filePath = os.path.join(mainPath, 'slice20_MMStack_Pos0.ome.tif')
+
+im = tiff.imread(filePath)
+
+with tiff.TiffFile(filePath) as tif:
+    print(tif.series[0].shape)
+    print(tif.series[0].axes)
+    
+    # Access custom metadata (OME-XML, ImageJ tags, etc.)
+    ome_xml = tif.ome_metadata
+    print(ome_xml)
+
+print(im.shape)
 # %%
