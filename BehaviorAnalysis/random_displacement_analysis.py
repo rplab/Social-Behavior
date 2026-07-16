@@ -3093,6 +3093,7 @@ def phi_resolved_turn_std_vs_distance(datasets_A, dHH_edges=None,
                                       min_cell_N=8, min_delta_s=1.0,
                                       max_bout_speed_mm_s=None,
                                       max_bout_turn_angle_rad_s=None, fps=25.0,
+                                      make_line_plots=False, heatmap_clim=None,
                                       outputFileName='turn_std_phi_dHH.png',
                                       closeFigure=False):
     """
@@ -3112,10 +3113,13 @@ def phi_resolved_turn_std_vs_distance(datasets_A, dHH_edges=None,
     'lateral' is |phi| in [45, 135] deg and 'axial' is the complement.
 
     Inputs mirror compute_within_condition_turn_std (n_phi_bins=8 -> 45-deg phi bins).
-    min_delta_s (mm, default 1.0) drops small, noise-dominated bouts. Produces a
-    2-panel figure: (top) sigma vs dHH for the forward / lateral / behind folded-|phi|
-    groups plus the phi-marginal; (bottom) the full signed sigma(phi, dHH) heatmap
-    (degrees) in 45-deg phi bins.
+    min_delta_s (mm, default 1.0) drops small, noise-dominated bouts. Produces the
+    signed sigma(phi, dHH) heatmap (degrees, 45-deg phi bins) as its OWN figure
+    (saved to outputFileName). If make_line_plots is True, ALSO makes a separate
+    2-panel LINE figure -- (top) sigma vs dHH for the forward / lateral / behind
+    folded-|phi| groups plus the phi-marginal, (middle) the focus factor f -- saved to
+    outputFileName with "_line" inserted before the extension. heatmap_clim = (vmin,
+    vmax) in DEGREES fixes the heatmap colour scale; None -> autoscale.
 
     Returns
     -------
@@ -3262,54 +3266,67 @@ def phi_resolved_turn_std_vs_distance(datasets_A, dHH_edges=None,
               f'{np.degrees(sig_beh[b]):6.1f} | {f_marg[b]:6.2f}')
 
     # ---- plot ----
-    fig, (ax, axf, ax2) = plt.subplots(3, 1, figsize=(8, 13),
-                                       gridspec_kw={'height_ratios':
-                                                    [1.0, 1.0, 1.1]})
     _groups = ((sig_fwd, f_fwd, 'C2', '-s', 'forward (|phi|<45 deg)'),
                (sig_lat, f_lat, 'C0', '-^', 'lateral (45-135 deg)'),
                (sig_beh, f_beh, 'C3', '-v', 'behind (|phi|>135 deg)'))
-    # (top) sigma vs dHH: marginal + groups + the fitted approach curve + sigma_far.
-    m = np.isfinite(sigma)
-    ax.plot(dHH_centers[m], np.degrees(sigma[m]), '-o', color='k',
-            lw=2, label='phi-marginal')
-    for sg, _fg, col, mk, lab in _groups:
-        mm = np.isfinite(sg)
-        ax.plot(dHH_centers[mm], np.degrees(sg[mm]), mk, color=col, label=lab)
-    if fit_popt is not None:
-        _xg = np.linspace(dHH_centers[0], dHH_centers[-1], 200)
-        ax.plot(_xg, np.degrees(_sigma_approach(_xg, *fit_popt)), '--', color='0.5',
-                lw=1.5, label='marginal fit')
-    ax.axhline(np.degrees(sigma_far), color='0.5', ls=':', lw=1.2,
-               label=f'sigma_far = {np.degrees(sigma_far):.0f} deg')
-    ax.set_ylabel('within-condition turn std (deg)')
-    ax.set_title('phi-resolved turn spread vs inter-fish distance (dataset A)')
-    ax.legend(fontsize=8); ax.grid(alpha=0.3)
-    # (middle) focus factor f = sigma / sigma_far.
-    axf.axhline(1.0, color='0.5', ls=':', lw=1.2)
-    mm = np.isfinite(f_marg)
-    axf.plot(dHH_centers[mm], f_marg[mm], '-o', color='k', lw=2,
-             label='phi-marginal')
-    for _sg, fg, col, mk, lab in _groups:
-        mm = np.isfinite(fg)
-        axf.plot(dHH_centers[mm], fg[mm], mk, color=col, label=lab)
-    axf.set_ylabel('focus factor  f = sigma / sigma_far')
-    axf.set_xlabel('inter-fish distance dHH (mm)')
-    axf.legend(fontsize=8); axf.grid(alpha=0.3)
-    # (bottom) full signed sigma(phi, dHH) heatmap.
+    # LINE figure (optional): sigma vs dHH (top) + focus factor f (bottom).
+    if make_line_plots:
+        figL, (ax, axf) = plt.subplots(2, 1, figsize=(8, 9))
+        # (top) sigma vs dHH: marginal + groups + fitted approach curve + sigma_far.
+        m = np.isfinite(sigma)
+        ax.plot(dHH_centers[m], np.degrees(sigma[m]), '-o', color='k',
+                lw=2, label='phi-marginal')
+        for sg, _fg, col, mk, lab in _groups:
+            mm = np.isfinite(sg)
+            ax.plot(dHH_centers[mm], np.degrees(sg[mm]), mk, color=col, label=lab)
+        if fit_popt is not None:
+            _xg = np.linspace(dHH_centers[0], dHH_centers[-1], 200)
+            ax.plot(_xg, np.degrees(_sigma_approach(_xg, *fit_popt)), '--',
+                    color='0.5', lw=1.5, label='marginal fit')
+        ax.axhline(np.degrees(sigma_far), color='0.5', ls=':', lw=1.2,
+                   label=f'sigma_far = {np.degrees(sigma_far):.0f} deg')
+        ax.set_ylabel('within-condition turn std (deg)')
+        ax.set_title('phi-resolved turn spread vs inter-fish distance (dataset A)')
+        ax.legend(fontsize=8); ax.grid(alpha=0.3)
+        # (bottom) focus factor f = sigma / sigma_far.
+        axf.axhline(1.0, color='0.5', ls=':', lw=1.2)
+        mm = np.isfinite(f_marg)
+        axf.plot(dHH_centers[mm], f_marg[mm], '-o', color='k', lw=2,
+                 label='phi-marginal')
+        for _sg, fg, col, mk, lab in _groups:
+            mm = np.isfinite(fg)
+            axf.plot(dHH_centers[mm], fg[mm], mk, color=col, label=lab)
+        axf.set_ylabel('focus factor  f = sigma / sigma_far')
+        axf.set_xlabel('inter-fish distance dHH (mm)')
+        axf.legend(fontsize=8); axf.grid(alpha=0.3)
+        figL.tight_layout()
+        if outputFileName:
+            _base, _ext = os.path.splitext(outputFileName)
+            lineFileName = f'{_base}_line{_ext}'
+            figL.savefig(lineFileName, dpi=150, bbox_inches='tight')
+            print(f'[phi-RESOLVED spread] saved {lineFileName}')
+        if closeFigure:
+            plt.close(figL)
+
+    # HEATMAP figure (own window): full signed sigma(phi, dHH). heatmap_clim=(vmin,
+    # vmax) in DEGREES fixes the colour scale; None -> autoscale.
+    fig2, ax2 = plt.subplots(figsize=(8, 5))
+    _clim = ({} if heatmap_clim is None
+             else {'vmin': heatmap_clim[0], 'vmax': heatmap_clim[1]})
     im = ax2.imshow(np.degrees(sigma_phidHH), origin='lower', aspect='auto',
                     extent=[dHH_edges[0], dHH_edges[-1],
                             np.degrees(phi_edges[0]), np.degrees(phi_edges[-1])],
-                    cmap='viridis')
+                    cmap='viridis', **_clim)
     ax2.set_xlabel('Inter-fish distance dHH (mm)')
     ax2.set_ylabel(r'Relative orientation $\phi$ (deg)')
     ax2.set_yticks([-180, -135, -90, -45, 0, 45, 90, 135, 180])
-    fig.colorbar(im, ax=ax2, label='Turn std (deg)')
-    fig.tight_layout()
+    fig2.colorbar(im, ax=ax2, label='Turn std (deg)')
+    fig2.tight_layout()
     if outputFileName:
-        fig.savefig(outputFileName, dpi=150, bbox_inches='tight')
+        fig2.savefig(outputFileName, dpi=150, bbox_inches='tight')
         print(f'[phi-RESOLVED spread] saved {outputFileName}')
     if closeFigure:
-        plt.close(fig)
+        plt.close(fig2)
 
     return {"dHH_centers": dHH_centers, "phi_centers": phi_centers,
             "phi_edges": phi_edges, "sigma_within_phidHH": sigma_phidHH,
@@ -3318,7 +3335,6 @@ def phi_resolved_turn_std_vs_distance(datasets_A, dHH_edges=None,
             "sigma_behind": sig_beh, "sigma_far": sigma_far, "fit_popt": fit_popt,
             "f_marg": f_marg, "f_forward": f_fwd, "f_lateral": f_lat,
             "f_behind": f_beh}
-
 
 def _relative_orientation_focal(heading, dx, dy):
     """Signed relative orientation phi of a FOCAL fish (body heading `heading`, rad)
@@ -3338,7 +3354,6 @@ def _relative_orientation_focal(heading, dx, dy):
     phi = np.where(cross >= 0.0, -unsigned, unsigned)
     phi = np.where(norm > 0.0, phi, np.nan)
     return phi
-
 
 def build_real_paired_null_bouts(single_fish_datasets, rng, avoid_self=True):
     """Build an ASOCIAL turn-projection null from REAL single-fish data: each focal
@@ -7552,7 +7567,7 @@ def main():
     extraString = f'SP_Light_mean_{social_track_mean}_' + \
         f'spread_{social_track_spread}_' + \
         f'target_{social_track_target}_Cond_ds_{condition_by_dHH_delta_s}_' + \
-        f'dt_{condition_by_dHH_delta_t}_IBD_{condition_by_dHH_IB_duration}'
+        f'dt_{condition_by_dHH_delta_t}_IBD_{condition_by_dHH_IB_duration}_X'
 
     # =====================================================================
     # END RUN CONFIG
