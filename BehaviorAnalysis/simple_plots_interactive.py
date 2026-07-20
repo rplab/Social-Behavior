@@ -358,4 +358,65 @@ with tiff.TiffFile(filePath) as tif:
     print(ome_xml)
 
 print(im.shape)
+# %% Behavior vs distance
+
+# Plot the probability of a an approach (any fish) as a 
+# function of inter-fish distance
+# Decide what inter-fish distance measure you want to use. (Head-head or closest).
+
+from IO_toolkit import load_and_assign_from_pickle, calculate_property_1Dbinned
+from behavior_plots import plot_property_1Dbinned
+
+# Load datasets as usual:
+all_position_data, variable_tuple = load_and_assign_from_pickle()
+# follow the prompts. then
+(datasets, CSVcolumns, expt_config, params, N_datasets, Nfish, 
+ basePath, dataPath, subGroupName) = variable_tuple
+
+# Use calculate_property_1Dbinned() and plot_property_1Dbinned(), 
+# as shown below. 
+# Note the options for outputting a figure (outputFileName) and / or a 
+# CSV file (outputCSVFileName):
+
+keyName = 'Jbend_any'
+binKeyName = 'closest_distance_mm'
+bin_range = (0.0, 50.0)
+Nbins = 20
+titleStr = f'{keyName} probability v distance'
+xlabelStr = 'Closest distance (mm)'
+ylabelStr = f'{keyName} probability'
+binned_mean, bin_centers, binned_mean_each_dataset, binned_mean_each_fish = \
+    calculate_property_1Dbinned(datasets, keyName= keyName, keyIdx='all',
+                                key_is_a_behavior = True, binKeyName=binKeyName,
+                                bin_range=bin_range, Nbins=Nbins,
+                                dilate_minus1= False)
+plot_property_1Dbinned(binned_mean, bin_centers, binned_mean_each_dataset,
+                           plot_each_dataset=True, plot_sem_band=True,
+                           titleStr=titleStr, xlabelStr=xlabelStr, ylabelStr=ylabelStr,
+                           color='black', xlim=None, ylim=None,
+                           unit_scaling_for_plot=None,
+                           outputFileName='J_and_distance.svg', 
+                           closeFigure=False,
+                           outputCSVFileName='J_and_distance.csv')
+
+# %%
+
+from IO_toolkit import load_and_assign_from_pickle, calculate_property_1Dbinned
+from behavior_plots import make_pair_fish_plots
+
+# Load datasets as usual:
+all_position_data, variable_tuple = load_and_assign_from_pickle()
+# follow the prompts. then
+(datasets, CSVcolumns, expt_config, params, N_datasets, Nfish, 
+ basePath, dataPath, subGroupName) = variable_tuple
+
+exptName = 'two_wk_lt_test'
+make_pair_fish_plots(datasets, 
+                        exptName = exptName,
+                        distance_type = 'closest_distance',
+                        color = 'darkorange', 
+                        outputFileNameBase = f'{exptName}_pair_properties', 
+                        outputFileNameExt = 'png',
+                        closeFigures = False,
+                        writeCSVs = False)
 # %%

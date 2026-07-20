@@ -27,9 +27,9 @@ from behavior_plots import (make_interbout_turning_angle_plots, bin_and_plot_2D,
                             plot_interbout_histogram)
 from IO_toolkit import plot_probability_distr, load_and_assign_from_pickle
 
-from random_displacement_analysis import get_InterBout_properties, \
-  build_radial_bin_distributions, sim_sampled_random_walk, \
-  build_radial_psi_bin_distributions
+from IBI_properties_utils import (get_InterBout_properties,
+  build_radial_bin_distributions, build_radial_psi_bin_distributions)
+from random_displacement_analysis import sim_sampled_random_walk
 
 
 def radial_pdf(r, arena_radius_mm, bin_width=0.5):
