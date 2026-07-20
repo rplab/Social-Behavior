@@ -710,3 +710,34 @@ def build_radial_dHH_bin_distributions(datasets, arena_radius_mm,
           f'({n_phi_bins} phi bins; phi-marginal fallback).')
 
     return radial_dHH_bins
+
+
+def _density_and_sem(arrays, edges):
+    """
+    Given a list of 1D sample arrays (one per replicate -- per experimental
+    dataset, or per simulation trial), histogram each on the shared bin `edges`
+    as a normalized density, and return (mean_density, sem_density) where the
+    mean is over the POOLED samples (all arrays concatenated) and the sem is the
+    across-replicate standard error std(per-replicate densities) / sqrt(Nrep)
+    -- the same across-subunit s.e.m. used by the IO_toolkit distribution plots.
+    Returns (pooled_density, None) if fewer than 2 non-empty replicates are
+    available (no meaningful across-replicate spread).
+    """
+    per_rep = []
+    for a in arrays:
+        a = np.asarray(a, dtype=float).ravel()
+        a = a[np.isfinite(a)]
+        if a.size == 0:
+            continue
+        h, _ = np.histogram(a, bins=edges, density=True)
+        per_rep.append(h)
+    pooled = np.concatenate([np.asarray(a, dtype=float).ravel()
+                             for a in arrays]) if len(arrays) else np.array([])
+    pooled = pooled[np.isfinite(pooled)]
+    pooled_density, _ = np.histogram(pooled, bins=edges, density=True)
+    if len(per_rep) >= 2:
+        stack = np.vstack(per_rep)
+        sem = np.std(stack, axis=0) / np.sqrt(stack.shape[0])
+    else:
+        sem = None
+    return pooled_density, sem
