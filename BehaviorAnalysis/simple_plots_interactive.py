@@ -427,7 +427,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from IO_toolkit import load_and_assign_from_pickle
-from behavior_plots import phi_resolved_turn_std_vs_distance
+from IBI_diagnostics import phi_resolved_turn_std_vs_distance
 
 plt.ion() 
 
