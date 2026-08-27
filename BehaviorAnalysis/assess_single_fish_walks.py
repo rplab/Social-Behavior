@@ -208,11 +208,12 @@ def plot_psi_model_pr_alignment(radial_bins, bin_edges, arena_radius_mm,
     target_out = np.array([b["disp_alignment_out_mean"] for b in radial_bins])
     fig, (axa, axb) = plt.subplots(1, 2, figsize=(13, 5))
     rc_e, rd_e = radial_pdf(r_exp, arena_radius_mm)
-    axa.plot(rc_e, rd_e, 'k-', lw=2.5, label='experiment')
+    axa.plot(rc_e, rd_e, 'k-', lw=2.5, label='Experiment')
     rc_p, rd_p = radial_pdf(psi_walk["r"], arena_radius_mm)
     axa.plot(rc_p, rd_p, color='tomato', lw=1.8, label='(r, psi) model')
-    axa.set_xlabel('Radial position r (mm)', fontsize=12)
+    axa.set_xlabel('Radial Position (mm)', fontsize=12)
     axa.set_ylabel('p(r) / r   (areal density, normalized)', fontsize=12)
+    # axa.set_ylabel('Probability density', fontsize=12)
     axa.set_title('Radial occupancy', fontsize=12)
     axa.legend(fontsize=10)
     axb.plot(bin_centers, target_out, 'k-o', lw=2.5, ms=4, label='experiment')
@@ -220,7 +221,7 @@ def plot_psi_model_pr_alignment(radial_bins, bin_edges, arena_radius_mm,
              label='(r, psi) model')
     axb.axhline(2.0/np.pi, linestyle='--', color='gray')
     axb.set_ylim(0, 1)
-    axb.set_xlabel('Radial position r (mm)', fontsize=12)
+    axb.set_xlabel('Radial Position (mm)', fontsize=12)
     axb.set_ylabel('Outgoing wall alignment  |sin(disp. dir. - gamma)|', fontsize=12)
     axb.set_title('Outgoing displacement alignment', fontsize=12)
     axb.legend(fontsize=10)
@@ -302,6 +303,242 @@ def _get_default_pickle_filenames():
 
 
 
+def _remap_bins_for_new_arena(radial_bins, radial_psi_bins, R_old, R_new, r_min):
+    """
+    Build edge-distance-remapped copies of the (r) and (r, psi) step-bin structures
+    for a NEW arena radius R_new, from data collected at R_old. A step at new-arena
+    radius r is drawn from the OLD bin at r_old = r - (R_new - R_old) (SAME distance
+    from the wall). Where r_old < r_min, the old bins with center <= r_min are POOLED
+    PER PSI (the sparse deep interior treated as one 'far from the wall' distribution;
+    r_min never binds when R_new <= R_old). The returned structures are usable by
+    sim_sampled_random_walk with arena_radius_mm=R_new. Step arrays are REFERENCED
+    (not copied) where an old bin maps 1:1; pooled-interior arrays are concatenated
+    once. Only the 7 step keys the samplers draw are carried.
+
+    Returns (new_radial_bins, new_radial_psi_bins).
+    """
+    STEP = ["Delta_r_mm", "Delta_gamma", "Delta_t_s", "IB_duration_s",
+            "Delta_s_mm", "Delta_theta", "turning_angle_IBI"]
+    shift = R_new - R_old
+
+    def _pool(sources):
+        acc = {k: [] for k in STEP}
+        Ntot = 0
+        for b in sources:
+            if b["N"] > 0:
+                for k in STEP:
+                    acc[k].append(np.asarray(b[k], dtype=float))
+                Ntot += b["N"]
+        return {"N": int(Ntot),
+                **{k: (np.concatenate(acc[k]) if acc[k] else np.array([]))
+                   for k in STEP}}
+
+    # ---- (r, psi) structure ----
+    old_bins = radial_psi_bins["bins"]
+    old_edges = np.asarray(radial_psi_bins["r_edges"], dtype=float)
+    psi_edges = np.asarray(radial_psi_bins["psi_edges"], dtype=float)
+    n_r_old, n_psi = len(old_bins), len(old_bins[0])
+    bw = float(old_edges[1] - old_edges[0])
+    old_centers = 0.5*(old_edges[:-1] + old_edges[1:])
+    interior = [i for i in range(n_r_old) if old_centers[i] <= r_min]
+    pooled_psi = [_pool([old_bins[i][p] for i in interior]) for p in range(n_psi)]
+
+    new_edges = np.arange(0.0, R_new + bw, bw)
+    n_r_new = len(new_edges) - 1
+    new_centers = 0.5*(new_edges[:-1] + new_edges[1:])
+    new_psi_bins = []
+    for i in range(n_r_new):
+        r_old = new_centers[i] - shift
+        row = []
+        for p in range(n_psi):
+            if r_old >= r_min:
+                j = int(np.clip(np.digitize(r_old, old_edges) - 1, 0, n_r_old - 1))
+                src = old_bins[j][p]
+            else:
+                src = pooled_psi[p]
+            entry = {"r_edges": (new_edges[i], new_edges[i + 1]),
+                     "psi_edges": (psi_edges[p], psi_edges[p + 1]),
+                     "N": int(src["N"])}
+            for k in STEP:
+                entry[k] = src[k]
+            row.append(entry)
+        new_psi_bins.append(row)
+    new_radial_psi_bins = {"bins": new_psi_bins, "r_edges": new_edges,
+                           "psi_edges": psi_edges}
+
+    # ---- (r) structure (the sim's fallback when a (r, psi) cell is empty) ----
+    orb = radial_bins
+    orb_edges = np.array([b["r_edges"][0] for b in orb]
+                         + [orb[-1]["r_edges"][1]], dtype=float)
+    orb_centers = 0.5*(orb_edges[:-1] + orb_edges[1:])
+    interior_r = [i for i in range(len(orb)) if orb_centers[i] <= r_min]
+    pooled_r = _pool([orb[i] for i in interior_r])
+    new_radial_bins = []
+    for i in range(n_r_new):
+        r_old = new_centers[i] - shift
+        if r_old >= r_min:
+            j = int(np.clip(np.digitize(r_old, orb_edges) - 1, 0, len(orb) - 1))
+            src = orb[j]
+        else:
+            src = pooled_r
+        entry = {"r_edges": (new_edges[i], new_edges[i + 1]), "N": int(src["N"])}
+        for k in STEP:
+            entry[k] = src[k]
+        new_radial_bins.append(entry)
+
+    return new_radial_bins, new_radial_psi_bins
+
+
+def simulate_new_arena_radius(radial_bins, radial_psi_bins, R_new, R_old=None,
+                              r_min=3.0, bin_width_mm=0.5, Ntrials=20,
+                              T_total_s=600.0, edgeMethod='reflection', seed=1,
+                              overlay_R_old_pr=True, overlay_experimental_pr=True,
+                              exp_r=None, outputFileName=None, csvFileName=None,
+                              closeFigure=False):
+    """
+    Predict the single-fish radial distribution p(r) for a NEW circular arena of
+    radius R_new, from the (r, psi) wall-conditioned model built on data at R_old,
+    using an EDGE-DISTANCE-preserving resampling: a step at new-arena (r, psi) is
+    drawn from the old (r - (R_new - R_old), psi) bin (same distance from the wall);
+    the deep interior (r_old < r_min) is pooled per psi (see
+    _remap_bins_for_new_arena). Runs sim_sampled_random_walk in the R_new arena over
+    Ntrials, computes the areal (1/r-normalized) p(r) with a +/- s.e.m. band across
+    trials, optionally overlays the R_old MODEL p(r) and the EXPERIMENTAL p(r), and
+    saves both a figure and a CSV.
+
+    ASSUMPTIONS: bout kinematics depend only on (edge-distance, psi), not on absolute
+    arena size or absolute r. Most reliable near the wall and for R_new close to
+    R_old; extrapolating to R_new >> R_old rests on the sparse deep-interior data.
+    Self-check: R_new == R_old reproduces the existing p(r) (exactly if r_min == 0).
+
+    Inputs
+    ------
+    radial_bins, radial_psi_bins : the OLD-arena (r) and (r, psi) step-bin structures
+        (from build_radial_bin_distributions / build_radial_psi_bin_distributions).
+    R_new : new arena radius (mm).
+    R_old : intended old-arena radius (mm); None -> derived from radial_psi_bins
+        r_edges. If supplied and it differs from the data-derived value by > 2%, a
+        warning is printed and the supplied value is used.
+    r_min : deep-interior pooling threshold (mm); 0 = physically exact, ~3 = safer
+        (pools the sparse innermost bins). Only binds when R_new > R_old.
+    bin_width_mm : p(r) histogram bin width (mm).
+    Ntrials, T_total_s, edgeMethod, seed : passed to the walk.
+    overlay_R_old_pr : also plot the R_old MODEL p(r) (an extra sim at R_old).
+    overlay_experimental_pr : also plot the experimental p(r) from exp_r.
+    exp_r : 1D array of experimental radial positions (mm) for the overlay; required
+        if overlay_experimental_pr (else that overlay is skipped with a note).
+    outputFileName, csvFileName : outputs; default to pr_new_arena_R{R_new}mm.png/.csv.
+
+    Returns
+    -------
+    dict with centers, p_r, p_r_sem, R_old, R_new, r_min (and p_r_Rold / p_r_exp when
+    the overlays are made).
+    """
+    R_old_data = float(radial_psi_bins["r_edges"][-1])
+    if R_old is None:
+        R_old = R_old_data
+    elif abs(R_old - R_old_data) > 0.02*R_old_data:
+        print(f'[simulate_new_arena_radius] WARNING: supplied R_old={R_old:g} mm '
+              f'differs from the data-derived arena radius {R_old_data:.2f} mm by '
+              f'>2%; using the supplied value -- check the bins match this R_old.')
+    shift = R_new - R_old
+    print(f'\n[simulate_new_arena_radius] R_old={R_old:g} -> R_new={R_new:g} mm '
+          f'(edge-distance shift {shift:+.1f} mm), r_min={r_min:g} mm, '
+          f'{Ntrials} trials of {T_total_s:g} s.')
+
+    new_rb, new_rpb = _remap_bins_for_new_arena(radial_bins, radial_psi_bins,
+                                                R_old, R_new, r_min)
+
+    # Common histogram range so the (up to three) curves share an x-axis; each curve
+    # is areal-normalised to unit area over its own support (empty outer bins add 0).
+    r_hist_max = max(R_new, R_old)
+    edges = np.arange(0.0, r_hist_max + bin_width_mm, bin_width_mm)
+    centers = 0.5*(edges[:-1] + edges[1:])
+
+    def _pr_trials(bins_r, bins_rpsi, arena_R):
+        rng = np.random.default_rng(seed)
+        rows = []
+        for _ in range(Ntrials):
+            r_sim, _g, _t = sim_sampled_random_walk(
+                bins_r, arena_R, T_total_s=T_total_s, radial_psi_bins=bins_rpsi,
+                edgeMethod=edgeMethod, rng=rng)
+            _c, d = radial_pdf(r_sim, r_hist_max, bin_width=bin_width_mm)
+            rows.append(d)
+        M = np.vstack(rows)
+        mean = M.mean(axis=0)
+        sem = (M.std(axis=0)/np.sqrt(len(rows)) if len(rows) > 1
+               else np.full(mean.shape, np.nan))
+        return mean, sem
+
+    p_r, p_r_sem = _pr_trials(new_rb, new_rpb, R_new)
+    result = {"centers": centers, "p_r": p_r, "p_r_sem": p_r_sem,
+              "R_old": R_old, "R_new": R_new, "r_min": r_min}
+
+    p_r_old = p_r_exp = None
+    if overlay_R_old_pr:
+        p_r_old, _ = _pr_trials(radial_bins, radial_psi_bins, R_old)
+        result["p_r_Rold"] = p_r_old
+    if overlay_experimental_pr:
+        if exp_r is not None and np.asarray(exp_r).size:
+            _c, p_r_exp = radial_pdf(np.asarray(exp_r, dtype=float).ravel(),
+                                     r_hist_max, bin_width=bin_width_mm)
+            result["p_r_exp"] = p_r_exp
+        else:
+            print('[simulate_new_arena_radius] overlay_experimental_pr=True but no '
+                  'exp_r supplied; skipping the experimental overlay.')
+
+    # ---- figure ----
+    if outputFileName is None:
+        outputFileName = f'pr_new_arena_R{R_new:.0f}mm.png'
+    fig = plt.figure(figsize=(8, 5))
+    plt.plot(centers, p_r, '-', color='C0', lw=2,
+             label=f'predicted, R_new = {R_new:g} mm')
+    if np.isfinite(p_r_sem).any():
+        plt.fill_between(centers, p_r - p_r_sem, p_r + p_r_sem, color='C0',
+                         alpha=0.25, linewidth=0)
+    if p_r_old is not None:
+        plt.plot(centers, p_r_old, '--', color='0.4', lw=1.5,
+                 label=f'model, R_old = {R_old:g} mm')
+    if p_r_exp is not None:
+        plt.plot(centers, p_r_exp, ':', color='k', lw=1.5,
+                 label=f'experimental (R_old = {R_old:g} mm)')
+    plt.axvline(R_new, color='C0', ls=':', lw=0.8)
+    plt.ylim(bottom=0)
+    plt.xlabel('radial position r (mm)')
+    plt.ylabel('areal probability density (1/r-normalized)')
+    plt.title(f'Predicted single-fish p(r): R_old={R_old:g} -> R_new={R_new:g} mm '
+              f'(r_min={r_min:g} mm)')
+    plt.legend(fontsize=10)
+    plt.tight_layout()
+    plt.savefig(outputFileName, dpi=140)
+    print(f'  saved figure {outputFileName}')
+    plt.show(block=False)
+    if closeFigure:
+        plt.close(fig)
+
+    # ---- CSV (metadata comment line, then a header row, then data) ----
+    if csvFileName is None:
+        csvFileName = f'pr_new_arena_R{R_new:.0f}mm.csv'
+    cols = [centers, p_r, p_r_sem]
+    names = ['r_center_mm', 'p_r_new', 'p_r_new_sem']
+    if p_r_old is not None:
+        cols.append(p_r_old); names.append('p_r_Rold_model')
+    if p_r_exp is not None:
+        cols.append(p_r_exp); names.append('p_r_experimental')
+    data = np.column_stack(cols)
+    with open(csvFileName, 'w') as f:
+        f.write(f'# single-fish p(r) prediction; R_old={R_old:g} mm, '
+                f'R_new={R_new:g} mm, r_min={r_min:g} mm, Ntrials={Ntrials}, '
+                f'T_total_s={T_total_s:g}, bin_width_mm={bin_width_mm:g}, '
+                f'edgeMethod={edgeMethod}\n')
+        f.write(','.join(names) + '\n')
+        for rowvals in data:
+            f.write(','.join(f'{v:.6g}' for v in rowvals) + '\n')
+    print(f'  saved CSV {csvFileName}')
+
+    return result
+
+
 def main():
 
   plt.ion()              # interactive mode → all plt.show() calls are non-blocking
@@ -352,6 +589,18 @@ def main():
                               r_exp, psi_walk, output_base)
   plot_psi_distribution_bands(pooled_IB_properties, arena_radius_mm, psi_walk,
                               output_base)
+
+  # ---- Simulation for new radius ----
+  R_new = None # Radius, mm, or None fto skip this. 
+  if R_new is not None:
+    simulate_new_arena_radius(radial_bins, radial_psi_bins, R_new = R_new, R_old=25.0,
+                                r_min=3.0, bin_width_mm=0.5, Ntrials=20,
+                                T_total_s=600.0, edgeMethod='reflection', seed=1,
+                                overlay_R_old_pr=True, overlay_experimental_pr=True,
+                                exp_r=r_exp, outputFileName=f'predict_new_pr_r{R_new}.png', 
+                                csvFileName=f'predict_new_pr_r{R_new}.csv',
+                                closeFigure=False)
+
 
   print('\nClose figures to end.')
   plt.ioff()             # turn blocking back on for the final hold

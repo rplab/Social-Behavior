@@ -11,6 +11,7 @@ module imports no simulation code. Sits on IBI_properties_utils; imported by
 random_displacement_analysis for the pipeline runs (no import cycle).
 """
 import os
+import csv
 import numpy as np
 import matplotlib.pyplot as plt
 from IBI_properties_utils import (_good_frame_mask, _bout_speed_ok,
@@ -814,19 +815,21 @@ def estimate_social_blend_weight_vs_distance(
         k_focus_dHH_threshold=None, k_focus_floor=0.7, target='tangential',
         labelA='real pairs (A)', labelB='time-shifted (B)',
         showLateralResolved = False,
-        outputFileName='social_blend_weight_vs_dHH.png',
+        outputFileName1='social_blend_weight_vs_dHH.png',
+        outputFileName2='social_blend_wexcess_vs_dHH.png',
+        csvFileName='social_blend_weight_vs_dHH.csv',
         closeFigure=False, seed=0):
     """
     [SOCIAL-BLEND WEIGHT -- diagnostic] Data-driven estimate of the asocial/social
     mixing weight w(dHH) for 'turn_sampling_social_track', the principled replacement
     for the ad-hoc k_focus = clip(dHH/dHH_threshold, floor, 1.0).
 
-    NOTE: This function, and most of the code, uses "w" for the intrinsic (asocial)
-    weight and (1-w) for the social weight
+    NOTE: This function uses "w" for the SOCIAL weight (the prefactor of z_track) and
+    (1-w) for the intrinsic (asocial) weight.
 
     Model (per bout, on UNIT turn vectors z = exp(i*turn); turn in the -Delta_theta
     heading convention the sim uses):
-        z_exp = w(dHH) * z_int + (1 - w(dHH)) * z_track
+        z_exp = (1 - w(dHH)) * z_int + w(dHH) * z_track
       z_exp   : observed pair turn, exp(i*(-Delta_theta)).
       z_int   : asocial expectation, exp(i*ti_mean(r,psi)) from radial_psi_bins
                 (single-fish (r,psi) map, looked up at the bout's own r, psi). With
@@ -838,26 +841,26 @@ def estimate_social_blend_weight_vs_distance(
                 exp(i*phi), FACING the neighbour (radial + tangential). Use 'full' to
                 get the weight CONSISTENT with social_track_target='full' -- the
                 tangential projection under-reads a toward-neighbour (radial) turn.
-    This is the mean-direction blend the sim's mu uses (w == k_focus): w weights the
-    asocial turn, 1 - w the social (target) turn. NOTE: the intrinsic-free side-split
-    diagnostic below stays a TANGENTIAL measure regardless of `target` (the radial
+    This is the mean-direction blend the sim's mu uses (w == 1 - k_focus): w weights
+    the social (target) turn, 1 - w the asocial turn. NOTE: the intrinsic-free side-
+    split diagnostic below stays a TANGENTIAL measure regardless of `target` (the radial
     component is side-independent, so a +/-side difference cancels it).
 
     w(dHH) marginalises over phi, psi (and r) by pooling all bouts in a dHH bin and
     solving the WEIGHTED LEAST-SQUARES projection (down-weights bouts where
     z_int ~ z_track, i.e. asocial and tracking coincide -- the otherwise 0/0 cells):
-        w(dHH) = Re[ sum (z_exp - z_track) * conj(z_int - z_track) ]
-                 / sum |z_int - z_track|^2
+        w(dHH) = Re[ sum (z_exp - z_int) * conj(z_track - z_int) ]
+                 / sum |z_track - z_int|^2
     If the mixture holds, w in [0, 1]. The leftover imaginary part of the numerator
     (reported as imag_frac = |Im num| / |num|) and any excursion of w outside [0, 1]
     flag model mismatch or a real phi/psi dependence the marginalisation hides.
 
-    TIME-SHIFTED CONTROL. The ABSOLUTE w(dHH) is biased toward ~0.5 + 0.5*R when the
+    TIME-SHIFTED CONTROL. The ABSOLUTE w(dHH) is biased toward ~0.5 - 0.5*R when the
     neighbour is far (phi, hence z_track, becomes uninformative noise) -- so w does
-    NOT go to 1 at large dHH even with no real interaction. Pass datasets_B (the
+    NOT go to 0 at large dHH even with no real interaction. Pass datasets_B (the
     time-shifted pairs) to get w_B(dHH) on the SAME geometric/noise baseline; the
-    genuine social tracking is then the EXCESS w_B - w_A (real pairs assign more
-    weight to tangential tracking, i.e. lower w). That difference -- peaking at
+    genuine social tracking is then the EXCESS w_A - w_B (real pairs assign more
+    weight to tangential tracking, i.e. higher w). That difference -- peaking at
     contact, ~0 at large dHH -- is the parameter-free replacement for 1 - k_focus.
 
     A-only when datasets_B is None (needs just the minuend pair datasets and the
@@ -869,7 +872,7 @@ def estimate_social_blend_weight_vs_distance(
     radial_psi_bins : single-fish (r,psi) map (build_radial_psi_bin_distributions),
         carrying per-bin "ti_mean"/"ti_std"/"N" and "r_edges"/"psi_edges".
     datasets_B : optional time-shifted (subtrahend) pair datasets for the control
-        baseline and the social excess w_B - w_A. None -> A-only (no difference).
+        baseline and the social excess w_A - w_B. None -> A-only (no difference).
     null_bouts : optional PLUGGABLE null as a dict of per-bout arrays with keys
         "turn", "r", "psi", "phi", "dHH" (and optionally "delta_s"/"delta_t" for the
         physical filters) -- e.g. an asocial two-single-fish null (focal single-fish
@@ -888,11 +891,14 @@ def estimate_social_blend_weight_vs_distance(
         Small bouts have a noise-dominated displacement direction (body barely turns,
         but -Delta_theta swings ~20-30 deg), which dilutes the social signal in the
         displacement-turn channel; raise (e.g. 2.0) to restrict to substantive bouts.
-    k_focus_dHH_threshold : if not None, overlay the current k_focus =
-        clip(dHH/k_focus_dHH_threshold, k_focus_floor, 1.0) for comparison.
+    k_focus_dHH_threshold, k_focus_floor : retained for call compatibility; no longer
+        plotted (the 1 - k_focus overlay was removed).
     labelA, labelB : legend labels.
     showLateralResolved : if True, show in excess figure axial and lateral phi
-    outputFileName, closeFigure, seed : plotting / RNG controls.
+    outputFileName1 : weight figure (w_A / w_B vs dHH). outputFileName2 : excess figure
+        (w_excess vs dHH; only drawn when datasets_B / null_bouts given). csvFileName :
+        CSV of dHH, w_A, w_B, w_excess, w_excess_lo, w_excess_hi (None to skip any).
+    closeFigure, seed : plotting / RNG controls.
 
     ORIENTATION-RESOLVED CHECKS (when datasets_B given). To test whether the pooled
     w averages away a phi-structured weight (intrinsic z_int has no phi, while z_exp
@@ -903,7 +909,7 @@ def estimate_social_blend_weight_vs_distance(
       - tracking_excess_intrinsic_free : the INTRINSIC-FREE side-split estimate. Per
         coarse (r, psi) cell, [mean(+tangential turn component | neighbour on +side)
         - (| -side)] / 2 removes the asocial turn by construction (it is side-
-        independent); (1-w)_A - (1-w)_B is then the undiluted excess tracking weight.
+        independent); w_if_A - w_if_B is then the undiluted excess tracking weight.
         NOTE: this estimate is ALWAYS TANGENTIAL and target-INDEPENDENT -- the
         radial/face-the-neighbour part of a 'full' turn is side-independent and
         CANCELS in the +/- side difference, and the reference (psi - pi/2) must stay
@@ -916,7 +922,7 @@ def estimate_social_blend_weight_vs_distance(
     -------
     dict with dHH_centers; for A: w_A, wA_lo, wA_hi, N_A, imag_frac_A; if datasets_B
     given, the same for B (w_B, wB_lo, wB_hi, N_B, imag_frac_B), the social excess
-    w_excess = w_B - w_A with excess_lo/excess_hi (paired-bootstrap 95% CI), and the
+    w_excess = w_A - w_B with excess_lo/excess_hi (paired-bootstrap 95% CI), and the
     orientation-resolved checks w_excess_lateral, w_excess_axial, and
     tracking_excess_intrinsic_free (all "excess tracking weight", directly comparable).
     """
@@ -1014,9 +1020,13 @@ def estimate_social_blend_weight_vs_distance(
                             np.concatenate(dts))
 
     def _w_of(zx, zi, zt):
-        """WLS-projection w from per-bout vectors; plus |Im num|/|num|."""
-        num = np.sum((zx - zt)*np.conj(zi - zt))
-        den = np.sum(np.abs(zi - zt)**2)
+        """WLS-projection w (the SOCIAL weight, prefactor of z_track) from per-bout
+        vectors; plus |Im num|/|num|. Projects (z_exp - z_int) onto (z_track - z_int),
+        i.e. z_exp = (1 - w)*z_int + w*z_track. The denominator |z_track - z_int|^2 is
+        unchanged in magnitude from the old (intrinsic-weight) form, so bouts where
+        z_int ~ z_track (asocial and tracking coincide) are still down-weighted."""
+        num = np.sum((zx - zi)*np.conj(zt - zi))
+        den = np.sum(np.abs(zt - zi)**2)
         if den <= 0.0:
             return np.nan, np.nan
         w = float(np.real(num)/den)
@@ -1054,7 +1064,8 @@ def estimate_social_blend_weight_vs_distance(
         return irc*n_psi_c + jpc
 
     def _intrinsic_free_tracking(D, r_edges_c, min_side=8):
-        """Intrinsic-free tangential-tracking weight (1 - w)(dHH): per (r, psi) cell,
+        """Intrinsic-free tangential-tracking weight w_if(dHH) (the SOCIAL weight,
+        computed directly without _w_of): per (r, psi) cell,
         [mean(+tangential turn component | neighbour on +side) - (| -side)] / 2, which
         removes the asocial turn (side-independent). Count-weighted pool over cells."""
         # +tangential turn component q = cos(turn - (psi - pi/2)); s = neighbour side.
@@ -1062,7 +1073,7 @@ def estimate_social_blend_weight_vs_distance(
         s = np.where(np.sin(D["psi"] - D["phi"]) >= 0.0, 1.0, -1.0)
         cell = _cells(D, r_edges_c)
         ld = D["ld"]
-        onemw = np.full(n_dhh, np.nan)
+        w_if = np.full(n_dhh, np.nan)
         for b in range(n_dhh):
             mb = (ld == b)
             num = 0.0; den = 0.0
@@ -1074,8 +1085,8 @@ def estimate_social_blend_weight_vs_distance(
                     num += wgt*(qp.mean() - qm.mean())
                     den += wgt*2.0
             if den > 0:
-                onemw[b] = num/den
-        return onemw
+                w_if[b] = num/den
+        return w_if
 
     n_psi_c = 6
     psi_edges_c = np.linspace(-np.pi, np.pi, n_psi_c + 1)
@@ -1103,7 +1114,7 @@ def estimate_social_blend_weight_vs_distance(
     latA = _lateral_mask(DA)
     wA_lat = _curve(DA, sub=latA)[0]
     wA_ax = _curve(DA, sub=~latA)[0]
-    onemwA = _intrinsic_free_tracking(DA, r_edges_c)
+    wA_if = _intrinsic_free_tracking(DA, r_edges_c)
 
     # The null (subtrahend) is either time-shifted PAIR datasets (datasets_B) or a
     # PLUGGABLE null passed as bout arrays (null_bouts: turn, r, psi, phi, dHH, and
@@ -1125,27 +1136,27 @@ def estimate_social_blend_weight_vs_distance(
         else:
             DB = _prep(datasets_B)
         wB, imfB, NB, wbB = _curve(DB)
-        w_excess = wB - wA
+        w_excess = wA - wB
         latB = _lateral_mask(DB)
-        w_excess_lat = _curve(DB, sub=latB)[0] - wA_lat
-        w_excess_ax = _curve(DB, sub=~latB)[0] - wA_ax
-        # Intrinsic-free EXCESS tracking weight = (1-w)_A - (1-w)_B.
-        tracking_excess_if = onemwA - _intrinsic_free_tracking(DB, r_edges_c)
+        w_excess_lat = wA_lat - _curve(DB, sub=latB)[0]
+        w_excess_ax = wA_ax - _curve(DB, sub=~latB)[0]
+        # Intrinsic-free EXCESS tracking weight = w_if_A - w_if_B (social weight).
+        tracking_excess_if = wA_if - _intrinsic_free_tracking(DB, r_edges_c)
         if n_boot > 0:
             wB_lo = np.nanpercentile(wbB, 2.5, axis=0)
             wB_hi = np.nanpercentile(wbB, 97.5, axis=0)
             # Paired (per-iteration) difference of the independent A and B resamples.
-            diff_boot = wbB - wbA
+            diff_boot = wbA - wbB
             excess_lo = np.nanpercentile(diff_boot, 2.5, axis=0)
             excess_hi = np.nanpercentile(diff_boot, 97.5, axis=0)
 
     # ---- report ----
     tag = ' (magnitude-weighted intrinsic)' if magnitude_weighted else ''
-    print(f'\n[SOCIAL-BLEND WEIGHT] w(dHH) = asocial weight (1 - w = {target} '
-          f'tracking), WLS projection on unit turn vectors{tag}:')
+    print(f'\n[SOCIAL-BLEND WEIGHT] w(dHH) = {target} social weight (1 - w = asocial '
+          f'intrinsic), WLS projection on unit turn vectors{tag}:')
     if has_B:
         print(f'  excess {target} tracking (positive = real pairs track more): pooled '
-              f'w_B-w_A and lateral/axial |phi| split are {target}; excIF = '
+              f'w_A-w_B and lateral/axial |phi| split are {target}; excIF = '
               f'intrinsic-free side-split, ALWAYS TANGENTIAL (target-independent).')
         print(f'  {"dHH":>6} | {"w_A":>6} {"w_B":>6} | {"exc":>6} {"excLat":>7} '
               f'{"excAx":>6} {"excIF":>6}')
@@ -1159,12 +1170,7 @@ def estimate_social_blend_weight_vs_distance(
             print(f'  {dHH_centers[b]:6.1f} | {wA[b]:6.2f} | '
                   f'{imfA[b]:8.2f} {NA[b]:7d}')
 
-    # ---- plot ----
-    if has_B:
-        fig, (ax, ax2) = plt.subplots(2, 1, figsize=(8, 8), sharex=True)
-    else:
-        fig, ax = plt.subplots(figsize=(8, 5.5)); ax2 = None
-
+    # ---- plot: two SEPARATE figures (weight; excess) ----
     def _band(axis, w, lo, hi, color, lab):
         m = np.isfinite(w)
         axis.plot(dHH_centers[m], w[m], '-o', color=color, label=lab)
@@ -1174,30 +1180,33 @@ def estimate_social_blend_weight_vs_distance(
                 axis.fill_between(dHH_centers[mb], lo[mb], hi[mb], color=color,
                                   alpha=0.2, linewidth=0)
 
+    # Figure 1: the social weight w_A (and w_B) vs dHH.
+    fig1, ax = plt.subplots(figsize=(8, 5.5))
     _band(ax, wA, wA_lo, wA_hi, 'C3', f'w_A ({labelA})')
     if has_B:
         _band(ax, wB, wB_lo, wB_hi, 'C0', f'w_B ({labelB})')
-    if k_focus_dHH_threshold is not None:
-        kf = np.clip(dHH_centers/float(k_focus_dHH_threshold), k_focus_floor, 1.0)
-        ax.plot(dHH_centers, kf, '--', color='gray',
-                label=f'current k_focus (thr={k_focus_dHH_threshold:.0f}, '
-                      f'floor={k_focus_floor:g})')
     ax.axhline(0.0, color='k', lw=0.6); ax.axhline(1.0, color='k', lw=0.6)
     ax.axhspan(0.0, 1.0, color='green', alpha=0.05)
-    ax.set_ylabel(f'asocial weight w (1 - w = {target} tracking)')
+    ax.set_xlabel('Inter-fish distance dHH (mm)')
+    ax.set_ylabel(f'{target} social weight w (1 - w = asocial intrinsic)')
     ax.set_title('Data-driven social-blend weight w(dHH)\n'
-                 f'exp turn = w*intrinsic + (1-w)*{target}-tracking (unit vectors)')
+                 f'exp turn = (1-w)*intrinsic + w*{target}-tracking (unit vectors)')
     ax.legend(fontsize=8)
-    if not has_B:
-        ax.set_xlabel('head-head distance dHH (mm)')
+    fig1.tight_layout()
+    if outputFileName1 is not None:
+        fig1.savefig(outputFileName1, dpi=150)
+        print(f'[SOCIAL-BLEND WEIGHT] wrote {outputFileName1}')
 
+    # Figure 2: the social EXCESS w_excess = w_A - w_B vs dHH (only with a B/null).
+    fig2 = None
     if has_B:
+        fig2, ax2 = plt.subplots(figsize=(8, 5.5))
         def _line(w, color, lab, style='-o'):
             m = np.isfinite(w)
             ax2.plot(dHH_centers[m], w[m], style, color=color, label=lab)
         me = np.isfinite(w_excess)
         ax2.plot(dHH_centers[me], w_excess[me], '-o', color='darkorange',
-                 label='Excess w_B - w_A')
+                 label='Excess w_A - w_B')
         if excess_lo is not None:
             mb = me & np.isfinite(excess_lo) & np.isfinite(excess_hi)
             if np.any(mb):
@@ -1218,15 +1227,32 @@ def estimate_social_blend_weight_vs_distance(
         # f'vs intrinsic-free (tangential cross-check)'
         ax2.set_title(titleStr)
         ax2.legend(fontsize=8)
+        fig2.tight_layout()
+        if outputFileName2 is not None:
+            fig2.savefig(outputFileName2, dpi=150)
+            print(f'[SOCIAL-BLEND WEIGHT] wrote {outputFileName2}')
 
-    fig.tight_layout()
-    if outputFileName is not None:
-        fig.savefig(outputFileName, dpi=150)
-        print(f'[SOCIAL-BLEND WEIGHT] wrote {outputFileName}')
     if closeFigure:
-        plt.close(fig)
+        plt.close(fig1)
+        if fig2 is not None:
+            plt.close(fig2)
     else:
         plt.show(block=False)
+
+    # ---- CSV: dHH, w_A, w_B, w_excess, w_excess_lo, w_excess_hi ----
+    if csvFileName is not None:
+        def _col(a):
+            return a if a is not None else np.full(n_dhh, np.nan)
+        cols = [dHH_centers, wA, _col(wB), _col(w_excess),
+                _col(excess_lo), _col(excess_hi)]
+        with open(csvFileName, 'w', newline='') as _f:
+            _wr = csv.writer(_f)
+            _wr.writerow(['dHH_mm', 'w_A', 'w_B', 'w_excess',
+                          'w_excess_lo', 'w_excess_hi'])
+            for i in range(n_dhh):
+                _wr.writerow([('' if not np.isfinite(c[i]) else f'{c[i]:.6g}')
+                              for c in cols])
+        print(f'[SOCIAL-BLEND WEIGHT] wrote {csvFileName}')
 
     out = {"dHH_centers": dHH_centers, "w_A": wA, "wA_lo": wA_lo, "wA_hi": wA_hi,
            "N_A": NA, "imag_frac_A": imfA}

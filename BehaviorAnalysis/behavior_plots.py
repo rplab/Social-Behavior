@@ -37,6 +37,7 @@ from behavior_identification import (calculate_bout_property_binned_by_distance,
                                      calculate_interfish_bout_lags)
 from behavior_identification_single import (average_bout_trajectory_allSets,
                                             average_bout_trajectory_oneSet)
+from IBI_diagnostics import phi_resolved_turn_std_vs_distance
 
 
 def plot_property_1Dbinned(binned_mean, bin_centers, binned_mean_each_dataset,
@@ -131,10 +132,12 @@ def make_pair_fish_plots(datasets, exptName = '',
                          distance_type = 'closest_distance',
                          color = 'black',
                          plot_type_2D = 'heatmap',
-                         outputFileNameBase = 'pair_fish', 
+                         outputFileNameBase = 'pair_fish',
                          outputFileNameExt = 'png',
                          closeFigures = False,
-                         writeCSVs = False):
+                         writeCSVs = False,
+                         max_bout_speed_mm_s = 100.0,
+                         fps = None):
     """
     Makes several useful "pair" plots -- i.e. plots of characteristics 
     of pairs of fish.
@@ -142,7 +145,7 @@ def make_pair_fish_plots(datasets, exptName = '',
     function is probably more useful to read than to run, pasting and 
     modifying its code.
     Bending angle plots extracted and moved to make_bending_angle_plots()
-    
+
     Inputs:
         datasets : dictionaries for each dataset
         exptName : (string) Experiment name, to append to titles.
@@ -156,8 +159,15 @@ def make_pair_fish_plots(datasets, exptName = '',
                              won't save a figure file
         outputFileNameExt : extension for figure output (e.g. 'eps' or 'png')
         closeFigures : (bool) if True, close a figure after creating it.
-        writeCSVs : (bool) Used by various functions; if true, output plotted 
+        writeCSVs : (bool) Used by various functions; if true, output plotted
                             points to a CSV file. See code for filenames
+        max_bout_speed_mm_s : (float or None) speed cap (mm/s) for the turning-angle
+                            standard-deviation plot; bouts faster than this
+                            (tracking-error artifacts) are excluded. Default 100.0;
+                            None disables the speed cut.
+        fps : (float or None) frames per second, used by the turning-angle
+                            standard-deviation plot's bout quality-control. If None
+                            (default), taken from datasets[0]["fps"] (fallback 25.0).
 
     Outputs:
         None
@@ -385,10 +395,27 @@ def make_pair_fish_plots(datasets, exptName = '',
                           cmap = 'viridis',
                           colorRange = (0.0, 0.0075),
                           clabelStr = 'Probability',
-                          titleStr = f'{exptName}: abs(Rel. orient.) and {shortDistanceStr}', 
+                          titleStr = f'{exptName}: abs(Rel. orient.) and {shortDistanceStr}',
                           plot_type = 'heatmap',
                           outputFileName = outputFileName,
                           closeFigure = closeFigures)
+
+    # Within-condition standard deviation of the inter-bout turning angle,
+    # resolved by inter-fish distance (dHH) and relative orientation (phi).
+    # Computed internally from datasets[j]["IBI_properties"] (Nfish==2). See
+    # phi_resolved_turn_std_vs_distance() in IBI_diagnostics.py.
+    if outputFileNameBase is not None:
+        outputFileName = outputFileNameBase + '_turn_std_phi_dHH' + \
+            '.' + outputFileNameExt
+    else:
+        outputFileName = None
+    turn_std_fps = fps if fps is not None else datasets[0].get("fps", 25.0)
+    phi_resolved_turn_std_vs_distance(datasets,
+                                      fps = turn_std_fps,
+                                      max_bout_speed_mm_s = max_bout_speed_mm_s,
+                                      make_line_plots = False,
+                                      outputFileName = outputFileName,
+                                      closeFigure = closeFigures)
 
     """
     # Speed of the "other" fish vs. time for bouts
@@ -1450,7 +1477,6 @@ def make_interbout_turning_angle_plots(datasets, exptName = '',
                                        distance_type = 'head_head_distance',
                                        plot_type_2D = 'heatmap',
                                        Nbins = (19, 15),
-                                       delta_s_Nbins = None,
                                        constraintKey = None,
                                        constraintRange = (-np.inf, np.inf),
                                        mask_by_sem_limit_degrees = 2.0,
@@ -1486,16 +1512,6 @@ def make_interbout_turning_angle_plots(datasets, exptName = '',
     distance_type : 'head_head_distance' or 'closest_distance'
     plot_type_2D : 'heatmap' or 'line_plots'
     Nbins : (n_relorient_bins, n_distance_bins)
-    delta_s_Nbins : None (default) or int. If None, bin in 2D (rel. orientation,
-                    distance) as usual and return 2D mean/sem/std. If an int,
-                    add a THIRD binning axis on the step size Delta_s_mm, with
-                    that many bins whose edges are QUANTILES of the pooled
-                    Delta_s_mm (equal-count, since Delta_s is very non-uniform).
-                    The returned mean/sem/std are then 3D
-                    (n_relorient x n_distance x delta_s_Nbins) and delta_s_bins
-                    holds the Delta_s bin EDGES (length delta_s_Nbins+1).
-                    [DELTA_S 3D-BINNING FEATURE -- self-contained; can be removed
-                    if not useful.]
     constraintKey : if not None, limit the angles to values for which this
                     key's values are in constraintRange
     constraintRange : tuple of (min, max) values to allow for the constraint key
@@ -1513,15 +1529,12 @@ def make_interbout_turning_angle_plots(datasets, exptName = '',
     Outputs
     -------
     saved_pair_outputs : list, containing (matching make_turning_angle_plots)
-        0 : turn_2Dhist_mean, mean IBI turning-angle histogram (2D, or 3D if
-            delta_s_Nbins is set: n_relorient x n_distance x delta_s_Nbins)
+        0 : turn_2Dhist_mean, mean IBI turning-angle histogram (2D,
+            n_relorient x n_distance)
         1 : turn_2Dhist_sem, standard error of the mean in each bin
         2 : turn_2Dhist_std, standard deviation in each bin
         3 : X, bin-center positions for relative orientation (meshgrid)
         4 : Y, bin-center positions for distance (meshgrid)
-        5 : delta_s_bins, 1D array of Delta_s bin EDGES (mm, length
-            delta_s_Nbins+1) when delta_s_Nbins is set; None for the 2D case.
-            [DELTA_S 3D-BINNING FEATURE]
     """
     # Require Nfish==2 (the pair sub-keys exist only then)
     for j in range(len(datasets)):
@@ -1553,18 +1566,15 @@ def make_interbout_turning_angle_plots(datasets, exptName = '',
     turning_all = []
     rel_orient_all = []
     distance_all = []
-    delta_s_all = []   # [DELTA_S 3D-BINNING FEATURE] pooled step size Delta_s_mm
     for dataset in datasets:
         ibi = dataset["IBI_properties"]
         for k in range(dataset["Nfish"]):
             turning_all.append(angle_sign*ibi[angle_type][k])
             rel_orient_all.append(ibi["relative_orientation_mean"][k])
             distance_all.append(ibi[distance_key][k])
-            delta_s_all.append(ibi["Delta_s_mm"][k])
     turning_all = np.concatenate(turning_all)
     rel_orient_all = np.concatenate(rel_orient_all)
     distance_all = np.concatenate(distance_all)
-    delta_s_all = np.concatenate(delta_s_all)
 
     if constraintKey is not None:
         constraint_all = []
@@ -1578,15 +1588,13 @@ def make_interbout_turning_angle_plots(datasets, exptName = '',
         turning_all = turning_all[keepVals]
         rel_orient_all = rel_orient_all[keepVals]
         distance_all = distance_all[keepVals]
-        delta_s_all = delta_s_all[keepVals]
 
     # Drop any non-finite entries (e.g. an IBI with no good frames)
     finite = (np.isfinite(turning_all) & np.isfinite(rel_orient_all)
-              & np.isfinite(distance_all) & np.isfinite(delta_s_all))
+              & np.isfinite(distance_all))
     turning_all = turning_all[finite]
     rel_orient_all = rel_orient_all[finite]
     distance_all = distance_all[finite]
-    delta_s_all = delta_s_all[finite]
 
     # 2D plot of mean IBI turning angle vs. relative orientation and distance
     if outputFileNameBase is not None:
@@ -1609,65 +1617,17 @@ def make_interbout_turning_angle_plots(datasets, exptName = '',
         cmap=cmap,
         plot_type=plot_type_2D)
 
-    if delta_s_Nbins is None:
-        # 2D binning (rel. orientation, distance) -- the default / original path.
-        turn_2Dhist_mean, X, Y, turn_2Dhist_sem, turn_2Dhist_std = bin_and_plot_2D(
-            rel_orient_all, distance_all, valuesC_all=turning_all,
-            titleStr=titleStr,
-            outputFileName=outputFileName,
-            outputCSVFileName=outputCSVFileName,
-            closeFigure=closeFigures,
-            **common_bin_kwargs)
-        delta_s_bins = None
-    else:
-        # [DELTA_S 3D-BINNING FEATURE] Add a third axis on the step size
-        # Delta_s_mm. Edges are QUANTILES of the pooled Delta_s (equal-count
-        # bins, since Delta_s is very non-uniform). For each Delta_s slice, reuse
-        # the 2D binner (make_plot=False -> compute only) and stack into a 3D
-        # array (n_relorient x n_distance x delta_s_Nbins). Empty (phi, dHH, ds)
-        # bins come back NaN, as in 2D. No per-slice figures are produced.
-        edges = np.quantile(delta_s_all,
-                            np.linspace(0.0, 1.0, delta_s_Nbins + 1))
-        # Guard against repeated quantile edges (e.g. many identical Delta_s):
-        # nudge so np.digitize gives monotone, non-empty slices.
-        edges = np.maximum.accumulate(edges)
-        for i in range(1, len(edges)):
-            if edges[i] <= edges[i - 1]:
-                edges[i] = np.nextafter(edges[i - 1], np.inf)
-        # Return the EDGES (length delta_s_Nbins+1), NOT centers: the quantile
-        # bins are unequal-width, so the sim must assign each step's Delta_s by
-        # np.digitize(Delta_s, edges) -- the same rule used to slice here --
-        # rather than by nearest center (which would misassign the wide top bin).
-        delta_s_bins = edges
-        # slice index for each pooled sample (0 .. delta_s_Nbins-1)
-        slice_idx = np.clip(np.digitize(delta_s_all, edges[1:-1]),
-                            0, delta_s_Nbins - 1)
-        mean_slices, sem_slices, std_slices = [], [], []
-        X = Y = None
-        for s in range(delta_s_Nbins):
-            m = (slice_idx == s)
-            hist, Xs, Ys, hist_sem, hist_std = bin_and_plot_2D(
-                rel_orient_all[m], distance_all[m], valuesC_all=turning_all[m],
-                titleStr=titleStr, outputFileName=None,
-                outputCSVFileName=None, closeFigure=True, make_plot=False,
-                **common_bin_kwargs)
-            mean_slices.append(hist)
-            sem_slices.append(hist_sem)
-            std_slices.append(hist_std)
-            X, Y = Xs, Ys
-        # Stack along a new trailing Delta_s axis
-        turn_2Dhist_mean = np.stack(mean_slices, axis=-1)
-        turn_2Dhist_sem = np.stack(sem_slices, axis=-1)
-        turn_2Dhist_std = np.stack(std_slices, axis=-1)
-        print(f'  [Delta_s 3D binning] {delta_s_Nbins} quantile Delta_s bins, '
-              f'edges (mm) = [' + ', '.join(f'{e:.2f}' for e in edges) + ']')
-        n_valid = int(np.sum(np.isfinite(turn_2Dhist_mean)))
-        print(f'  [Delta_s 3D binning] {n_valid} / {turn_2Dhist_mean.size} '
-              f'(phi, dHH, Delta_s) bins valid '
-              f'({100.0*n_valid/turn_2Dhist_mean.size:.1f}%).')
+    # 2D binning (rel. orientation, distance).
+    turn_2Dhist_mean, X, Y, turn_2Dhist_sem, turn_2Dhist_std = bin_and_plot_2D(
+        rel_orient_all, distance_all, valuesC_all=turning_all,
+        titleStr=titleStr,
+        outputFileName=outputFileName,
+        outputCSVFileName=outputCSVFileName,
+        closeFigure=closeFigures,
+        **common_bin_kwargs)
 
     saved_pair_outputs = [turn_2Dhist_mean, turn_2Dhist_sem, turn_2Dhist_std,
-                          X, Y, delta_s_bins]
+                          X, Y]
     return saved_pair_outputs
 
 
@@ -2116,7 +2076,10 @@ def bin_and_plot_2D(values1_all, values2_all, valuesC_all=None,
                 statistic='mean', bins=Nbins, range=rng_arg)
             hist = np.arctan2(sin_mean, cos_mean)
             R = np.sqrt(sin_mean**2 + cos_mean**2)
-            hist_std = np.sqrt(-2.0 * np.log(np.clip(R, 1e-12, 1.0)))
+            # max(., 0) so a fully-concentrated bin (R == 1, e.g. a single sample)
+            # yields +0.0, not the -0.0 that -2*log(1) produces -- a negative zero
+            # is finite but is rejected as "scale < 0" by np.random.Generator.normal.
+            hist_std = np.sqrt(np.maximum(-2.0 * np.log(np.clip(R, 1e-12, 1.0)), 0.0))
         else:
             hist, _, _, _ = binned_statistic_2d(
                 values1_all, values2_all, valuesC_all,

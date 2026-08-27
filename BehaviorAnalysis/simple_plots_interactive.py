@@ -107,8 +107,8 @@ import os
 from IO_toolkit import revise_datasets
 
 # single light
-pickleFileName1 = r"C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - Sept2025 control single in dark vs light New Tracking\Light_Cond_2\TwoWkSingle_Light_Cond_2_positionData.pickle"
-pickleFileName2 = r"C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - Sept2025 control single in dark vs light New Tracking\Light_Cond_2\TwoWkSingle_Light_Cond_2_Analysis\TwoWkSingle_Light_Cond_2_datasets.pickle"
+#pickleFileName1 = r"C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - Sept2025 control single in dark vs light New Tracking\Light_Cond_2\TwoWkSingle_Light_Cond_2_positionData.pickle"
+#pickleFileName2 = r"C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - Sept2025 control single in dark vs light New Tracking\Light_Cond_2\TwoWkSingle_Light_Cond_2_Analysis\TwoWkSingle_Light_Cond_2_datasets.pickle"
 
 # single dark
 #pickleFileName1=r"C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - Sept2025 control single in dark vs light New Tracking\Dark_Cond_1\TwoWkSingle_Dark_Cond_1_positionData.pickle"
@@ -120,8 +120,8 @@ pickleFileName2 = r"C:\Users\raghu\Documents\Experiments and Projects\Zebrafish 
 
 # pairs timeshifted light
 mainPathName = r"C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs"
-#pickleFileName1 = os.path.join(mainPathName, r"2 week old - Sept2025 control pairs in dark vs light New Tracking\Light_Cond_2\TwoWk_Sept2025_TS0_Light_Cond_2_positionData.pickle")
-#pickleFileName2 = os.path.join(mainPathName, r"2 week old - Sept2025 control pairs in dark vs light New Tracking\Light_Cond_2\TwoWk_Sept2025_TS0_Light_Cond_2_Analysis\TwoWk_Sept2025_TS0_Light_Cond_2_.pickle")
+pickleFileName1 = os.path.join(mainPathName, r"2 week old - Sept2025 control pairs in dark vs light New Tracking\Light_Cond_2\TwoWk_Sept2025_TS0_Light_Cond_2_positionData.pickle")
+pickleFileName2 = os.path.join(mainPathName, r"2 week old - Sept2025 control pairs in dark vs light New Tracking\Light_Cond_2\TwoWk_Sept2025_TS0_Light_Cond_2_Analysis\TwoWk_Sept2025_TS0_Light_Cond_2_.pickle")
 
 # pairs dark
 #pickleFileName1 = os.path.join(mainPathName, r"2 week old - Sept2025 control pairs in dark vs light New Tracking\Dark_Cond_1\TwoWk_Sept2025_Dark_Cond_1_positionData.pickle")
@@ -419,4 +419,38 @@ make_pair_fish_plots(datasets,
                         outputFileNameExt = 'png',
                         closeFigures = False,
                         writeCSVs = False)
+
+
+#%% Turning angle 2D heatmap
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+from IO_toolkit import load_and_assign_from_pickle
+from behavior_plots import phi_resolved_turn_std_vs_distance
+
+plt.ion() 
+
+# Pairs light
+pickleFileName1=r"C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - Sept2025 control pairs in dark vs light New Tracking\Light_Cond_2\TwoWk_Sept2025_Light_Cond_2_positionData.pickle"
+pickleFileName2=r"C:\Users\raghu\Documents\Experiments and Projects\Zebrafish behavior\CSV files and outputs\2 week old - Sept2025 control pairs in dark vs light New Tracking\Light_Cond_2\TwoWk_Sept2025_Light_Cond_2_Analysis\TwoWk_Sept2025_Light_Cond_2_datasets.pickle"
+
+all_position_data, variable_tuple = load_and_assign_from_pickle(pickleFileName1 = pickleFileName1, 
+                pickleFileName2 = pickleFileName2)
+
+(datasets, CSVcolumns, expt_config, params, N_datasets, Nfish, 
+ basePath, dataPath, subGroupName) = variable_tuple
+
+outputFileName = 'Pairs_Light_TurningAngle_Heatmap.png'
+closeFigures = False
+max_bout_speed_mm_s = 100.0 # discard steps with speed greater than this value (mm/s)
+
+turn_std_fps = datasets[0].get("fps", 25.0)
+phi_resolved_turn_std_vs_distance(datasets,
+                                    fps = turn_std_fps,
+                                    max_bout_speed_mm_s = max_bout_speed_mm_s,
+                                    make_line_plots = False,
+                                    outputFileName = outputFileName,
+                                    closeFigure = closeFigures)
+
 # %%
