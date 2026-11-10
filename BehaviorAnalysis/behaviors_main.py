@@ -207,6 +207,8 @@ def main():
         
     #%% Time-shift one of the fish
     time_shift_fish_idx = None # set to None to avoid shifting
+    time_shift_applied = False
+    time_shift_suffix = ''
     if time_shift_fish_idx is not None:
         print('\n\n***************************')
         caution_check = input(f'\nARE YOU SURE you want to time-shift fish {time_shift_fish_idx}? (y/n): ')
@@ -214,27 +216,57 @@ def main():
             valid_idx = (np.isin(time_shift_fish_idx, np.arange(0, Nfish))) and \
                         (type(time_shift_fish_idx)==int)
             if valid_idx==True:
-                print(f'\n\n** Time-shifting fish {time_shift_fish_idx} by half the duration**')
+                frameshift_fraction = 2.0
+                print(f'\n\n** Time-shifting fish {time_shift_fish_idx} by 1/{frameshift_fraction:.1f} the duration**')
                 for j in range(len(datasets)):
-                    frameshift = np.floor(datasets[j]["Nframes"]/2.0).astype(int)
+                    frameshift = np.round(datasets[j]["Nframes"]/frameshift_fraction).astype(int)
                     all_position_data[j], datasets[j] = \
-                        timeShift(all_position_data[j], datasets[j], 
-                                  CSVcolumns, fishIdx = time_shift_fish_idx, 
+                        timeShift(all_position_data[j], datasets[j],
+                                  CSVcolumns, fishIdx = time_shift_fish_idx,
                                   frameShift = frameshift)
                     # re-calculate fish lengths. (Could just shift...)
                     datasets[j]["fish_length_array_mm"] = \
-                        get_fish_lengths(all_position_data[j], 
+                        get_fish_lengths(all_position_data[j],
                                          datasets[j]["image_scale"], CSVcolumns)
+                    # Record the shift actually applied in the dataset itself,
+                    # so downstream analysis/plotting scripts can read the true
+                    # fish index and frame shift from the data rather than
+                    # relying on a manually-typed experiment or pickle name.
+                    datasets[j]["time_shift_fish_idx"] = time_shift_fish_idx
+                    datasets[j]["time_shift_frames"] = int(frameshift)
                 # Re-calculate bad tracking frames
                 # This could be avoided by shifting these, but this is easier.
-                datasets = get_badTracking_frames_dictionary(all_position_data, 
-                                                             datasets, 
-                                                             params, CSVcolumns, 
+                datasets = get_badTracking_frames_dictionary(all_position_data,
+                                                             datasets,
+                                                             params, CSVcolumns,
                                                              tol=0.001)
+                time_shift_applied = True
+                # frameshift here is the last dataset's value (loop variable);
+                # datasets normally share the same Nframes, so this is also a
+                # faithful summary for the output-naming suffix below.
+                time_shift_suffix = f'_TS{time_shift_fish_idx}_{int(frameshift)}'
             else:
                 print('Invalid index; *NOT* flipping')
                 input('Press enter to indicate acknowlegement: ')
-                
+
+    # If a time-shift was applied, append a suffix (e.g. "_TS0_7500", encoding
+    # the shifted fish index and frame shift) to every output name -- output
+    # subfolder, Excel files, and pickle files -- instead of relying on the
+    # experiment name / pickle name typed in above (lines ~79-84, ~116) to
+    # independently and correctly encode which shift was used.
+    if time_shift_applied:
+        expt_config['expt_name'] = expt_config['expt_name'] + time_shift_suffix
+        params['output_subFolder'] = params['output_subFolder'] + time_shift_suffix
+        for excel_key in ('allDatasets_ExcelFile', 'allDatasets_markFrames_ExcelFile'):
+            if params.get(excel_key) is not None:
+                base_name, extension = os.path.splitext(params[excel_key])
+                params[excel_key] = base_name + time_shift_suffix + extension
+        if pickleFileNames[2].lower() != 'none':
+            new_pickle_base = pickleFileNames[2] + time_shift_suffix
+            pickleFileNames = (new_pickle_base + '_positionData.pickle',
+                               new_pickle_base + '_datasets.pickle',
+                               new_pickle_base)
+        print(f'\nTime-shift applied: appending "{time_shift_suffix}" to output names.')
 
     #%% Calculate statistics of continuous spans of good tracking
     for j in range(len(datasets)):

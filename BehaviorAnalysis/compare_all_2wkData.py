@@ -41,18 +41,68 @@ from behavior_correlations import plot_behaviorCorrelation,  \
 
 #%%
 
-def load_expt_data(pickleFileName1, pickleFileName2, exptName, 
-                           plot_color, all_expts):
+def _check_time_shift_matches_expected(datasets, exptName,
+                                       expected_fish_idx, expected_frames):
+    """
+    Sanity-check the time-shift actually recorded in each loaded dataset
+    (datasets[j]["time_shift_fish_idx"] / ["time_shift_frames"], set by
+    behaviors_main.py when a shift is applied) against what this expt_list
+    entry claims it should be. Catches an exptName that looks correct but
+    actually points at the wrong (or un-shifted) pickle.
+
+    expected_fish_idx, expected_frames : None asserts "no shift was
+        applied"; an int asserts that specific value; the string
+        'unchecked' (the default upstream) skips the corresponding check.
+    Raises ValueError on a real mismatch (key present, wrong value). Only
+    prints a note (does not raise) when the key is simply absent, since
+    pickles written before this bookkeeping existed can't be verified.
+    """
+    for j, dataset in enumerate(datasets):
+        label = f'{exptName}, dataset {j} ("{dataset.get("dataset_name", "?")}")'
+
+        if expected_fish_idx != 'unchecked':
+            if "time_shift_fish_idx" not in dataset:
+                print(f'Note: {label} predates time-shift bookkeeping; '
+                      f'cannot verify expected time_shift_fish_idx={expected_fish_idx}.')
+            elif dataset["time_shift_fish_idx"] != expected_fish_idx:
+                raise ValueError(
+                    f'{label}: expected time_shift_fish_idx={expected_fish_idx}, '
+                    f'found {dataset["time_shift_fish_idx"]} in the loaded pickle.')
+
+        if expected_frames != 'unchecked':
+            if "time_shift_frames" not in dataset:
+                print(f'Note: {label} predates time-shift bookkeeping; '
+                      f'cannot verify expected time_shift_frames={expected_frames}.')
+            elif dataset["time_shift_frames"] != expected_frames:
+                raise ValueError(
+                    f'{label}: expected time_shift_frames={expected_frames}, '
+                    f'found {dataset["time_shift_frames"]} in the loaded pickle.')
+
+
+def load_expt_data(pickleFileName1, pickleFileName2, exptName,
+                           plot_color, all_expts,
+                           expected_time_shift_fish_idx='unchecked',
+                           expected_time_shift_frames='unchecked'):
     """
     Load experimental data from pickle files. Add to the all_expts dictionary
+
+    expected_time_shift_fish_idx, expected_time_shift_frames : optional
+        sanity check against datasets[j]["time_shift_fish_idx"] /
+        ["time_shift_frames"] (see _check_time_shift_matches_expected()).
+        Pass None to assert no shift was applied, an int to assert a
+        specific fish index / frame shift, or leave as 'unchecked' (default)
+        to skip the check.
     """
-    
-    all_position_data, variable_tuple = load_and_assign_from_pickle(pickleFileName1, 
+
+    all_position_data, variable_tuple = load_and_assign_from_pickle(pickleFileName1,
                                                                     pickleFileName2)
     (datasets, CSVcolumns, expt_config, params, N_datasets, Nfish,
              basePath, dataPath, subGroupName) = variable_tuple
-    
-    
+
+    _check_time_shift_matches_expected(datasets, exptName,
+                                       expected_time_shift_fish_idx,
+                                       expected_time_shift_frames)
+
     all_expts[exptName] = {
         "datasets" : variable_tuple[0],
         "all_position_data" : all_position_data.copy(),
@@ -157,7 +207,11 @@ def load_all_expt_data(expt_list, parentPath):
     ----------
     expt_list : list of dict
         Each dict must have keys: expBaseStr, cond_str, exptName,
-        plot_color, CSVPath.
+        plot_color, CSVPath. May optionally include
+        expected_time_shift_fish_idx and/or expected_time_shift_frames
+        (see load_expt_data / _check_time_shift_matches_expected) to
+        sanity-check the loaded pickle against the shift this entry is
+        supposed to represent.
     parentPath : str
         Root path for all data.
 
@@ -170,8 +224,11 @@ def load_all_expt_data(expt_list, parentPath):
     for expt in expt_list:
         pickleFileName1, pickleFileName2 = get_pickle_filenames(
             expt['expBaseStr'], expt['cond_str'], expt['CSVPath'], parentPath)
-        all_expts = load_expt_data(pickleFileName1, pickleFileName2,
-                                   expt['exptName'], expt['plot_color'], all_expts)
+        all_expts = load_expt_data(
+            pickleFileName1, pickleFileName2,
+            expt['exptName'], expt['plot_color'], all_expts,
+            expected_time_shift_fish_idx=expt.get('expected_time_shift_fish_idx', 'unchecked'),
+            expected_time_shift_frames=expt.get('expected_time_shift_frames', 'unchecked'))
     return all_expts
 
 
@@ -192,32 +249,40 @@ if __name__ == '__main__':
          'cond_str':   'Light_Cond_2',
          'exptName':   'TwoWk_Light',
          'plot_color': 'darkorange',
-         'CSVPath':    _PAIRS_PATH},
+         'CSVPath':    _PAIRS_PATH,
+         'expected_time_shift_fish_idx': None},
         {'expBaseStr': 'TwoWk_Sept2025_TS0',
          'cond_str':   'Light_Cond_2',
          'exptName':   'TwoWk_Light_TIMESHIFT0',
          'plot_color': 'saddlebrown',
-         'CSVPath':    _PAIRS_PATH},
+         'CSVPath':    _PAIRS_PATH,
+         'expected_time_shift_fish_idx': 0,
+         'expected_time_shift_frames': 7500},
         {'expBaseStr': 'TwoWk_Sept2025',
          'cond_str':   'Dark_Cond_1',
          'exptName':   'TwoWk_Dark',
          'plot_color': 'cornflowerblue',
-         'CSVPath':    _PAIRS_PATH},
+         'CSVPath':    _PAIRS_PATH,
+         'expected_time_shift_fish_idx': None},
         {'expBaseStr': 'TwoWk_Sept2025_TS0',
          'cond_str':   'Dark_Cond_1',
          'exptName':   'TwoWk_Dark_TIMESHIFT0',
          'plot_color': 'darkblue',
-         'CSVPath':    _PAIRS_PATH},
+         'CSVPath':    _PAIRS_PATH,
+         'expected_time_shift_fish_idx': 0,
+         'expected_time_shift_frames': 7500},
         {'expBaseStr': 'TwoWkSingle',
          'cond_str':   'Light_Cond_2',
          'exptName':   'TwoWk_Light_Single',
          'plot_color': 'gold',
-         'CSVPath':    _SINGLES_PATH},
+         'CSVPath':    _SINGLES_PATH,
+         'expected_time_shift_fish_idx': None},
         {'expBaseStr': 'TwoWkSingle',
          'cond_str':   'Dark_Cond_1',
          'exptName':   'TwoWk_Dark_Single',
          'plot_color': 'slategrey',
-         'CSVPath':    _SINGLES_PATH},
+         'CSVPath':    _SINGLES_PATH,
+         'expected_time_shift_fish_idx': None},
     ]
 
     all_expts = load_all_expt_data(expt_list, parentPath)

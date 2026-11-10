@@ -794,6 +794,7 @@ def get_output_pickleFileNames(expt_name, subGroupName = None):
     print('\nEnter the base filename for the output pickle files;')
     print('   Do not include ".pickle"; appended later.')
     print('   Enter "none" to skip pickle output.')
+    print('   Note that if Time-Shifting, suffix will be added to default name.')
     # Append experiment and subGroup names to Analysis output folder
     if subGroupName is None:
         defaultPickleFileNameBase =  expt_name 
@@ -813,6 +814,44 @@ def get_output_pickleFileNames(expt_name, subGroupName = None):
     
     return pickleFileNames
     
+
+def long_path(path):
+    """
+    Return a version of `path` that bypasses Windows' ~260-character
+    MAX_PATH limit, using the "\\\\?\\" extended-length path prefix.
+
+    This prefix is honored by the Windows kernel regardless of the
+    "Enable Win32 long paths" registry/group-policy setting (which is
+    off by default, requires admin rights, and some older libraries
+    still don't fully respect it) -- so this works unconditionally,
+    with no system configuration needed.
+
+    No-op on non-Windows platforms, and on paths that are already
+    prefixed, UNC paths (\\\\server\\share\\...), or relative paths
+    (which must be resolved to absolute first; passing a relative path
+    here raises, since prefixing a relative path is not meaningful).
+
+    Parameters
+    ----------
+    path : str or Path
+
+    Returns
+    -------
+    str : the (possibly prefixed) absolute path, as a plain string
+    """
+    if os.name != 'nt':
+        return str(path)
+    path_str = str(path)
+    if path_str.startswith('\\\\?\\'):
+        return path_str
+    abs_path = os.path.abspath(path_str)
+    if abs_path.startswith('\\\\'):
+        # UNC path: \\?\UNC\server\share\... is the correct form, but
+        # UNC paths are rare here; leave unprefixed rather than risk
+        # malforming one.
+        return abs_path
+    return '\\\\?\\' + abs_path
+
 
 def write_pickle_file(dict_for_pickle, dataPath, outputFolderName, pickleFileName):
     """
@@ -852,19 +891,21 @@ def write_pickle_file(dict_for_pickle, dataPath, outputFolderName, pickleFileNam
             print(f"Using generic filename: {shortened_name}")
     
     try:
-        # Create output directory with exist_ok=True to handle race conditions
-        pickle_folder.mkdir(parents=True, exist_ok=True)
-        
+        # Create output directory with exist_ok=True to handle race conditions.
+        # Use the long-path-safe form for both mkdir and open, so we don't
+        # depend on Windows' (usually disabled) long-path registry setting.
+        os.makedirs(long_path(pickle_folder), exist_ok=True)
+
         # Double-check the directory was created
-        if not pickle_folder.exists():
+        if not os.path.exists(long_path(pickle_folder)):
             raise FileNotFoundError(f"Failed to create directory: {pickle_folder}")
-        
+
         # Save the pickle file
         print(f'\nWriting pickle file: {pickle_file_path.name} in {pickle_folder}\n')
-        with open(pickle_file_path, 'wb') as handle:
+        with open(long_path(pickle_file_path), 'wb') as handle:
             pickle.dump(dict_for_pickle, handle, protocol=pickle.HIGHEST_PROTOCOL)
         print("Pickle file saved successfully.")
-        
+
     except FileNotFoundError as e:
         print(f"FileNotFoundError: {e}")
         print(f"Failed path: {pickle_file_path}")
@@ -873,14 +914,14 @@ def write_pickle_file(dict_for_pickle, dataPath, outputFolderName, pickleFileNam
         print("- Path too long for Windows (>260 chars)")
         print("- Parent directory doesn't exist or is inaccessible")
         print("- Invalid characters in path")
-        
+
         # Try one more fallback with a very short name
         fallback_name = f"data_{hash(str(pickle_file_path)) % 1000}.pkl"
         fallback_path = pickle_folder / fallback_name
         print(f"Attempting fallback with short filename: {fallback_name}")
-        
+
         try:
-            with open(fallback_path, 'wb') as handle:
+            with open(long_path(fallback_path), 'wb') as handle:
                 pickle.dump(dict_for_pickle, handle, protocol=pickle.HIGHEST_PROTOCOL)
             print(f"Fallback successful! File saved as: {fallback_path}")
         except Exception as fallback_error:
@@ -1213,15 +1254,12 @@ def write_output_files(params, output_path, datasets):
     
     # Create output directory, if it doesn't exist
     try:
-        output_path.mkdir(parents=True, exist_ok=True)
+        os.makedirs(long_path(output_path), exist_ok=True)
     except OSError as e:
         print(f"Error creating output directory: {e}")
         print(f"Path: {output_path}")
         print(f"Path length: {len(str(output_path))} characters")
         raise
-
-    # Store original directory to restore later (instead of os.chdir)
-    original_cwd = Path.cwd()
 
     try:
         # behaviors (events) to write. (Superset)
@@ -1287,17 +1325,17 @@ def write_output_files(params, output_path, datasets):
                 print(f"Warning: Excel filename was too long, shortened to: {shortened_name}")
             
             try:
-                writer = pd.ExcelWriter(excel_file_path, engine='xlsxwriter')
+                writer = pd.ExcelWriter(long_path(excel_file_path), engine='xlsxwriter')
             except (FileNotFoundError, OSError, PermissionError) as e:
                 print(f"Error creating Excel file: {e}")
                 print(f"Attempted path: {excel_file_path}")
                 print(f"Path length: {len(str(excel_file_path))} characters")
-                
+
                 # Fallback: try with a very short filename
                 fallback_name = "behav_frame.xlsx"
                 excel_file_path = output_path / fallback_name
                 print(f"Trying fallback filename: {fallback_name}")
-                writer = pd.ExcelWriter(excel_file_path, engine='xlsxwriter')
+                writer = pd.ExcelWriter(long_path(excel_file_path), engine='xlsxwriter')
     
             # Call the function to write frames for each dataset
             print('   Marking behaviors in each frame for each dataset.')
@@ -1327,23 +1365,15 @@ def write_output_files(params, output_path, datasets):
             print('   *Not* creating Excel file with marked behaviors in each frame.')
             
         print('   Writing summary text file and basic measurements for each dataset.')
-        # For each dataset, summary text file and basic measurements    
+        # For each dataset, summary text file and basic measurements
         t_writing_summary_start = perf_counter()
-        
-        # Change to output directory for the text file functions
-        # (assuming they expect to write in current directory)
-        os.chdir(output_path)
-        
-        try:
-            for j in range(N_datasets):
-                # Write for this dataset: summary in text file
-                write_behavior_txt_file(datasets[j], key_list_revised)
-                # Write for this dataset: frame-by-frame "basic measurements"
-                write_basicMeasurements_file(datasets[j])
-        finally:
-            # Always restore original directory
-            os.chdir(original_cwd)
-            
+
+        for j in range(N_datasets):
+            # Write for this dataset: summary in text file
+            write_behavior_txt_file(datasets[j], key_list_revised, output_path)
+            # Write for this dataset: frame-by-frame "basic measurements"
+            write_basicMeasurements_file(datasets[j], output_path)
+
         t_writing_summary_end = perf_counter()
         print( f'   ... Elapsed time {t_writing_summary_end - t_writing_summary_start:.1f} s')
             
@@ -1402,17 +1432,11 @@ def write_output_files(params, output_path, datasets):
 
         # Return the full path for use by add_statistics_to_excel
         return str(summary_excel_path)
-        
+
     except Exception as e:
         print(f"Error in write_output_files: {e}")
         raise
-    finally:
-        # Ensure we're back in the original directory
-        try:
-            os.chdir(original_cwd)
-        except:
-            pass
-    
+
 
 def sanitize_filename(filename):
     """
@@ -1460,7 +1484,7 @@ def sanitize_sheet_name(dataset_name):
     return sanitized
 
         
-def write_behavior_txt_file(dataset, key_list):
+def write_behavior_txt_file(dataset, key_list, output_path):
     """
     Creates a txt file of the relevant window frames and event durations
     for a set of social behaviors in a given *single dataset*
@@ -1469,13 +1493,15 @@ def write_behavior_txt_file(dataset, key_list):
 
     Inputs:
         dataset  : dictionary with all dataset info
-        key_list : list of dictionary keys corresponding to each 
+        key_list : list of dictionary keys corresponding to each
                    behavior to write frame information for
+        output_path : directory (str or Path) to write the file into
 
     Returns:
         N/A
     """
-    with open(f"{dataset['dataset_name']}.txt", "w") as results_file:
+    file_path = Path(output_path) / f"{dataset['dataset_name']}.txt"
+    with open(long_path(file_path), "w") as results_file:
         results_file.write(f"{dataset['dataset_name']}\n")
         results_file.write("Experimental parameters\n")
         results_file.write(f"   Image scale (um/px): {dataset['image_scale']:.1f}\n")
@@ -1508,7 +1534,7 @@ def write_behavior_txt_file(dataset, key_list):
             results_file.write(outString)
 
 
-def write_basicMeasurements_file(dataset):
+def write_basicMeasurements_file(dataset, output_path):
     """
     Creates a CSV file of "basic" speed and distance measurements for
     a given *single dataset* at each frame.
@@ -1538,6 +1564,7 @@ def write_basicMeasurements_file(dataset):
 
     Inputs:
         dataset : dictionary with all dataset info
+        output_path : directory (str or Path) to write the file into
 
     Returns:
         N/A
@@ -1589,7 +1616,8 @@ def write_basicMeasurements_file(dataset):
         rows.append(",".join(row_parts))
     
     # Write the CSV file in one operation
-    with open(f"{dataset['dataset_name']}_basicMeasurements.csv", "w", newline="") as f:
+    file_path = Path(output_path) / f"{dataset['dataset_name']}_basicMeasurements.csv"
+    with open(long_path(file_path), "w", newline="") as f:
         f.write(",".join(headers) + "\n")
         f.write("\n".join(rows))
     
@@ -1619,7 +1647,7 @@ def write_CSV_Excel_YAML(expt_config, params, dataPath, datasets):
     all_outputs = expt_config | params | more_param_output
     print('\nWriting output YAML file.')
     yaml_path = os.path.join(output_path, 'all_params.yaml')
-    with open(yaml_path, 'w') as file:
+    with open(long_path(yaml_path), 'w') as file:
         yaml.dump(all_outputs, file)
         
 
@@ -1759,7 +1787,7 @@ def write_behaviorCounts_Excel(ExcelFileName, datasets, key_list,
             datasets[j][key]['rel_duration_active_all'] = total_duration / active_all_total
     
     # Create a new Excel writer object
-    writer = pd.ExcelWriter(ExcelFileName, engine='xlsxwriter')
+    writer = pd.ExcelWriter(long_path(ExcelFileName), engine='xlsxwriter')
 
     # Define the sheet names and corresponding data keys
     sheets = {
@@ -1803,9 +1831,10 @@ def add_statistics_to_excel(file_path='behaviorCounts.xlsx'):
     """
     # Convert to Path object for better handling
     file_path = Path(file_path)
-    
-    # Check if file exists
-    if not file_path.exists():
+
+    # Check if file exists (long-path-safe, since a deeply nested output
+    # folder can push this well past Windows' ~260-char MAX_PATH)
+    if not os.path.exists(long_path(file_path)):
         # Try to find it in current directory if only filename was provided
         if not file_path.is_absolute():
             cwd_file = Path.cwd() / file_path.name
@@ -1829,13 +1858,18 @@ def add_statistics_to_excel(file_path='behaviorCounts.xlsx'):
                 raise FileNotFoundError(f"Could not find Excel file: {file_path}")
     
     print(f"Processing Excel file: {file_path}")
-    
+
+    # Use the long-path-safe form for all actual I/O below (reads, writes,
+    # exists/unlink/rename), since this path is often nested deep enough
+    # under the output folder to exceed Windows' MAX_PATH.
+    io_path = Path(long_path(file_path))
+
     try:
         # Load the Excel file
-        xls = pd.ExcelFile(file_path)
-        
+        xls = pd.ExcelFile(io_path)
+
         # Create a temporary file for writing (to avoid conflicts)
-        temp_file = file_path.parent / f"temp_{file_path.name}"
+        temp_file = io_path.parent / f"temp_{io_path.name}"
         writer = pd.ExcelWriter(temp_file, engine='openpyxl')
         
         for sheet_name in xls.sheet_names:
@@ -1924,16 +1958,16 @@ def add_statistics_to_excel(file_path='behaviorCounts.xlsx'):
         xls.close()
         
         # Replace the original file with the updated one
-        if file_path.exists():
-            file_path.unlink()  # Delete original
-        temp_file.rename(file_path)  # Rename temp to original
-        
+        if io_path.exists():
+            io_path.unlink()  # Delete original
+        temp_file.rename(io_path)  # Rename temp to original
+
         print(f"Successfully added statistics to: {file_path}")
         
     except Exception as e:
         print(f"Error in add_statistics_to_excel: {e}")
         # Clean up temp file if it exists
-        temp_file = file_path.parent / f"temp_{file_path.name}"
+        temp_file = io_path.parent / f"temp_{io_path.name}"
         if temp_file.exists():
             temp_file.unlink()
         raise
@@ -1972,7 +2006,7 @@ def simple_write_CSV(x, y_list, filename, header_strings=None):
 
     # Save to CSV
     print(f'\nWriting CSV file: {filename}\n')
-    df.to_csv(filename, index=False)
+    df.to_csv(long_path(filename), index=False)
 
     
 def combine_images_to_tiff(filenamestring, path, ext="png", 
