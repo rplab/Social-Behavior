@@ -38,7 +38,7 @@ from pathlib import Path
 
 # Note: calls from IO_toolkit import load_and_assign_from_pickle only if needed
 from behavior_plots import (make_interbout_turning_angle_plots, bin_and_plot_2D,
-                            plot_interbout_histogram)
+                            plot_interbout_histogram, make_2D_histogram)
 from IO_toolkit import plot_probability_distr
 from IBI_properties_utils import (
     _good_frame_mask, _bout_speed_ok, _bout_turn_ok, _density_and_sem,
@@ -3702,7 +3702,12 @@ def simulate_pair_dHH_trials(radial_bins, arena_radius_mm,
                 "polar_angle_rad": gamma_interp.T,       # (Nframes, 2)
                 "head_head_distance_mm": np.asarray(dHH_mm),
                 "heading_angle_rad": theta_interp.T,     # (Nframes, 2)
-                "relative_heading_angle": relative_heading_angle})  # (Nframes,)
+                "relative_heading_angle": relative_heading_angle,  # (Nframes,)
+                # "all good" frame bookkeeping, so this dict can also be used
+                # directly with combine_all_values_constrained() / make_2D_histogram()
+                # (toolkit.py / behavior_plots.py), which require these keys.
+                "frameArray": np.arange(np.asarray(dHH_mm).size),
+                "bad_bodyTrack_frames": {"raw_frames": np.array([], dtype=int)}})
 
     if collect_trajectories:
         return dHH_list, r_list, traj_list
@@ -4699,7 +4704,14 @@ def main():
     # absolute heading-angle difference between the two simulated fish (the
     # simulated analogue of make_pair_fish_plots()'s "Relative Heading Angle"
     # panel for experimental data). Simulation only; no experimental overlay.
-    plot_relative_heading_angle = True
+    plot_relative_heading_angle = False
+    # 2D histogram of relative heading angle vs head-head distance, simulated
+    # pairs only -- the simulated analogue of the commented-out "2D histogram of
+    # heading alignment and head-head distance" block in make_pair_fish_plots()
+    # (behavior_plots.py). Same bins/color scale as that experimental panel, and
+    # written to CSV, so it can be differenced against the experimental heatmap
+    # (or its time-shifted/pseudopair null) bin-by-bin in separate code.
+    plot_relative_heading_vs_dHH_2D = False
     # Deconfounded pair-kinematics diagnostic: <Delta_s>, <Delta_t>, <IB_duration> vs
     # dHH WITHIN (r, |psi|) strata, comparing real (pairstats_2) vs time-shifted
     # (pairstats_2b) and the single-fish reference. Tests whether pair kinematics are
@@ -5135,7 +5147,8 @@ def main():
     # (circulation/approach, p(dHH) vs time-shift, dHH autocorrelation, or the
     # relative-heading-angle histogram) is on.
     _need_sim_traj = (diagnose_circulation_approach or plot_dHH_vs_timeshift
-                      or plot_dHH_autocorrelation or plot_relative_heading_angle)
+                      or plot_dHH_autocorrelation or plot_relative_heading_angle
+                      or plot_relative_heading_vs_dHH_2D)
     _sim_ret = simulate_pair_dHH_trials(
         radial_bins, arena_radius_mm,
         turn_2Dhist_mean, turn_2Dhist_std, rel_orient_bins, dHH_bins,
@@ -5180,6 +5193,28 @@ def main():
             sim_traj_list, color=sim_color,
             titleStr=f'Simulated pairs ({social_method}): Relative Heading Angle',
             outputFileName=f'sim_relative_heading_angle_{extraString}.png')
+
+    # 2D histogram of relative heading angle vs head-head distance, simulated
+    # pairs only. Same bins / color range as the commented-out experimental
+    # version in make_pair_fish_plots(), and written to CSV, for a later,
+    # separate differencing step (e.g. sim - pseudopair, or experimental
+    # Light - TS0) against the geometric (co-rotation) ridge common to both.
+    if plot_relative_heading_vs_dHH_2D:
+        print('\n[REL HEADING 2D] Relative heading angle vs dHH, simulated pairs...')
+        make_2D_histogram(
+            sim_traj_list,
+            keyNames=('head_head_distance_mm', 'relative_heading_angle'),
+            keyIdx=(None, None),
+            dilate_minus1=False,
+            bin_ranges=((0.0, 50.0), (0.0, 3.142)),
+            Nbins=(20, 20),
+            colorRange=(0.0, 0.007),
+            titleStr=f'Simulated pairs ({social_method}): heading angle and hh distance',
+            cmap='viridis',
+            plot_type='heatmap',
+            outputFileName=f'sim_relative_heading_vs_dHH_2D_{extraString}.png',
+            outputCSVFileName=f'sim_relative_heading_vs_dHH_2D_{extraString}.csv',
+            closeFigure=False)
 
     outputFileName = (f'pair_sim_Method_{social_method}_'
                         f'{T_total_s:.0f}s_{Ntrials}trials_'
